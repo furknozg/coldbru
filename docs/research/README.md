@@ -101,7 +101,7 @@ Diyagramdan farklar: Customer Service'te GraphQL isteğe bağlı; Proposal → C
 | Olay altyapısı | Outbox + NATS JetStream | **Karar: D-006** |
 | İş kuyruğu ve zamanlama | River, sahibi Notification | **Karar: D-006** (NATS; sahibi Notification) |
 | İçerik dili | — | **Karar: D-009** |
-| Canlı durum | SSE (04 §3) | Açık |
+| Canlı durum | SSE (04 §3) | **Karar: D-013** (SSE; istek/yanıt REST) |
 | Model | Sonnet 5.5 (+ Haiku 5.5 ön eleme) (03 §1) | Açık |
 | SMS uzunluk politikası | En kötü durumda 160 karakter + segment/maliyet gösterimi (03 §5) | Açık |
 | HTML email | Yuvalı şablon (03 §10) | Açık |

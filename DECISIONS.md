@@ -15,6 +15,11 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-009 | İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz | LLM entegrasyonu | Kabul edildi |
 | D-010 | Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır | Kitle ve izinler | Kabul edildi |
 | D-011 | Gönderim anında GraphQL ile batch izin kontrolü; circuit breaker ile fail-closed | Kitle ve izinler | Kabul edildi |
+| D-012 | Frontend: Vue 3 + TypeScript, pnpm, Tailwind, shadcn-vue, Vue Router + composable'lar; kök dizinde `web/` | Takip ve altyapı | Kabul edildi |
+| D-013 | Frontend ↔ backend: istek/yanıt REST, canlı güncellemeler SSE | Takip ve altyapı | Kabul edildi |
+| D-014 | Frontend testleri Vitest + Vue Test Utils; uçtan uca tarayıcı testi yok | Test ve kapsam | Kabul edildi |
+| D-015 | Tek nginx konteyneri: Vue statik build'ini sunar ve API gateway'dir | Takip ve altyapı | Kabul edildi |
+| D-016 | REST sözleşmesi Go kodundan swag v2 ile OpenAPI 3; TS tipleri ve istemci spec'ten üretilir | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -183,6 +188,77 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** D-006'daki NATS kapsamı asenkron mesajlaşmadır; bu izin sorgusu, D-007'deki Proposal → Customer çağrısı gibi senkron bir GraphQL çağrısıdır. Gönderim Customer'ın erişilebilirliğine senkron bağımlıdır; Customer kesintisinde gönderim gecikir ama izin çiğnenmez. Kontrol ile gönderim arasında milisaniyelik bir pencere kalır. `customer_db` artık yalnızca seed'le dolan bir ambar değildir; izin için bir yazma yolu vardır ve `dim_customer` bayrağı ile son `fact_consent` kaydı aynı transaction'da güncellenmelidir (seed'deki tutarlılık kontrolü bu kuralı varsayar). Breaker eşikleri, batch boyutu ve kütüphane seçimi açık.
 - **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef testler: zamanlanmış kampanyada onaydan sonra izin geri çekilen kişi `skipped_no_consent` olur; Customer kapalıyken hiçbir mesaj gönderilmez.
 
+## D-012: Frontend: Vue 3 + TypeScript, pnpm, Tailwind, shadcn-vue, Vue Router + composable'lar; kök dizinde `web/`
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Case frontend için Vue.js şart koşuyor. Arayüzde sohbet terminali, teklif onay/red adımları, kanal planı, SMS/HTML önizleme, tarih-saat seçicili zamanlama ve canlı gönderim panosu olacak (THOUGHTS.md, D-009, D-010).
+- **Karar:**
+  - Vue'nun güncel sürümü (2026-10-27 itibarıyla `vue` 3.5.44), paket yöneticisi ve çalışma ortamı **pnpm** (güncel 12.15.0; makinede Node 24 ve pnpm 12.8.1).
+  - **TypeScript** ile Composition API ve `<script setup lang="ts">`; tip kontrolü `vue-tsc` ile.
+  - Stil **Tailwind CSS** (güncel 4.3.3); bileşenler **shadcn-vue** (Reka UI tabanlı, projeye kopyalanan bileşenler).
+  - Yönlendirme **Vue Router**; paylaşılan durum için global store yok, sayfalar veriyi composable'larla alır (teklif durumu sunucuda tutulduğu için).
+  - Konum: depo kökünde **`web/`** dizini; Go modülü (`go.mod`) kökte, yanında.
+- **Alternatifler:**
+  - JavaScript — reddedildi: API sözleşmesi hataları çalışma zamanında yakalanırdı.
+  - Pinia — reddedildi: sunucudaki teklif durumunun istemcide ikinci kopyası olurdu. Paylaşılan durum büyürse sonradan eklenebilir.
+  - Reka UI (headless) veya bileşen kütüphanesi olmadan — reddedildi: tarih seçici, diyalog ve tabloları elle stillemek bir haftalık süreye ağır.
+- **Sonuçlar / bedel:** shadcn-vue bileşenleri kopyalandığı için bakımı bizde; sürümü iskelet kurulurken doğrulanacak. create-vue iskeleti Vite ile gelir. Sürümler iskelet kurulurken `package.json` ve `pnpm-lock.yaml` ile sabitlenir. Tek depoda Go ve pnpm araç zincirleri yan yana; `make test` ikisini de çalıştırmalı.
+- **Doğrulama:** Doğrulanmadı — henüz `web/` iskeleti yok. Sürümler 2026-10-27'de npm registry'den okundu.
+
+## D-013: Frontend ↔ backend: istek/yanıt REST, canlı güncellemeler SSE
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Arayüz teklif oluşturma, onay/red ve zamanlama için backend'i çağırır; teklif ilerlemesi, metin akışı ve gönderim durumu canlı görünmeli. THOUGHTS.md canlı durum için WebSocket veya event stream öneriyor.
+- **Karar:** Tarayıcı ile backend arasındaki istek/yanıt etkileşimleri **REST**. Canlı güncellemeler (teklif adımları, kitle sayıları, metin akışı, gönderim durumu) **Server-Sent Events** ile tarayıcıya gelir. GraphQL (D-007) tarayıcıya açılmaz; yalnızca servisler arası iç arayüzdür.
+- **Alternatifler:**
+  - WebSocket — reddedildi: sürdürme ve ping'ler elle kurulur, nginx'te Upgrade ayarı gerekir; istemciden sunucuya yön zaten REST ile karşılanıyor.
+  - Polling — reddedildi: 1–2 sn gecikme, metin akışı canlı görünmez.
+- **Sonuçlar / bedel:** `EventSource` yalnızca GET destekler ve özel header gönderemez; POST ile başlayan metin akışı için `fetch` + `ReadableStream` gerekir, kimlik doğrulama eklenirse cookie veya kısa ömürlü token gerekir (kimlik doğrulama henüz kararlaştırılmadı). SSE'nin `Last-Event-ID` ile sürdürülmesi ve nginx'te tamponlamanın kapatılması uygulamada kurulacak.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-014: Frontend testleri Vitest + Vue Test Utils; uçtan uca tarayıcı testi yok
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Test ve kapsam
+- **Bağlam:** Brief `make test` ile çalışan testler istiyor; değerlendirmenin %15'i test ve kod kalitesi. Frontend D-012 ile Vue 3 + TypeScript.
+- **Karar:** Bileşen ve composable testleri **Vitest** + **Vue Test Utils** ile, tarayıcısız Node ortamında yazılır ve `make test` içinde çalışır. Uçtan uca tarayıcı testi (Playwright) şimdilik yok.
+- **Alternatifler:**
+  - Ek olarak Playwright ile tek kritik akışın uçtan uca testi — reddedildi: tarayıcı indirmesi, daha yavaş ve kırılgan testler, compose'da tam yığın gerekir.
+- **Sonuçlar / bedel:** Brief → teklif → onay → gönderim akışının tamamı tarayıcıda otomatik sınanmaz; servis sınırları backend testleri ve mock LLM ile, arayüz bileşen düzeyinde test edilir.
+- **Doğrulama:** Doğrulanmadı — henüz `web/` yok.
+
+## D-015: Tek nginx konteyneri: Vue statik build'ini sunar ve API gateway'dir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** `docker compose up` arayüz dahil her şeyi tek komutla kaldırmalı. THOUGHTS.md diyagramında tarayıcının önünde bir nginx API gateway var. SSE (D-013) proxy'de tamponlamanın kapatılmasını gerektirir.
+- **Karar:** Çok aşamalı Docker build: `web/` pnpm ile build edilir, çıktı nginx imajına kopyalanır. Aynı nginx konteyneri statik arayüzü sunar, `/api/*` isteklerini ilgili servislere yönlendirir ve SSE konumlarında tamponlamayı kapatıp okuma zaman aşımını uzatır. Geliştirmede sıcak yeniden yükleme için `pnpm dev` compose dışında çalışır.
+- **Alternatifler:**
+  - Ayrı web konteyneri + önünde nginx gateway — reddedildi: fazladan konteyner, kazanç az.
+  - Compose içinde Vite dev sunucusu — reddedildi: üretime benzemez, ayrıca yine bir gateway gerekir.
+- **Sonuçlar / bedel:** Arayüz değişikliği compose'da görünmek için imajın yeniden build edilmesini ister. Servisler arası iç trafik (GraphQL, NATS) nginx'ten geçmez. Yönlendirme tablosu ve nginx sürümü uygulamada belirlenecek.
+- **Doğrulama:** Doğrulanmadı — henüz nginx yapılandırması yok.
+
+## D-016: REST sözleşmesi Go kodundan swag v2 ile OpenAPI 3; TS tipleri ve istemci spec'ten üretilir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-013 ile tarayıcı backend'e REST ile bağlanıyor. Go ve TypeScript tipleri aynı sözleşmeden gelmeli ve API belgelenmeli.
+- **Karar:**
+  - REST sözleşmesi Go handler'larındaki annotation'lardan **swag** ile üretilir; sözleşme ve API belgesi bu çıktıdır.
+  - Sürüm **swag v2** (2026-10-27 itibarıyla `v2.0.0-rc6`), çünkü doğrudan OpenAPI 3 hedefliyor.
+  - Vue tarafında tipler **openapi-typescript** (7.13.0), tipli istemci **openapi-fetch** (0.17.0) ile üretilen spec'ten oluşturulur; Go değişince tipler yeniden üretilir.
+- **Alternatifler:**
+  - OpenAPI önce, oapi-codegen ile Go'ya üretim — reddedildi: kullanıcı sözleşmenin Go kodundan üretilmesini istedi.
+  - swag v1 (kararlı v1.16.6) + Swagger 2.0 → OpenAPI 3 dönüştürme — reddedildi: fazladan dönüştürme adımı ve iki dosya.
+  - swag v1, yalnızca Swagger 2.0 — reddedildi: openapi-typescript Swagger 2.0 okumaz, TS tipleri elle yazılırdı.
+  - Elle yazılmış TS tipleri — reddedildi: Go ve TS tipleri zamanla ayrışır.
+  - huma v2 — reddedildi: swag tercih edildi.
+- **Sonuçlar / bedel:** swag v2 hâlâ sürüm adayı; annotation sözdizimi ve çıktısı değişebilir, sürüm `go.mod`'da sabitlenmeli. v2'nin ürettiği OpenAPI 3 dosyasının openapi-typescript ile uyumu iskelette doğrulanacak; sorun çıkarsa D-016 yeniden açılır. Annotation'lar handler'la elle senkron tutulur; yanlış annotation yanlış tip üretir. SSE akışları (D-013) OpenAPI'de tam ifade edilemeyebilir; olay tipleri ayrıca belgelenmeli.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Sürümler 2026-10-27'de Go modül proxy'si ve npm registry'den okundu.
+
 ---
 
 ## Açık konular
@@ -201,5 +277,6 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
 - Migration aracı (init scriptleri yalnızca ilk kurulum için, D-005)
 - Mock provider hata/gecikme/429 oranları
-- Canlı durum taşıma yöntemi (SSE / WebSocket / polling)
+- SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016)
+- Kimlik doğrulama (arayüz ve SSE için) (D-013)
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği
