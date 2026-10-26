@@ -9,6 +9,12 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-003 | Tek Postgres 18 servisi, servis başına veritabanı ve sahip rol | Takip ve altyapı | Kabul edildi |
 | D-004 | customer_db filtrelenmiş DWH: yıldız şema, kart/CVV/IBAN hariç | Kitle ve izinler | Kabul edildi |
 | D-005 | Şema ve seed Postgres init scriptleriyle yüklenir | Mock provider ve seed | Kabul edildi |
+| D-006 | Tüm servisler arası mesajlaşma, iş kuyruğu ve zamanlama NATS JetStream; yayın transactional outbox ile | Gönderim | Kabul edildi |
+| D-007 | Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok | LLM entegrasyonu | Kabul edildi |
+| D-008 | Alıcı verisi zamanlamada NATS snapshot'ıyla taşınır; izin segment sorgusunda baştan uygulanır | Kitle ve izinler | Yerini aldı → D-010, D-011 |
+| D-009 | İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz | LLM entegrasyonu | Kabul edildi |
+| D-010 | Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır | Kitle ve izinler | Kabul edildi |
+| D-011 | Gönderim anında GraphQL ile batch izin kontrolü; circuit breaker ile fail-closed | Kitle ve izinler | Kabul edildi |
 
 ---
 
@@ -75,16 +81,125 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Init yalnızca boş volume'da çalışır; şema/stub değişince `docker compose down -v`. Init yarıda kalırsa volume yarım kalır, yine `down -v` gerekir. Şema evrimi için ileride migration aracına geçilecek.
 - **Doğrulama:** İlk `up` 3 sn'de seed'i bitirdi (1000 / 159 / 3923 / 9170 / 3840 / 44114 / 2219 satır, CSV'lerle aynı). İlk kullanıcının IBAN ve kart numarası veri dizininde bulunmuyor; aynı aramayla e-postası bulunuyor (pozitif kontrol). Bu oturumda elle.
 
+## D-006: Tüm servisler arası mesajlaşma, iş kuyruğu ve zamanlama NATS JetStream; yayın transactional outbox ile
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** Brief asenkron kuyruk, kanal başına 100 msg/s ve "aynı mesaj iki kez gitmez" istiyor. THOUGHTS.md olay güdümlü eventual consistency ve zamanlanmış gönderim hedefliyor. Araştırma (docs/research/01) olaylar için NATS, Notification içi işler için River önerdi.
+- **Karar:** Tek mesajlaşma altyapısı NATS JetStream (tek konteyner). Servisler arası olaylar, Notification'ın mesaj başına iş kuyruğu (work-queue stream) ve zamanlanmış gönderimler NATS'te; River kullanılmaz. Her servis olayı iş satırıyla aynı transaction'da kendi DB'sindeki outbox tablosuna yazar, relay NATS'e yayınlar (`Nats-Msg-Id` = outbox id). İptal: Proposal iptal olayı yayınlar, Notification'ın olay işleyici worker'ı kampanyayı/varyantı iptal olarak işaretler; zamanlanmış mesaj tetiklendiğinde worker durumu kontrol eder ve iptal edilmişse düşürür. Kullanıcıya göre ayrı bir servisler arası iptal kanalı da açılabilir; ikisi de bu kararla uyumlu.
+- **Alternatifler:**
+  - Olaylar NATS, işler River — reddedildi: iki kuyruk teknolojisinin bakımı; NATS hem altyapı olarak daha kolay hem servisler arası mesajlaşmayı sağlıyor.
+  - RabbitMQ — reddedildi: daha ağır konteyner, delayed-message eklentisi 2026-09'da arşivlendi.
+  - Commit sonrası doğrudan yayın — reddedildi: commit ile publish arasında çökmede olay kaybolur.
+- **Sonuçlar / bedel:** NATS zamanlanmış mesajları (2.12+) için stream'de geri alınamayan `AllowMsgSchedules` bayrağı gerekir, konu başına tek zamanlama vardır ve iptal API'si yoktur; bu yüzden her dil varyantı (D-009) kendi zamanlama konusunu kullanır ve iptal tetiklenme anındaki durum kontrolüne dayanır. Retry ve rate limit (NAK gecikmesi, `MaxDeliver`, kanal başına limiter) uygulamada kurulacak. JetStream teslimi en az bir kezdir; "aynı mesaj iki kez gitmez" kuralının nasıl sağlanacağı (idempotency anahtarı, tüketici tarafı dedup) açık konu. Senkron Proposal → Customer çağrısı NATS değil, GraphQL (D-007).
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-007: Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** LLM'in ürettiği segment kuralı backend'de doğrulanmalı ve SQL olarak çalıştırılmamalı. THOUGHTS.md GraphQL, MCP ve JS benzeri filtre dilini değerlendiriyor; hedef çıktı token verimliliği.
+- **Karar:**
+  - Customer Service müşteri ambarını **gqlgen** ile GraphQL olarak sunar; GraphQL filtre girdisi beyaz listeli bir derleyiciyle parametreli SQL'e çevrilir; girdi tiplerinin şekli açık konu.
+  - **Erişilebilirlik ve izin koşulu Customer'ın GraphQL resolver'ında** her sorguya eklenir (aktif hesap ve izinli e-posta veya telefon); hangi istemci çağırırsa çağırsın atlanamaz.
+  - Claude filtreyi **JS benzeri DSL string** olarak yazar. **Proposal Service** GraphQL istemcisidir: DSL'i `expr-lang/expr` ile ayrıştırır, katalogla tip denetler (hiç çalıştırmaz) ve GraphQL `where` girdisine çevirir.
+  - **MCP kullanılmaz.** Claude'a sunulan araç, Proposal'ın tanımlayıp kendisinin çalıştırdığı istemci tarafı tool'dur.
+- **Alternatifler:**
+  - MCP (Claude API connector veya iç MCP sunucusu) — reddedildi: token tüketimini artırır; connector herkese açık `https://` sunucu ister.
+  - DSL'i doğrudan Customer'da SQL'e derlemek (araştırma önerisi) — reddedildi: GraphQL çağrısı istemci tarafında; çeviri GraphQL istemcisi olan Proposal'da daha mantıklı.
+  - Sabit derinlikli JSON AST — reddedildi: ~3 kat çıktı token'ı, structured output özyinelemeli şemayı desteklemiyor.
+  - REST + JSON AST — reddedildi: GraphQL tercih edildi.
+  - graph-gophers/graphql-go — reddedildi: codegen yok, daha az tip güvenliği.
+- **Sonuçlar / bedel:** İki çeviri katmanı (DSL → GraphQL Proposal'da, GraphQL → SQL Customer'da) ve iki doğrulama noktası. Customer'ın GraphQL girdisi her istemciye açık olduğu için alan beyaz listesi, düğüm/derinlik ve karmaşıklık sınırları Customer'da da zorunlu. gqlgen codegen adımı ekler ve hâlâ 0.x. Hassas hedefleme alanlarının kataloğa girip girmeyeceği ayrı bir karar.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef test: örnek brief için DSL → GraphQL → SQL zinciri 33 kişi döndürmeli.
+
+## D-008: Alıcı verisi zamanlamada NATS snapshot'ıyla taşınır; izin segment sorgusunda baştan uygulanır
+
+- **Durum:** Yerini aldı → D-010, D-011 · 2026-10-27 (ilk kabul 2026-10-27)
+- **Alan:** Kitle ve izinler
+- **Bağlam:** Notification gönderim için alıcıların iletişim bilgisine ihtiyaç duyar; brief izinsiz kanaldan gönderimi yasaklar. Araştırma gönderim anında izin kontrolü veya `consent.changed` olayları önerdi.
+- **Karar:** "İzin" alıcının kanal iznidir (`email_opt_in` / `sms_opt_in`). Bu izin, segment sorgusunda Customer resolver'ı tarafından baştan uygulanır (D-007); dönen veri zaten izne göre süzülmüştür. Zamanlama onaylandığında alıcıların gerekli bilgileri (id, ad, dil, kanal için izinli e-posta veya telefon) batch'ler hâlinde NATS üzerinden Notification'a gönderilir. Gönderim anında ayrıca izin kontrolü veya izin olayı geliştirilmez. Alıcı batch'leri work-queue stream'de tutulur ve Notification kendi DB'sine yazıp ack verdiğinde silinir.
+- **Alternatifler:**
+  - Snapshot + `consent.changed` olaylarıyla engelleme listesi — reddedildi: izin kavramı için ek geliştirme istenmiyor.
+  - Snapshot + gönderimde GraphQL ile izin kontrolü — reddedildi: aynı neden; gönderimde Customer'a senkron bağımlılık.
+  - Süreli saklama (ör. 7 gün) — reddedildi: PII mesaj altyapısında daha uzun kalır.
+- **Sonuçlar / bedel:** Zamanlanmış bir kampanyada onay ile gönderim arasında geri çekilen izinler dikkate alınmaz. `customer_db` seed'li statik bir ambar olduğu için demoda bu pencerede izin değişmez. NATS varsayılan mesaj sınırı 1 MB; alıcılar batch'lere bölünür. Yeniden oynatma kaynağı Notification DB'sidir.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-009: İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Brief bonusu "kullanıcının diline göre içerik". `dim_customer.language` şu an `tr` ve `en` içeriyor. Kullanıcı ara adımlarda bağlam ekleyebilmeli.
+- **Karar:**
+  - Onaylanan kitlede bulunan her benzersiz dil için, seçilen her kanalda ayrı bir metin teklifi üretilir.
+  - Her dil varyantı ayrı zamanlanır; dil başına ayrı gönderim zamanı.
+  - Bir adım (metin veya zamanlama), kitledeki tüm dillerin varyantları onaylanmadan onaylanmış sayılmaz.
+  - Kullanıcı tek bir dili gerekçesiyle reddedebilir; yalnızca o varyant yeniden üretilir.
+  - Kullanıcı herhangi bir adımda ek bağlam verebilir. Bağlam kampanyanın bağlamına eklenir, mevcut adımın onaylanmamış teklifleri yeniden üretilir, sonraki adımlar da onu görür. Onaylanmış teklifler korunur.
+- **Alternatifler:**
+  - Tek dil — reddedildi: bonus ve kullanıcı isteği dil bazlı içerik.
+  - Tek gönderim zamanı, tüm diller — reddedildi: dil başına zamanlama istendi.
+  - Alıcının yerel saati — reddedildi: dil başına ayrı zaman seçildi.
+  - Ek bağlam yalnızca sonraki adımlara — reddedildi: kullanıcı değişiklik için teklifi reddetmek zorunda kalırdı.
+  - Kullanıcının bağlamın hedefini seçmesi — reddedildi: daha karmaşık arayüz ve durum makinesi.
+- **Sonuçlar / bedel:** LLM çağrısı sayısı dil × kanal × onarım denemesi kadar çoğalır; token ve maliyet artar. Teklif onay durumu dil varyantı düzeyinde tutulmalı; durum makinesinin şeması açık konu. Ek bağlam yeniden üretimi ekstra çağrı ister. Her dil varyantı ayrı bir NATS zamanlama konusu kullanır (D-006).
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-010: Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-008 izni segment sorgusunda tek seferlik bir süzgeç olarak uyguluyordu. Örnek brief kitlesinde (49 kişi) 20 kişi iki kanala, 13 yalnızca e-postaya, 13 yalnızca SMS'e açık, 3 kişiye ulaşılamıyor; e-posta ve SMS 33'er kişiyle berabere. THOUGHTS.md §5 kanal kapsamasının kullanıcıya sorulmasını istiyor.
+- **Karar:**
+  - Kitle sorgusu en az bir kanaldan ulaşılabilen aktif kişileri döndürür (koşul Customer resolver'ında, D-007) ve kişileri kanala göre elemez; her kişi için e-posta ve SMS uygunluğunu ayrı taşır.
+  - Kitle onayından sonra ayrı bir **kanal planı** adımı gelir. Kapsama tablosunu (iki kanal / yalnızca e-posta / yalnızca SMS / ulaşılamaz, dil kırılımıyla) LLM değil SQL hesaplar. Ajan bir plan önerir; kullanıcı onaylar veya reddeder.
+  - Plan seçenekleri: **tek kanal** (yalnızca o kanala açık olanlar), **birincil + yedek** (kişi başına tek mesaj; birincil kanala kapalı olanlar diğerinden), **iki kanal birden**. Ajanın varsayılan önerisi birincil + yedek; beraberlikte birincil kanal e-posta.
+  - Onaylanan planla her kişinin kanalı atanır. Zamanlama onaylandığında alıcılar (id, ad, dil, atanmış kanal ve o kanalın iletişim bilgisi) batch'ler hâlinde NATS work-queue stream'iyle Notification'a gider ve Notification kendi DB'sine yazıp ack verdiğinde stream'den silinir (D-008'den korunur). Notification kanal seçmez.
+  - Metin teklifleri (D-009) yalnızca alıcısı olan dil-kanal çiftleri için üretilir.
+  - Kanal planı reddedilirse aynı adımda yeni plan önerilir. Kitle yeniden onaylanırsa kanal planı ve metinler geçersiz olur; kanal planı değişirse yalnızca metin teklifleri geçersiz olur.
+- **Alternatifler:**
+  - D-008'deki gibi sorguda kanal bazında süzme — reddedildi: kanal kapsaması kullanıcıya gösterilemez, beraberlik ve yedek kanal karar dışı kalır.
+  - Kanalı gönderim anında Notification'ın seçmesi — reddedildi: onaylanan plandan sapma riski; seçim insan onayında kalmalı.
+- **Sonuçlar / bedel:** Akışa bir onay adımı daha eklenir. "İki kanal birden" seçilirse aynı kişi iki kanaldan mesaj alır; bu seçenek kullanıcının açık onayına bağlıdır. Kişi başına kanal ataması snapshot'ı biraz büyütür.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Kapsama sayıları 2026-10-27'de `customer_db` üzerinde sorguyla ölçüldü (20 / 13 / 13 / 3).
+
+## D-011: Gönderim anında GraphQL ile batch izin kontrolü; circuit breaker ile fail-closed
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-008 gönderim anında izin kontrolü yapmıyordu. Zamanlanmış bir kampanyada onay ile gönderim arasında geri çekilen izin, brief'in "izni olmayan kullanıcıya o kanaldan mesaj gönderilmez" kuralını çiğner. Kullanıcı ek kontrol istedi.
+- **Karar:**
+  - Notification her gönderim batch'inden önce Customer Service'e **GraphQL** ile tek sorgu atar ve batch'teki kişilerin atanmış kanaldaki güncel iznini alır. İzin tek doğruluk kaynağı Customer'dır.
+  - Atanmış kanalda izni geri çekilmiş kişiye mesaj gönderilmez; teslim kaydı `skipped_no_consent` olur ve dashboard'da raporlanır. Diğer kanala düşülmez.
+  - Customer çağrısı **circuit breaker** arkasındadır. Customer hata verirse veya ulaşılamazsa breaker açılır, batch'ler gönderilmeden ertelenir ve yeniden denenir; izni doğrulanmamış kimseye mesaj gitmez (fail-closed). Breaker yarı açıkken deneme çağrılarıyla toparlanmayı yoklar.
+  - Customer Service'e `updateConsent` GraphQL mutation'ı eklenir: yeni bir `fact_consent` satırı yazar ve `dim_customer` üzerindeki ilgili izin bayrağını günceller. Demoda izin geri çekme arayüzden canlı gösterilebilir.
+- **Alternatifler:**
+  - NATS `consent.changed` olayları + engelleme listesi — reddedildi: eventual-consistency penceresi; Customer'da outbox gerekir.
+  - NATS request-reply — reddedildi: Customer GraphQL'in yanında ikinci bir sözleşme taşır.
+  - İzin yoksa diğer kanala düşmek — reddedildi: onaylanan plandan sapma, daha karmaşık worker mantığı.
+  - Customer'a ulaşılamazsa snapshot ile göndermek (fail-open) — reddedildi: Notification görev kritik; kesinti sırasında izin çiğnenir.
+  - İzin değişikliğini yalnızca testlerde doğrudan DB'ye yazmak — reddedildi: demoda gösterilemez.
+- **Sonuçlar / bedel:** D-006'daki NATS kapsamı asenkron mesajlaşmadır; bu izin sorgusu, D-007'deki Proposal → Customer çağrısı gibi senkron bir GraphQL çağrısıdır. Gönderim Customer'ın erişilebilirliğine senkron bağımlıdır; Customer kesintisinde gönderim gecikir ama izin çiğnenmez. Kontrol ile gönderim arasında milisaniyelik bir pencere kalır. `customer_db` artık yalnızca seed'le dolan bir ambar değildir; izin için bir yazma yolu vardır ve `dim_customer` bayrağı ile son `fact_consent` kaydı aynı transaction'da güncellenmelidir (seed'deki tutarlılık kontrolü bu kuralı varsayar). Breaker eşikleri, batch boyutu ve kütüphane seçimi açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef testler: zamanlanmış kampanyada onaydan sonra izin geri çekilen kişi `skipped_no_consent` olur; Customer kapalıyken hiçbir mesaj gönderilmez.
+
 ---
 
 ## Açık konular
 
-- customer service'in diğer servislere veri sunma biçimi (REST / gRPC / olay); campaign_db ve delivery_db
+Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
+
+- Kanal başına 100 msg/s rate limit yöntemi ve NATS üzerinde retry parametreleri (D-006)
+- Idempotency anahtarı ve Notification DB'deki teslim durum makinesi (D-006)
+- Customer GraphQL şeması: filtre girdi tipleri (araştırma önerisi Hasura tarzı `where`, ilişki filtreleri, göreli zaman pencereleri) (D-007)
+- Teklif, kanal planı ve dil varyantı durum makinesi şeması (D-009, D-010)
+- Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
+- Servis veritabanlarının adları ve sahip rolleri (diyagram: Proposal / Notification / Analytic DB)
+- LLM kataloğundaki alanlar: hassas hedefleme alanları (`sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*`) dahil mi (D-004, D-007)
+- Model seçimi ve yapılandırılmış çıktı yöntemi (metin ve kanal teklifleri için)
+- SMS uzunluk politikası: Türkçe metin UCS-2'ye geçer (tek SMS 70, segment başına 67 karakter)
+- Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
 - Migration aracı (init scriptleri yalnızca ilk kurulum için, D-005)
-- LLM segment kuralında hangi `dim_customer` kolonlarının beyaz listede olacağı (maaş, araç, adres gibi alanlar DB'de var, D-004)
-- Kuyruk teknolojisi ve kanal başına 100 msg/s rate limit yöntemi
-- Idempotency anahtarı ve retry stratejisi
-- LLM yapılandırılmış çıktı yöntemi ve segment kuralı DSL'i
 - Mock provider hata/gecikme/429 oranları
-- Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği
 - Canlı durum taşıma yöntemi (SSE / WebSocket / polling)
+- Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği

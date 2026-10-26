@@ -22,7 +22,8 @@ Requirements:
             5.3.2 If not reduced two proposals are needed.
   
 6. Proposal of Notification:
-    6.1 HTML is proposed for email if email is neede
+    6.0: NOTE This should be indicated that it is for each unique language that this case is done for. 
+    6.1 HTML is proposed for email if email is needed
     6.2 SMS is proposed if sms needed
 
 7. Approval:

@@ -53,7 +53,7 @@ Bedel: tüm servisler aynı süreç, bellek ve diski paylaşır; bir servisin a�
 
 ## 4. `customer_db`: filtrelenmiş DWH
 
-`customer_db`, müşteri verisinin segmentasyon için hazırlanmış, **filtrelenmiş bir veri ambarı kopyası** gibi kullanılır. Kaynak `stub/*.csv` setidir (bkz. [stub/README.md](../stub/README.md)); OLTP yazma akışı yoktur, veri seed ile gelir.
+`customer_db`, müşteri verisinin segmentasyon için hazırlanmış, **filtrelenmiş bir veri ambarı kopyası** gibi kullanılır. Kaynak `stub/*.csv` setidir (bkz. [stub/README.md](../stub/README.md)); veri seed ile gelir. Tek yazma yolu izin güncellemesidir (D-011: `updateConsent` yeni `fact_consent` satırı yazar ve `dim_customer` bayrağını aynı transaction'da günceller).
 
 Yerleşim yıldız şemadır, hepsi `dwh` şemasında:
 
@@ -178,8 +178,9 @@ docker compose exec postgres psql -U customer_svc -d customer_db
 
 ## 7. Açık konular
 
-- Diğer servis veritabanları ve sahip rolleri (kuyruk ve servis sınırı kararlarına bağlı).
+- Diğer servis veritabanları ve sahip rolleri (kuyruk ve servis sınırı kararlarına bağlı). THOUGHTS.md diyagramı Proposal / Notification / Analytic DB adlarını kullanıyor; seçenekler [research/README.md](research/README.md).
 - customer service'in diğer servislere veri sunma biçimi.
 - Migration aracı: init scriptleri sadece ilk kurulum içindir; şema evrimi için Go tarafında bir araç seçilecek.
 - 1000 kullanıcının "birkaç bin"e çıkarılması.
 - Türkçe büyük/küçük harf duyarsız şehir eşleşmesi (`İstanbul` / `istanbul`): veritabanı varsayılan `en_US.utf8` collation'ı ile oluşturulur, segment doğrulaması şimdilik tam eşleşme varsayar.
+  - 2026-10-27 araştırması: Alpine/musl imajında `ILIKE` İ için eşleşiyor, noktasız ı için eşleşmiyor ve bu imaja bağlı. Öneri collation'a dayanmamak; ayrıntı [research/04-data-platform.md](research/04-data-platform.md#4-türkçe-büyükküçük-harf-duyarsız-şehir-eşleşmesi).
