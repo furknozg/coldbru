@@ -1,0 +1,34 @@
+# Smart Campaign Composer — local stack.
+# Single Postgres service hosting one database per microservice (docs/database-architecture.md).
+# First `up` on an empty volume creates customer_db and seeds it from ./stub.
+# Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
+name: coldbru
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      CUSTOMER_DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-customer_svc_dev}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql            # postgres 18 image: PGDATA=/var/lib/postgresql/18/docker
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./stub:/seed/stub:ro
+    healthcheck:
+      # TCP + app role + seeded table: the init-time server listens on a socket only,
+      # so this stays unhealthy until the seed has committed.
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${CUSTOMER_DB_PASSWORD}\" psql -h 127.0.0.1 -U customer_svc -d customer_db -tAc 'SELECT 1 FROM dwh.dim_customer LIMIT 1' | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  pgdata:
