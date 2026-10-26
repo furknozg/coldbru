@@ -1,0 +1,160 @@
+Product ID,Product Name,Brand,Category,Price (GBP),In Stock,Rating
+PRD-0001,Pulse Wireless Earbuds,Pulse,Electronics,211.99,True,3.9
+PRD-0002,Nova Bluetooth Speaker,Nova,Electronics,315.99,True,3.8
+PRD-0003,Orbit Smartwatch,Orbit,Electronics,447.99,True,4.4
+PRD-0004,Orbit 4K Monitor,Orbit,Electronics,409.99,True,4.9
+PRD-0005,Nova 4K Monitor,Nova,Electronics,33.99,True,4.5
+PRD-0006,Orbit Mechanical Keyboard,Orbit,Electronics,262.99,True,3.7
+PRD-0007,Nova Mechanical Keyboard,Nova,Electronics,16.99,True,4.5
+PRD-0008,Vertex Wireless Mouse,Vertex,Electronics,59.99,True,4.4
+PRD-0009,Orbit Power Bank,Orbit,Electronics,64.99,True,3.5
+PRD-0010,Pulse Power Bank,Pulse,Electronics,32.99,True,4.0
+PRD-0011,Nova Noise-Cancelling Headphones,Nova,Electronics,324.99,True,3.4
+PRD-0012,Nova Smart Plug,Nova,Electronics,125.99,True,3.3
+PRD-0013,Orbit Smart Plug,Orbit,Electronics,211.99,True,3.3
+PRD-0014,Orbit Action Camera,Orbit,Electronics,196.99,True,3.4
+PRD-0015,Vertex Action Camera,Vertex,Electronics,167.99,True,3.7
+PRD-0016,Vertex 10-inch Tablet,Vertex,Electronics,316.99,True,3.7
+PRD-0017,Orbit 10-inch Tablet,Orbit,Electronics,54.99,True,4.2
+PRD-0018,Nova USB-C Hub,Nova,Electronics,124.99,False,4.7
+PRD-0019,Vertex USB-C Hub,Vertex,Electronics,378.99,True,4.3
+PRD-0020,Atlas Slim Fit Jeans,Atlas,Fashion,37.99,True,3.6
+PRD-0021,Luna Cotton T-Shirt,Luna,Fashion,32.99,True,4.6
+PRD-0022,Atlas Cotton T-Shirt,Atlas,Fashion,194.99,True,3.7
+PRD-0023,Atlas Hooded Sweatshirt,Atlas,Fashion,202.99,True,3.3
+PRD-0024,Maple Hooded Sweatshirt,Maple,Fashion,15.99,True,4.8
+PRD-0025,Harbor Leather Jacket,Harbor,Fashion,133.99,True,4.4
+PRD-0026,Maple Leather Jacket,Maple,Fashion,38.99,True,3.7
+PRD-0027,Luna Running Trainers,Luna,Fashion,131.99,True,4.4
+PRD-0028,Atlas Running Trainers,Atlas,Fashion,114.99,True,4.1
+PRD-0029,Maple Chelsea Boots,Maple,Fashion,39.99,True,3.7
+PRD-0030,Luna Chelsea Boots,Luna,Fashion,123.99,True,4.7
+PRD-0031,Harbor Wool Coat,Harbor,Fashion,205.99,True,4.2
+PRD-0032,Atlas Wool Coat,Atlas,Fashion,71.99,True,4.6
+PRD-0033,Luna Summer Dress,Luna,Fashion,53.99,True,4.4
+PRD-0034,Atlas Summer Dress,Atlas,Fashion,82.99,True,3.5
+PRD-0035,Luna Linen Shirt,Luna,Fashion,106.99,True,4.5
+PRD-0036,Harbor Linen Shirt,Harbor,Fashion,45.99,True,4.1
+PRD-0037,Luna Denim Jacket,Luna,Fashion,165.99,True,4.1
+PRD-0038,Maple Denim Jacket,Maple,Fashion,108.99,True,4.1
+PRD-0039,Luna Cargo Trousers,Luna,Fashion,57.99,True,4.1
+PRD-0040,Harbor Cargo Trousers,Harbor,Fashion,164.99,True,4.2
+PRD-0041,Harbor Knit Jumper,Harbor,Fashion,189.99,False,4.7
+PRD-0042,Luna Knit Jumper,Luna,Fashion,139.99,True,3.8
+PRD-0043,Nest Scented Candle Set,Nest,Home & Living,45.99,True,3.2
+PRD-0044,Hearth Memory Foam Pillow,Hearth,Home & Living,127.99,True,4.2
+PRD-0045,Casa Memory Foam Pillow,Casa,Home & Living,23.99,True,4.5
+PRD-0046,Loft Duvet Cover Set,Loft,Home & Living,245.99,True,3.3
+PRD-0047,Hearth Duvet Cover Set,Hearth,Home & Living,67.99,True,4.4
+PRD-0048,Casa Air Fryer,Casa,Home & Living,91.99,True,4.4
+PRD-0049,Loft Espresso Machine,Loft,Home & Living,239.99,True,4.4
+PRD-0050,Casa Espresso Machine,Casa,Home & Living,172.99,True,3.6
+PRD-0051,Hearth Robot Vacuum,Hearth,Home & Living,347.99,True,4.6
+PRD-0052,Casa Robot Vacuum,Casa,Home & Living,280.99,True,3.2
+PRD-0053,Hearth Floor Lamp,Hearth,Home & Living,121.99,True,3.6
+PRD-0054,Loft Floor Lamp,Loft,Home & Living,59.99,False,4.4
+PRD-0055,Casa Non-Stick Pan Set,Casa,Home & Living,82.99,True,4.2
+PRD-0056,Loft Non-Stick Pan Set,Loft,Home & Living,44.99,True,3.7
+PRD-0057,Loft Bamboo Cutting Board,Loft,Home & Living,101.99,True,4.4
+PRD-0058,Loft Throw Blanket,Loft,Home & Living,141.99,True,3.5
+PRD-0059,Hearth Wall Clock,Hearth,Home & Living,74.99,True,4.8
+PRD-0060,Loft Wall Clock,Loft,Home & Living,20.99,True,4.4
+PRD-0061,Casa Storage Baskets,Casa,Home & Living,22.99,True,4.1
+PRD-0062,Nest Storage Baskets,Nest,Home & Living,153.99,False,3.8
+PRD-0063,Glow Vitamin C Serum,Glow,Beauty,65.99,True,3.5
+PRD-0064,Velvet Vitamin C Serum,Velvet,Beauty,64.99,True,4.8
+PRD-0065,Aura Moisturising Cream,Aura,Beauty,47.99,True,4.5
+PRD-0066,Velvet Sunscreen SPF50,Velvet,Beauty,30.99,True,4.8
+PRD-0067,Velvet Eau de Parfum,Velvet,Beauty,4.99,True,4.0
+PRD-0068,Glow Hair Dryer,Glow,Beauty,24.99,True,3.8
+PRD-0069,Velvet Hair Dryer,Velvet,Beauty,151.99,True,3.3
+PRD-0070,Glow Electric Toothbrush,Glow,Beauty,33.99,True,3.7
+PRD-0071,Aura Lip Balm Trio,Aura,Beauty,34.99,True,4.5
+PRD-0072,Glow Lip Balm Trio,Glow,Beauty,114.99,True,3.8
+PRD-0073,Glow Shampoo & Conditioner,Glow,Beauty,142.99,True,4.2
+PRD-0074,Pure Shampoo & Conditioner,Pure,Beauty,53.99,True,4.0
+PRD-0075,Aura Beard Trimmer,Aura,Beauty,58.99,True,4.9
+PRD-0076,Pure Face Mask Pack,Pure,Beauty,5.99,True,3.7
+PRD-0077,Glow Nail Polish Set,Glow,Beauty,10.99,True,3.5
+PRD-0078,Velvet Nail Polish Set,Velvet,Beauty,99.99,True,3.8
+PRD-0079,Rapid Yoga Mat,Rapid,Sports & Outdoors,41.99,True,4.3
+PRD-0080,Rapid Dumbbell Set,Rapid,Sports & Outdoors,17.99,True,4.2
+PRD-0081,Rapid Camping Tent,Rapid,Sports & Outdoors,32.99,True,4.2
+PRD-0082,Stride Trail Backpack,Stride,Sports & Outdoors,90.99,True,4.0
+PRD-0083,Rapid Trail Backpack,Rapid,Sports & Outdoors,56.99,True,4.8
+PRD-0084,Peak Cycling Helmet,Peak,Sports & Outdoors,118.99,True,3.7
+PRD-0085,Stride Resistance Bands,Stride,Sports & Outdoors,34.99,True,4.4
+PRD-0086,Rapid Resistance Bands,Rapid,Sports & Outdoors,185.99,True,3.5
+PRD-0087,Summit Running Watch,Summit,Sports & Outdoors,24.99,True,3.9
+PRD-0088,Rapid Running Watch,Rapid,Sports & Outdoors,68.99,True,4.3
+PRD-0089,Peak Water Bottle 1L,Peak,Sports & Outdoors,108.99,True,4.4
+PRD-0090,Stride Water Bottle 1L,Stride,Sports & Outdoors,37.99,True,3.9
+PRD-0091,Peak Football,Peak,Sports & Outdoors,139.99,True,3.3
+PRD-0092,Summit Football,Summit,Sports & Outdoors,91.99,True,4.1
+PRD-0093,Rapid Hiking Boots,Rapid,Sports & Outdoors,10.99,True,4.5
+PRD-0094,Peak Hiking Boots,Peak,Sports & Outdoors,181.99,True,4.7
+PRD-0095,Stride Fitness Tracker,Stride,Sports & Outdoors,46.99,True,3.7
+PRD-0096,Peak Fitness Tracker,Peak,Sports & Outdoors,214.99,True,3.9
+PRD-0097,Page Bestselling Novel,Page,Books & Media,18.99,True,3.9
+PRD-0098,Inkwell Cookbook,Inkwell,Books & Media,8.99,True,4.1
+PRD-0099,Page Children's Picture Book,Page,Books & Media,8.99,True,3.7
+PRD-0100,Inkwell Self-Help Guide,Inkwell,Books & Media,24.99,True,3.7
+PRD-0101,Page Self-Help Guide,Page,Books & Media,10.99,True,3.3
+PRD-0102,Page History Biography,Page,Books & Media,7.99,True,4.8
+PRD-0103,Inkwell History Biography,Inkwell,Books & Media,6.99,True,4.3
+PRD-0104,Page Graphic Novel,Page,Books & Media,28.99,True,4.0
+PRD-0105,Inkwell Puzzle Book,Inkwell,Books & Media,28.99,True,3.2
+PRD-0106,Inkwell Language Course,Inkwell,Books & Media,25.99,True,4.4
+PRD-0107,Folio Travel Guide,Folio,Books & Media,12.99,True,4.8
+PRD-0108,Page Travel Guide,Page,Books & Media,8.99,True,4.6
+PRD-0109,Folio Science Book,Folio,Books & Media,37.99,True,4.6
+PRD-0110,Inkwell Science Book,Inkwell,Books & Media,19.99,True,3.4
+PRD-0111,Tiny Building Blocks Set,Tiny,Toys & Kids,57.99,True,4.1
+PRD-0112,Wonder Building Blocks Set,Wonder,Toys & Kids,6.99,True,4.4
+PRD-0113,Wonder Plush Bear,Wonder,Toys & Kids,29.99,True,4.3
+PRD-0114,Playco Remote Control Car,Playco,Toys & Kids,15.99,True,4.2
+PRD-0115,Wonder Board Game,Wonder,Toys & Kids,5.99,True,3.9
+PRD-0116,Tiny Board Game,Tiny,Toys & Kids,124.99,True,3.2
+PRD-0117,Playco 1000pc Jigsaw Puzzle,Playco,Toys & Kids,210.99,True,4.0
+PRD-0118,Wonder 1000pc Jigsaw Puzzle,Wonder,Toys & Kids,7.99,True,3.4
+PRD-0119,Playco Art Supplies Kit,Playco,Toys & Kids,77.99,True,4.8
+PRD-0120,Tiny Art Supplies Kit,Tiny,Toys & Kids,13.99,True,4.2
+PRD-0121,Tiny Baby Stroller,Tiny,Toys & Kids,206.99,True,3.8
+PRD-0122,Playco Baby Stroller,Playco,Toys & Kids,10.99,True,3.4
+PRD-0123,Tiny Kids Scooter,Tiny,Toys & Kids,31.99,True,3.7
+PRD-0124,Playco Kids Scooter,Playco,Toys & Kids,28.99,True,3.3
+PRD-0125,Playco Dollhouse,Playco,Toys & Kids,239.99,True,4.6
+PRD-0126,Tiny Dollhouse,Tiny,Toys & Kids,80.99,True,3.7
+PRD-0127,Wonder Science Kit,Wonder,Toys & Kids,14.99,True,4.7
+PRD-0128,Harvest Turkish Coffee 500g,Harvest,Grocery,8.99,True,4.7
+PRD-0129,Anadolu Turkish Coffee 500g,Anadolu,Grocery,21.99,False,4.8
+PRD-0130,Harvest Olive Oil 1L,Harvest,Grocery,12.99,True,3.3
+PRD-0131,Anadolu Olive Oil 1L,Anadolu,Grocery,8.99,True,3.4
+PRD-0132,Anadolu Green Tea 100 Bags,Anadolu,Grocery,9.99,True,3.4
+PRD-0133,Harvest Green Tea 100 Bags,Harvest,Grocery,24.99,True,4.4
+PRD-0134,Harvest Dark Chocolate Bar,Harvest,Grocery,5.99,True,3.3
+PRD-0135,Pantry Dark Chocolate Bar,Pantry,Grocery,24.99,True,3.9
+PRD-0136,Anadolu Dried Apricots 1kg,Anadolu,Grocery,23.99,True,3.8
+PRD-0137,Harvest Organic Honey,Harvest,Grocery,8.99,True,3.3
+PRD-0138,Anadolu Organic Honey,Anadolu,Grocery,5.99,True,4.5
+PRD-0139,Harvest Pasta Selection,Harvest,Grocery,21.99,True,3.9
+PRD-0140,Pantry Mixed Nuts 750g,Pantry,Grocery,27.99,True,3.4
+PRD-0141,Harvest Mixed Nuts 750g,Harvest,Grocery,3.99,True,3.5
+PRD-0142,Pantry Baklava Box,Pantry,Grocery,10.99,True,3.3
+PRD-0143,Harvest Baklava Box,Harvest,Grocery,26.99,True,3.4
+PRD-0144,Pantry Protein Bars 12pk,Pantry,Grocery,15.99,True,3.3
+PRD-0145,Anadolu Protein Bars 12pk,Anadolu,Grocery,21.99,True,4.1
+PRD-0146,Drive Car Phone Mount,Drive,Automotive,144.99,True,3.6
+PRD-0147,Torque Dash Cam,Torque,Automotive,86.99,True,4.7
+PRD-0148,Drive Car Vacuum,Drive,Automotive,5.99,True,4.5
+PRD-0149,Motion Car Vacuum,Motion,Automotive,8.99,True,3.8
+PRD-0150,Motion Seat Covers Set,Motion,Automotive,4.99,True,4.0
+PRD-0151,Drive Seat Covers Set,Drive,Automotive,5.99,False,4.5
+PRD-0152,Motion Tyre Inflator,Motion,Automotive,50.99,True,3.7
+PRD-0153,Drive Car Wash Kit,Drive,Automotive,72.99,True,3.6
+PRD-0154,Torque Jump Starter,Torque,Automotive,286.99,True,3.9
+PRD-0155,Torque Roof Box,Torque,Automotive,24.99,True,4.8
+PRD-0156,Drive Floor Mats,Drive,Automotive,9.99,True,3.5
+PRD-0157,Motion Floor Mats,Motion,Automotive,235.99,True,3.6
+PRD-0158,Motion Air Freshener Pack,Motion,Automotive,115.99,True,3.7
+PRD-0159,Torque Air Freshener Pack,Torque,Automotive,157.99,True,4.3
