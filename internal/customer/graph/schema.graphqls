@@ -1,0 +1,379 @@
+# Customer GraphQL contract (D-007, D-044, D-058). This file is the single source of truth: the
+# Proposal filter catalog is generated from it at build time, so there is no runtime introspection
+# (the customer endpoint does not serve introspection). Field names are camelCase (D-044).
+
+"""
+Exact decimal number carried as a JSON string such as "1234.50" (D-058). A JSON number is rejected
+so that no float rounding can enter. Pattern: ^-?[0-9]+(\.[0-9]{1,2})?$ (money columns are numeric(12,2)).
+"""
+scalar Decimal
+
+"""
+Calendar date, YYYY-MM-DD, without a time zone (D-058).
+"""
+scalar Date
+
+"""
+Instant in time, RFC 3339 (for example "2026-10-27T09:30:00Z"); results are in UTC (D-058).
+"""
+scalar DateTime
+
+"""
+GraphQL's @oneOf: exactly one field of the input object must be set. The validator enforces it for
+literals only; for variable values gqlgen calls the OneOf directive implementation (graph.OneOf),
+see gqlgen.yml (D-058).
+"""
+directive @oneOf on INPUT_OBJECT
+
+# ---------------------------------------------------------------------------
+# Time values and filter operators (D-058)
+# ---------------------------------------------------------------------------
+
+"""
+A point in time used by Date and DateTime operators. Exactly one field must be set (@oneOf).
+`ago` is resolved against now() at query time (D-039), so the same rule can match different
+customers at different moments.
+"""
+input TimeValue @oneOf {
+  """
+  Relative time: a positive integer followed by `d` (days) or `h` (hours), matching
+  ^[1-9][0-9]*(d|h)$, for example "30d" or "12h". Validated by the server, not by the GraphQL
+  type system (D-058).
+  """
+  ago: String
+  """Absolute calendar date, YYYY-MM-DD."""
+  date: Date
+  """Absolute instant, RFC 3339."""
+  at: DateTime
+}
+
+"""
+Operators on a text field. Categorical fields (loyaltyTier, sex, ...) are Strings too; the server
+validates the allowed values (D-058). `eq`/`ne` are null-safe: they behave as IS NOT DISTINCT FROM
+and IS DISTINCT FROM, so `ne` matches NULL (D-058). Several operators in one object are ANDed.
+"""
+input StringFilter {
+  eq: String
+  ne: String
+  "Matches any listed value. An empty list is a validation error."
+  in: [String!]
+}
+
+"""
+Operators on an integer field. `eq`/`ne` are null-safe (D-058); ordering operators never match NULL.
+Several operators in one object are ANDed.
+"""
+input IntFilter {
+  eq: Int
+  ne: Int
+  gt: Int
+  gte: Int
+  lt: Int
+  lte: Int
+  in: [Int!]
+}
+
+"""
+Operators on a Decimal field (money, distances). `eq`/`ne` are null-safe (D-058); ordering operators
+never match NULL. Several operators in one object are ANDed.
+"""
+input DecimalFilter {
+  eq: Decimal
+  ne: Decimal
+  gt: Decimal
+  gte: Decimal
+  lt: Decimal
+  lte: Decimal
+  in: [Decimal!]
+}
+
+"""
+Operators on a Date field. Operands are TimeValues, so both `{ gte: { ago: "30d" } }` and
+`{ eq: { date: "2026-01-01" } }` are valid (D-039, D-058). Several operators in one object are ANDed.
+"""
+input DateFilter {
+  eq: TimeValue
+  ne: TimeValue
+  gt: TimeValue
+  gte: TimeValue
+  lt: TimeValue
+  lte: TimeValue
+  in: [TimeValue!]
+}
+
+"""
+Operators on a DateTime field. Operands are TimeValues (D-039, D-058). Several operators in one
+object are ANDed.
+"""
+input DateTimeFilter {
+  eq: TimeValue
+  ne: TimeValue
+  gt: TimeValue
+  gte: TimeValue
+  lt: TimeValue
+  lte: TimeValue
+  in: [TimeValue!]
+}
+
+"""
+Operators on a Boolean field. `eq`/`ne` are null-safe (D-058). Several operators in one object are ANDed.
+"""
+input BooleanFilter {
+  eq: Boolean
+  ne: Boolean
+}
+
+# ---------------------------------------------------------------------------
+# Filters over the catalog (D-042, docs/coldbru-gqdsl.md section 9.2)
+# Personal identifiers (names, email, phone, address, date of birth, employer) and reachability
+# and consent fields (emailOptIn, smsOptIn, emailBounced, accountStatus, deletedAt,
+# consentUpdatedAt) are NOT in the catalog: using them fails GraphQL validation. Reachability is
+# enforced server-side on every audience query (D-007). Order items and products are not
+# filterable (open question in D-042).
+# ---------------------------------------------------------------------------
+
+"""
+Filter over a customer's order rows. Fields in one object are ANDed; use `or` for alternatives (D-042).
+"""
+input OrderFilter {
+  and: [OrderFilter!]
+  or: [OrderFilter!]
+  not: OrderFilter
+  orderDate: DateTimeFilter
+  orderStatus: StringFilter
+  itemsCount: IntFilter
+  subtotalGbp: DecimalFilter
+  discountCode: StringFilter
+  discountGbp: DecimalFilter
+  shippingGbp: DecimalFilter
+  totalGbp: DecimalFilter
+  paymentMethod: StringFilter
+  platform: StringFilter
+  shippingCity: StringFilter
+  countryCode: StringFilter
+}
+
+"""Filter over a customer's cart item rows. Fields in one object are ANDed (D-042)."""
+input CartItemFilter {
+  and: [CartItemFilter!]
+  or: [CartItemFilter!]
+  not: CartItemFilter
+  addedAt: DateTimeFilter
+  cartStatus: StringFilter
+  quantity: IntFilter
+  unitPriceGbp: DecimalFilter
+  convertedAt: DateTimeFilter
+}
+
+"""Filter over a customer's event rows. Fields in one object are ANDed (D-042)."""
+input EventFilter {
+  and: [EventFilter!]
+  or: [EventFilter!]
+  not: EventFilter
+  eventType: StringFilter
+  eventTime: DateTimeFilter
+  platform: StringFilter
+  category: StringFilter
+  valueGbp: DecimalFilter
+}
+
+"""
+Quantifiers over related orders (D-058). Several quantifiers in one object are ANDed.
+`some`: at least one order matches; `none`: no order matches; `every`: all orders match
+(true when the customer has no orders).
+"""
+input OrderRelationFilter {
+  some: OrderFilter
+  none: OrderFilter
+  every: OrderFilter
+}
+
+"""Quantifiers over related cart items (some, none, every); several are ANDed (D-058)."""
+input CartItemRelationFilter {
+  some: CartItemFilter
+  none: CartItemFilter
+  every: CartItemFilter
+}
+
+"""Quantifiers over related events (some, none, every); several are ANDed (D-058)."""
+input EventRelationFilter {
+  some: EventFilter
+  none: EventFilter
+  every: EventFilter
+}
+
+"""
+Audience filter over customers (D-058). Multiple fields set in one object are ANDed, so
+`{ city: { eq: "İstanbul" }, loyaltyTier: { eq: "Gold" } }` means both. `and`/`or`/`not` compose
+nested filters. Reachability and consent are added by the server and cannot be filtered on (D-007).
+"""
+input CustomerFilter {
+  and: [CustomerFilter!]
+  or: [CustomerFilter!]
+  not: CustomerFilter
+  # Location and language
+  countryCode: StringFilter
+  city: StringFilter
+  language: StringFilter
+  timezone: StringFilter
+  # Activity
+  signupDate: DateFilter
+  lastActiveDate: DateFilter
+  preferredPlatform: StringFilter
+  sessions90d: IntFilter
+  # Orders and spend
+  totalOrders: IntFilter
+  totalSpendGbp: DecimalFilter
+  avgOrderValueGbp: DecimalFilter
+  firstOrderDate: DateFilter
+  lastOrderDate: DateFilter
+  favouriteCategory: StringFilter
+  # Cart
+  lastCartAddDate: DateFilter
+  hasOpenCart: BooleanFilter
+  openCartValueGbp: DecimalFilter
+  # Loyalty and campaigns
+  loyaltyTier: StringFilter
+  loyaltyPoints: IntFilter
+  campaignsReceived90d: IntFilter
+  emailsOpened90d: IntFilter
+  lastCampaignSentAt: DateTimeFilter
+  # Demographics
+  ageYears: IntFilter
+  sex: StringFilter
+  maritalStatus: StringFilter
+  dependants: IntFilter
+  yearlySalaryGbp: IntFilter
+  yearlyPensionGbp: IntFilter
+  retired: BooleanFilter
+  commuteDistanceKm: DecimalFilter
+  # Vehicle
+  vehicleMake: StringFilter
+  vehicleModel: StringFilter
+  vehicleYear: IntFilter
+  vehicleType: StringFilter
+  "Customers by their orders."
+  orders: OrderRelationFilter
+  "Customers by their cart items."
+  cartItems: CartItemRelationFilter
+  "Customers by their events."
+  events: EventRelationFilter
+}
+
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
+
+"""
+How many matched customers can be reached on which channel. `both`, `emailOnly` and `smsOnly`
+sum to the audience `count`.
+"""
+type ChannelCoverage {
+  "Reachable by email and SMS."
+  both: Int!
+  "Reachable by email only."
+  emailOnly: Int!
+  "Reachable by SMS only."
+  smsOnly: Int!
+  """
+  Matched the filter but reachable on no channel (no consent, bounced, deleted or inactive).
+  These customers are excluded from `count`.
+  """
+  unreachable: Int!
+}
+
+"""Audience figures for one language."""
+type LanguageCoverage {
+  "Language code of the customers, for example tr or en."
+  language: String!
+  "Reachable customers with this language."
+  count: Int!
+  coverage: ChannelCoverage!
+}
+
+"""Size and channel reach of an audience (D-058, D-010)."""
+type AudiencePreview {
+  "Customers that match the filter and are reachable on at least one channel."
+  count: Int!
+  coverage: ChannelCoverage!
+  "The same figures split by language (D-009)."
+  byLanguage: [LanguageCoverage!]!
+}
+
+"""
+A reachable customer. `email` is returned only when `emailEligible`, `phone` only when
+`smsEligible` (D-058).
+"""
+type Recipient {
+  customerId: ID!
+  firstName: String!
+  language: String!
+  emailEligible: Boolean!
+  smsEligible: Boolean!
+  email: String
+  phone: String
+}
+
+"""Keyset pagination state."""
+type PageInfo {
+  hasNextPage: Boolean!
+  "Opaque cursor for the `after` argument of the next page."
+  endCursor: String
+}
+
+"""One page of recipients, ordered by customerId."""
+type RecipientConnection {
+  nodes: [Recipient!]!
+  pageInfo: PageInfo!
+}
+
+"""Consent and eligibility of one customer on one channel (D-011)."""
+type ConsentStatus {
+  customerId: ID!
+  "email or sms."
+  channel: String!
+  "Latest recorded consent for the channel."
+  optedIn: Boolean!
+  """
+  Consent and account state combined: opted in, not bounced, active. Notification checks this
+  just before sending (D-011).
+  """
+  eligible: Boolean!
+}
+
+"""Records a consent change (D-058). Requires its own scope (D-043)."""
+input UpdateConsentInput {
+  customerId: ID!
+  "email or sms."
+  channel: String!
+  optedIn: Boolean!
+  "Who or what caused the change, for the consent history."
+  source: String!
+}
+
+type Query {
+  """
+  Size and channel reach of the audience. Scope: Proposal (D-043).
+  """
+  audiencePreview(filter: CustomerFilter!): AudiencePreview!
+
+  """
+  Recipients of the audience, ordered by customerId with keyset pagination. `first` is at
+  most 1000. Pass the previous page's `endCursor` as `after`. Scope: Proposal (D-043).
+  """
+  audienceRecipients(filter: CustomerFilter!, first: Int!, after: String): RecipientConnection!
+
+  """
+  Consent and eligibility of the given customers on one channel (`email` or `sms`). Scope:
+  Notification (D-011, D-043).
+  """
+  consentStatus(customerIds: [ID!]!, channel: String!): [ConsentStatus!]!
+}
+
+type Mutation {
+  """
+  Records opt-in or opt-out for a customer on a channel (`email` or `sms`) and returns the new
+  status. Scope: consent update (D-043).
+  """
+  updateConsent(input: UpdateConsentInput!): ConsentStatus!
+}

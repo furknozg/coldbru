@@ -16,6 +16,8 @@ Smart Campaign Composer'ın servisleri, veri modelleri, durum makineleri ve olay
 | Analytics | `analytics_db` / `analytics_svc` | Kampanya özeti, LLM kullanımı ve maliyeti (D-036) | — | `notification.completed`, `proposal.token_completed` |
 | Mock provider | DB yok | Idempotency yanıt önbelleği (bellekte, taslak) | — | — |
 
+Customer'ın GraphQL sözleşmesi `internal/customer/graph/schema.graphqls`'tedir (D-058): `audiencePreview`, `audienceRecipients` (keyset sayfalama, `first` ≤ 1000), `consentStatus` ve `updateConsent`; `POST /graphql`, introspection kapalı. Resolver'lar T-015 ve T-017'de dolar.
+
 Senkron çağrılar yalnız Customer'ın GraphQL'ine gider: Proposal kitle sayımı ve alıcı listesi için (D-007), Notification gönderim öncesi izin kontrolü için (D-011). Erişim her durumda bu uç noktada zorlanır: her servis kendi token'ı ve kapsamıyla çağırır, alan beyaz listesi sunucudadır ve nginx Customer'ı dışarı açmaz (D-042, D-043). Canlı durum, Notification'dan SSE ile gelir (D-036). Diğer her şey NATS'tir (D-006).
 
 ```mermaid

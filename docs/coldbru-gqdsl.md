@@ -208,7 +208,7 @@ signupDate < date("2026-01-01")
 
 - `ago("<n><unit>")` is a relative point in time (D-039). The compiler sends it to GraphQL in relative form. The Customer service resolves it against `now()` when the query runs. The agent never does date arithmetic.
 - `date("YYYY-MM-DD")` is an absolute date.
-- `d` (days) is a valid unit. The full unit list is decided when the parser is written.
+- Units are `d` (days) and `h` (hours): a positive integer plus the unit, e.g. `"30d"`, `"12h"` (D-058).
 
 Because `ago()` is resolved at query time, the same rule can return a different audience at a later time. This is expected between the preview and the recipient list.
 
@@ -292,7 +292,7 @@ Literals in 0.1:
 - `ago("…")` and `date("…")`.
 - List literals, only on the right-hand side of `in`.
 
-Null comparisons and the exact number format (sign, decimals) are open and decided when the parser is written (D-045).
+There is no null literal in 0.1. `===` and `!==` are null-safe: `favouriteCategory !== "x"` also matches customers whose value is empty; ordering operators never match null (D-058). Money values are sent to GraphQL as decimal strings such as `"1234.50"` (D-058); the exact numeric literal syntax of the DSL (sign, decimals) is decided when the parser is written.
 
 ---
 
@@ -567,7 +567,7 @@ The exact GraphQL input representation is defined by the Customer schema. The co
 | `.none()`  | Relation `none`                |
 | `.every()` | Relation `every`               |
 
-The exact shape of the filter input types is still open in DECISIONS.md.
+The filter input types are defined in `internal/customer/graph/schema.graphqls` (D-058): `StringFilter { eq, ne, in }`, numeric, `Decimal`, `Date` and `DateTime` filters `{ eq, ne, gt, gte, lt, lte, in }`, `BooleanFilter { eq, ne }`, relation filters `{ some, none, every }`, and `TimeValue @oneOf { ago, date, at }` for time operands.
 
 ---
 
@@ -648,11 +648,11 @@ orders.map(o => o.totalGbp)
 
 ### 9.4 Nullability
 
-Null semantics are open (D-045). The first version must not silently interpret null comparisons as ordinary equality or let nullable predicates change logical semantics unexpectedly.
+Null semantics (D-058): `===`/`!==` compile to `IS NOT DISTINCT FROM` / `IS DISTINCT FROM`, so an empty field matches `!==` but not `===`; `>`, `>=`, `<`, `<=` never match null; 0.1 has no `isNull` operator.
 
 ### 9.5 Numeric representation
 
-GraphQL's built-in `Int` is a signed 32-bit integer. Money columns are `numeric(12,2)` in `customer_db` and may need a custom decimal scalar. The DSL's numeric type system follows the server schema rather than assuming every number is a GraphQL `Int` or `Float`.
+GraphQL's built-in `Int` is a signed 32-bit integer. Money columns are `numeric(12,2)` in `customer_db` and travel as the custom `Decimal` scalar, a JSON string such as `"1234.50"` (D-058); `Date` is `YYYY-MM-DD` and `DateTime` is RFC 3339 UTC. The DSL's numeric type system follows the server schema rather than assuming every number is a GraphQL `Int` or `Float`.
 
 ---
 
@@ -844,9 +844,9 @@ orders.every(o => o.totalGbp > 0)
 | `~=` behavior                 | Reserved; matching mode and `pg_trgm` need a new decision         |
 | Field-to-field comparison     | Reserved; needs a `compare` input type                            |
 | `==` and `!=`                 | Rejected                                                          |
-| Null handling, number format  | Open                                                              |
-| Filter input type shape       | Open                                                              |
-| Time units beyond `d`         | Open                                                              |
+| Null handling, number format  | Decided (D-058); DSL numeric literal syntax open                  |
+| Filter input type shape       | Decided (D-058)                                                   |
+| Time units                    | Decided: `d` and `h` (D-058)                                      |
 | Order items and products      | Open (D-042)                                                      |
 | Sorting, pagination           | Not designed                                                      |
 | Aggregation                   | Outside the initial scope                                         |
