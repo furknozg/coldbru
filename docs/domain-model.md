@@ -46,6 +46,8 @@ Her servis `Dockerfile`'dan `SERVICE` build arg'ıyla derlenen distroless (nonro
 | analytics | `analytics_db` + platform migration'ları, NATS | 8083 | postgres, nats |
 | mockprovider | yok | 8084 | — |
 
+`API_DOCS_ENABLED` açıkken (compose'da varsayılan) proposal, notification, analytics ve mockprovider `GET /docs` (Scalar) ve `GET /openapi.json` (swag v2 ile üretilip binary'ye gömülen OpenAPI 3.1 spec'i) sunar; kapalıyken bu yollar yoktur. Spec'ler `make generate` ile `cmd/<servis>/apidocs/swagger.json` olarak üretilir ve commit edilir; şimdilik yalnız `/healthz` ve `/readyz`'i belgeler (D-057).
+
 Konteyner içinde hepsi `:8080` dinler; compose healthcheck'i `/app -healthcheck` ile `/readyz`'i yoklar. Servisler `postgres` sağlıklı olana ve `nats-init` bitene kadar bekler. İş mantığı, route'lar ve worker'lar servis görevlerinde `app.Options.Setup` kancasıyla eklenir.
 
 ## 2. Ortak kurallar
