@@ -55,9 +55,13 @@ Her Go servisi `internal/platform/` paketlerini kullanır:
 | `logging` | `log/slog` JSON logger, seviye `LOG_LEVEL` |
 | `health` | `/healthz` (yalnız süreç) ve `/readyz` (kayıtlı kontroller eşzamanlı, kontrol başına 2 sn; JSON `{status, checks}`, başarısızlıkta 503) |
 | `metrics` | Servise özel Prometheus registry, Go ve process collector'ları, `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route}` |
+| `db` | pgx/v5 havuzu (`DATABASE_URL`; havuz ayarları URL'den) ve `/readyz` için ping kontrolü (D-020) |
+| `migrate` | Gömülü goose migration'ları açılışta Postgres advisory lock altında uygular; sürüm tablosu rolün `search_path`'indeki ilk şemaya düşer (D-020, D-048, D-051) |
 | `httpserver` | chi router (RequestID → istek logu → metrik → Recoverer), `/healthz`, `/readyz`, `/metrics`; `WriteTimeout`'suz sunucu (SSE) ve bağlam iptalinde zarif kapanış |
 
-Ortak anahtarlar: `HTTP_ADDR` (`:8080`), `LOG_LEVEL` (`info`), `SHUTDOWN_TIMEOUT` (`10s`). Servise özel anahtarlar (`DATABASE_URL`, `NATS_URL` …) servis görevlerinde eklenir.
+Ortak anahtarlar: `HTTP_ADDR` (`:8080`), `LOG_LEVEL` (`info`), `SHUTDOWN_TIMEOUT` (`10s`), `DATABASE_URL`. Servise özel anahtarlar (`NATS_URL` …) servis görevlerinde eklenir.
+
+Migration dosyaları servis klasöründe sıralı numaralıdır (`00001_<ad>.sql`), sqlc `go tool sqlc` ile çalışır ve üretilen kod commit edilir (D-051). Make hedefleri: `test` (birim + entegrasyon, Docker gerekir), `test-unit`, `coverage` (rapor `coverage/` altında, eşik yok, D-052), `generate`.
 
 ## 3. proposal_db
 
