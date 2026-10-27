@@ -14,14 +14,18 @@ import (
 
 // UpdateConsent is the resolver for the updateConsent field.
 func (r *mutationResolver) UpdateConsent(ctx context.Context, input model.UpdateConsentInput) (*model.ConsentStatus, error) {
-	return nil, errNotImplemented(ctx)
+	out, err := r.Consent.Update(ctx, input)
+	if err != nil {
+		return nil, r.serviceError(ctx, "consent update", err)
+	}
+	return out, nil
 }
 
 // AudiencePreview is the resolver for the audiencePreview field.
 func (r *queryResolver) AudiencePreview(ctx context.Context, filter model.CustomerFilter) (*model.AudiencePreview, error) {
 	out, err := r.Audience.Preview(ctx, &filter)
 	if err != nil {
-		return nil, r.audienceError(ctx, err)
+		return nil, r.serviceError(ctx, "audience query", err)
 	}
 	return out, nil
 }
@@ -30,14 +34,18 @@ func (r *queryResolver) AudiencePreview(ctx context.Context, filter model.Custom
 func (r *queryResolver) AudienceRecipients(ctx context.Context, filter model.CustomerFilter, first int, after *string) (*model.RecipientConnection, error) {
 	out, err := r.Audience.Recipients(ctx, &filter, first, after)
 	if err != nil {
-		return nil, r.audienceError(ctx, err)
+		return nil, r.serviceError(ctx, "audience query", err)
 	}
 	return out, nil
 }
 
 // ConsentStatus is the resolver for the consentStatus field.
 func (r *queryResolver) ConsentStatus(ctx context.Context, customerIds []string, channel string) ([]*model.ConsentStatus, error) {
-	return nil, errNotImplemented(ctx)
+	out, err := r.Consent.Status(ctx, customerIds, channel)
+	if err != nil {
+		return nil, r.serviceError(ctx, "consent status", err)
+	}
+	return out, nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

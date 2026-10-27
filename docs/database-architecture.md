@@ -58,7 +58,7 @@ Bedel: tüm servisler aynı süreç, bellek ve diski paylaşır; bir servisin a�
 
 ## 4. `customer_db`: filtrelenmiş DWH
 
-`customer_db`, müşteri verisinin segmentasyon için hazırlanmış, **filtrelenmiş bir veri ambarı kopyası** gibi kullanılır. Kaynak `stub/*.csv` setidir (bkz. [stub/README.md](../stub/README.md)); veri seed ile gelir. Tek yazma yolu izin güncellemesidir (D-011: `updateConsent` yeni `fact_consent` satırı yazar ve `dim_customer` bayrağını aynı transaction'da günceller).
+`customer_db`, müşteri verisinin segmentasyon için hazırlanmış, **filtrelenmiş bir veri ambarı kopyası** gibi kullanılır. Kaynak `stub/*.csv` setidir (bkz. [stub/README.md](../stub/README.md)); veri seed ile gelir. Tek yazma yolu izin güncellemesidir (D-011: `updateConsent` yeni `fact_consent` satırı yazar ve `dim_customer` bayrağını aynı transaction'da günceller). Bu yol yalnız admin token'ıyla çağrılır (D-063): `make consent CUSTOMER=<id> CHANNEL=<email|sms> OPTED_IN=<true|false>`. Yeni kayıt kimlikleri `CNS-` sırasını sürdürür (advisory lock altında en büyük numara + 1, D-064).
 
 Yerleşim yıldız şemadır, hepsi `dwh` şemasında:
 

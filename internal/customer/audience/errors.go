@@ -15,6 +15,8 @@ const (
 	CodeUnknownValue = "UNKNOWN_VALUE"
 	// CodeComplexityLimit is a filter over the depth, node or in-list limits.
 	CodeComplexityLimit = "COMPLEXITY_LIMIT"
+	// CodeNotFound is a customer id that does not exist (D-064).
+	CodeNotFound = "NOT_FOUND"
 )
 
 // Error is a client-visible filter or argument error. The GraphQL layer turns
@@ -59,6 +61,11 @@ func FormatPath(path []any) string {
 // the filter (page size, cursor).
 func BadInput(format string, args ...any) *Error {
 	return &Error{Code: CodeBadUserInput, Message: fmt.Sprintf(format, args...)}
+}
+
+// NotFound returns a NOT_FOUND error for a missing record (D-064).
+func NotFound(format string, args ...any) *Error {
+	return &Error{Code: CodeNotFound, Message: fmt.Sprintf(format, args...)}
 }
 
 func badFilter(path []any, format string, args ...any) *Error {

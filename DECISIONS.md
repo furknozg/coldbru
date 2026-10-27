@@ -67,6 +67,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
 | D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
 | D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
+| D-064 | İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent | Kitle ve izinler | Kabul edildi |
 
 ---
 
@@ -234,7 +235,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Customer'a ulaşılamazsa snapshot ile göndermek (fail-open) — reddedildi: Notification görev kritik; kesinti sırasında izin çiğnenir.
   - İzin değişikliğini yalnızca testlerde doğrudan DB'ye yazmak — reddedildi: demoda gösterilemez.
 - **Sonuçlar / bedel:** D-006'daki NATS kapsamı asenkron mesajlaşmadır; bu izin sorgusu, D-007'deki Proposal → Customer çağrısı gibi senkron bir GraphQL çağrısıdır. Gönderim Customer'ın erişilebilirliğine senkron bağımlıdır; Customer kesintisinde gönderim gecikir ama izin çiğnenmez. Kontrol ile gönderim arasında milisaniyelik bir pencere kalır. `customer_db` artık yalnızca seed'le dolan bir ambar değildir; izin için bir yazma yolu vardır ve `dim_customer` bayrağı ile son `fact_consent` kaydı aynı transaction'da güncellenmelidir (seed'deki tutarlılık kontrolü bu kuralı varsayar). Breaker eşikleri, batch boyutu ve kütüphane seçimi açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef testler: zamanlanmış kampanyada onaydan sonra izin geri çekilen kişi `skipped_no_consent` olur; Customer kapalıyken hiçbir mesaj gönderilmez.
+- **Doğrulama:** Kısmen, 2026-10-27'de (T-017): Customer tarafı hazır; `consentStatus` güncel izni ve uygunluğu döndürüyor, `updateConsent` `fact_consent` ve `dim_customer`'ı aynı transaction'da güncelliyor (D-064). Notification tarafı (batch kontrolü, `skipped_no_consent`, circuit breaker) T-029'da. Hedef testler: zamanlanmış kampanyada onaydan sonra izin geri çekilen kişi `skipped_no_consent` olur; Customer kapalıyken hiçbir mesaj gönderilmez.
 
 ## D-012: Frontend: Vue 3 + TypeScript, pnpm, Tailwind, shadcn-vue, Vue Router + composable'lar; kök dizinde `web/`
 
@@ -1005,6 +1006,24 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Ek (kullanıcı onayı, 2026-10-27):** Kök alanlar non-null olduğu için (D-058) kapsamı olmayan bir alan, yanıtta tek bir `FORBIDDEN` hatası ve `data: null` doğurur; kısmi veri dönmez. Şema değişmez; her çağıran tek işlem istediğinden bu yeterlidir.
 - **Uygulama notu:** Customer token'ların yalnız SHA-256 özetini tutar ve gelen token'ı her kayıtla sabit zamanlı karşılaştırır. Ara katmanı olmadan çağrılan handler korunan her alanı reddeder. Token'lar loglanmaz.
 - **Doğrulama:** 2026-10-27'de (T-016): ara katman ve token seti birim testleri, gerçek GraphQL handler'ı üzerinden 9 kapsam vakası, yasak alanın resolver'ı çalıştırmadığı ve token'sız isteğin GraphQL'e ulaşmadığı testleri geçti. Çalışan customer'da compose ağı içinden: token yok ve geçersiz token 401; Proposal token'ı `audiencePreview` sayımını aldı; Notification token'ı aynı sorguda `FORBIDDEN`; admin token'ı `consentStatus` ve `updateConsent`'e ulaştı (henüz `NOT_IMPLEMENTED`, T-017); `/healthz` token'sız 200; loglarda token yok.
+
+## D-064: İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-011 Notification'ın gönderimden önce Customer'a toplu izin sorgusu atmasını ve `updateConsent` ile izin değişikliğini; D-063 `updateConsent`'in yalnız admin token'ıyla, bir geliştirici komutuyla çağrılmasını belirledi. Yanıt biçimi, kimlik üretimi, değişiklik kuralları ve komut açıktı (T-017). Seed'deki kimlikler `CNS-000001` … `CNS-002219`.
+- **Karar:**
+  - `consentStatus(customerIds, channel)`: en fazla 1000 id, fazlası `BAD_USER_INPUT`. İstenen her id için bir satır: `optedIn` `dim_customer`'daki kanal bayrağı, `eligible` D-062'deki kanal koşulu (aktif hesap + izin + iletişim, e-postada bounce değil). Bilinmeyen id `optedIn: false`, `eligible: false` döner; Notification onu atlar (fail-closed).
+  - Yeni `fact_consent` kimliği: transaction içinde `pg_advisory_xact_lock` alınır, en büyük `CNS-` numarası +1 kullanılır (`CNS-002220` …). customer_db şeması değişmez.
+  - `updateConsent`: müşteri satırı `FOR UPDATE` ile kilitlenir. Durum zaten istenen gibiyse satır yazılmaz, mevcut durum döner. Aksi hâlde aynı transaction'da yeni `fact_consent` satırı yazılır ve `dim_customer`'daki bayrak ile `consent_updated_at` güncellenir (seed'deki tutarlılık kuralı korunur, D-005). Bilinmeyen müşteri `NOT_FOUND`, silinmiş hesap `BAD_USER_INPUT`. `source` kapalı listedir: `preference_centre`, `support_request`, `unsubscribe_link`, `admin_tool`.
+  - Geliştirici komutu: `make consent CUSTOMER=<id> CHANNEL=<email|sms> OPTED_IN=<true|false>`; compose ağında admin token'ıyla `updateConsent`'i çağırır ve yeni durumu basar.
+- **Alternatifler:**
+  - Bilinmeyen id'de tüm sorguyu reddetmek veya bilinmeyenleri yanıttan çıkarmak — reddedildi.
+  - Sequence veya `CNS-<uuidv7>` — reddedildi: şema değişikliği ya da karışık kimlik biçimi.
+  - Her çağrıda satır yazmak veya serbest metin `source` — reddedildi.
+  - Ayrı Go CLI veya yalnız README'de curl — reddedildi.
+- **Sonuçlar / bedel:** Eşzamanlı izin güncellemeleri advisory lock'ta sıraya girer; yalnız admin aracı yazdığı için sorun değildir. `signup_form` ve `account_deletion` yalnız seed'den gelir, bu araçla yazılamaz. Yeni bir kaynak değeri kod değişikliği ister.
+- **Doğrulama:** 2026-10-27'de (T-017), seed'li customer_db üzerinde entegrasyon testleri: bilinmeyen id `false/false`, istek sırası korunuyor; 1000 müşteride `consentStatus` uygunluğu `audienceRecipients` ile birebir (e-posta 703, SMS 586); geri çekme `CNS-002220`, geri açma `CNS-002221` yazıyor, bayrak ile son kayıt uyumlu, kitle kapsaması değişiyor ve geri dönüyor; aynı istek tekrarlanınca satır yazılmıyor; 8 paralel güncelleme ardışık ve tekil kimlik alıyor; hata kodları beklendiği gibi. Compose'da `make consent` ile `CUS-000180` için SMS izni geri çekildi (aynı istek tekrarlanınca yeni satır yok) ve geri açıldı; kötü niyetli müşteri değeri `make` aşamasında reddedildi.
 
 ---
 

@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/furknozg/coldbru/internal/customer/audience"
+	"github.com/furknozg/coldbru/internal/customer/consent"
 	"github.com/furknozg/coldbru/internal/customer/graph"
 	"github.com/furknozg/coldbru/internal/customer/pgtest"
 )
@@ -49,7 +50,7 @@ func liveServer(t *testing.T) http.Handler {
 		t.Fatalf("LoadCities: %v", err)
 	}
 	svc := audience.NewService(pool, cities)
-	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil)))))
+	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, consent.NewService(pool), slog.New(slog.NewTextHandler(io.Discard, nil)))))
 }
 
 type coverage struct {

@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql consent
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -59,3 +59,21 @@ generate-openapi:
 generate-graphql:
 	@echo "gqlgen generate: internal/customer/graph"
 	@cd internal/customer/graph && go tool gqlgen generate --config gqlgen.yml
+
+# Developer command: records an opt-in or opt-out through Customer's updateConsent, as the admin
+# caller, from inside the compose network (D-063, D-064). Docker must be on PATH and the stack up
+# (`docker compose up -d customer`). Arguments reach the shell as environment variables, never
+# spliced into the script, and are validated before the JSON body is built.
+#   make consent CUSTOMER=CUS-000123 CHANNEL=sms OPTED_IN=false [SOURCE=admin_tool]
+# CUSTOMER_TOKEN_ADMIN (default admin-dev-token) is read from the environment.
+consent:
+	@usage='usage: make consent CUSTOMER=CUS-000123 CHANNEL=<email|sms> OPTED_IN=<true|false> [SOURCE=admin_tool]'; \
+	source="$${SOURCE:-admin_tool}"; \
+	if ! printf '%s' "$$CUSTOMER" | grep -Eq '^CUS-[0-9]+$$'; then echo "consent: CUSTOMER must look like CUS-000123"; echo "$$usage"; exit 2; fi; \
+	case "$$CHANNEL" in email|sms) ;; *) echo "consent: CHANNEL must be email or sms"; echo "$$usage"; exit 2;; esac; \
+	case "$$OPTED_IN" in true|false) ;; *) echo "consent: OPTED_IN must be true or false"; echo "$$usage"; exit 2;; esac; \
+	if ! printf '%s' "$$source" | grep -Eq '^[a-z_]+$$'; then echo "consent: SOURCE must be lower-case letters and underscores"; echo "$$usage"; exit 2; fi; \
+	body=$$(printf '{"query":"mutation($$i: UpdateConsentInput!) { updateConsent(input: $$i) { customerId channel optedIn eligible } }","variables":{"i":{"customerId":"%s","channel":"%s","optedIn":%s,"source":"%s"}}}' "$$CUSTOMER" "$$CHANNEL" "$$OPTED_IN" "$$source"); \
+	docker run --rm --network coldbru_default curlimages/curl:8.11.1 -sS -X POST http://customer:8080/graphql \
+	  -H 'Content-Type: application/json' -H "Authorization: Bearer $${CUSTOMER_TOKEN_ADMIN:-admin-dev-token}" -d "$$body"; \
+	echo
