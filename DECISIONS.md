@@ -56,6 +56,9 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-050 | Platform: /healthz + /readyz, ortam + isteğe bağlı .env, slog JSON istek logu, Prometheus /metrics | Takip ve altyapı | Kabul edildi |
 | D-051 | sqlc go tool ile, üretilen kod commit edilir; entegrasyon testleri integration tag'iyle make test içinde; migration'lar sıralı numaralı | Test ve kapsam | Kabul edildi |
 | D-052 | Unit test coverage yerel araçlarla raporlanır (go cover, vitest v8); eşik yok | Test ve kapsam | Kabul edildi |
+| D-053 | NATS Go istemcisi nats.go v1.54.0, jetstream paketi | Gönderim | Kabul edildi |
+| D-054 | Outbox ve processed_event platform migration setinde; relay LISTEN/NOTIFY + 1 sn poll; tüketicide NakWithDelay | Gönderim | Kabul edildi; tüketici backoff parametreleri yerini aldı → D-055 |
+| D-055 | Olay tüketicisi backoff'u: 1 sn'den üstel, 15 dk tavan, 20 deneme | Gönderim | Kabul edildi |
 
 ---
 
@@ -548,7 +551,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - CloudEvents 1.0 JSON — reddedildi: ek bağımlılık ve NATS bağlaması için ek ayar.
   - Protobuf — reddedildi: kod üretimi ekler, mesajlar elle okunamaz.
 - **Sonuçlar / bedel:** Şema doğrulaması ve sürüm uyumu elle korunur; ortak bir şema kaydı yoktur. Olay listesi ve `data` alanları `docs/domain-model.md`'de taslaktır.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-27'de (T-012): `internal/platform/events` zarfı ve konu adı birim testleriyle, relay üzerinden yayınlanan zarfın `id`'sinin `Nats-Msg-Id` ile aynı olması entegrasyon testiyle doğrulandı. Olay kataloğu hâlâ taslak.
 
 ## D-036: Canlı dashboard Notification'dan; kampanya özetleri Analytics'te
 
@@ -784,13 +787,57 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Geçmiş ve trend yok; düşüş yalnız raporda görülür. Üretilen kod (sqlc, gqlgen) geldiğinde rapordan dışlanması gerekebilir.
 - **Doğrulama:** 2026-10-27'de (T-011): `make coverage` Go unit toplamını %80,2 olarak bastı, `coverage/go.out` ve `coverage/go.html` yazıldı; web özeti satırlarda %33,3 (tek kabuk testi). `migrate` paketi yalnız entegrasyon testine sahip olduğu için unit coverage'da %0 görünür.
 
+## D-053: NATS Go istemcisi nats.go v1.54.0, jetstream paketi
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** D-006, D-024 ve D-049 NATS JetStream'i kurdu; Go tarafındaki istemci seçilmemişti (T-012).
+- **Karar:** `github.com/nats-io/nats.go` v1.54.0 (2026-09-18) ve yeni `jetstream` paketi: pull consumer, PubAck beklemeli yayın, `Nats-Msg-Id` ile dedup.
+- **Alternatifler:**
+  - v1.55.0 — reddedildi: 2026-10-23'te çıktı, henüz az sınanmış.
+- **Sonuçlar / bedel:** Zamanlanmış mesaj header'ları (`Nats-Schedule`) istemci desteği gerektirmez, düz header olarak gönderilir. Sürüm yükseltmesi ayrıca yapılır.
+- **Doğrulama:** 2026-10-27'de (T-012): `jetstream` paketiyle PubAck'li yayın, `Nats-Msg-Id` dedup'u, pull consumer, `NakWithDelay` ve `Term` testcontainers `nats:2.15-alpine` üzerinde entegrasyon testleriyle sınandı.
+
+## D-054: Outbox ve processed_event platform migration setinde; relay LISTEN/NOTIFY + 1 sn poll; tüketicide NakWithDelay
+
+- **Durum:** Kabul edildi · 2026-10-27; tüketici backoff parametreleri (2 dk tavan, `MaxDeliver` 5) yerini aldı → D-055 · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** D-006 transactional outbox'ı, D-023 tüketici dedup'unu, D-035 olay zarfını seçti. Tabloları kimin açacağı, relay yöntemi, tüketici hata politikası, saklama ve indeksler açıktı (T-012).
+- **Karar:**
+  - `internal/platform` kendi gömülü migration setiyle `outbox` ve `processed_event` tablolarını, ayrı bir goose sürüm tablosuyla (`goose_platform_version`) servis migration'larından önce uygular. Tablolar servis şemasına düşer (D-048).
+  - Relay: `outbox` üzerinde `AFTER INSERT FOR EACH STATEMENT` trigger'ı `pg_notify('outbox', '')` ile relay'i uyandırır (yük yok); relay ayrı bir bağlantıda `LISTEN` eder, 1 saniyelik poll yedektir. `FOR UPDATE SKIP LOCKED` ile okur, `Nats-Msg-Id` = olay id'si ile yayınlar, PubAck'i bekler, `published_at`'i işaretler.
+  - İndeks: `outbox (created_at) WHERE published_at IS NULL` kısmi indeksi; `processed_event`'te yalnız birincil anahtar.
+  - Saklama: yayınlanmış `outbox` satırları ve `processed_event` satırları silinmez.
+  - Tüketici: servis başına durable pull consumer, açık ack. Handler hatasında `NakWithDelay`: 1 saniyeden başlayıp ×2 artan, %20 jitter'lı, en fazla 2 dakika; `MaxDeliver` 5, son denemede log ve `Term`.
+- **Alternatifler:**
+  - DDL'i her servisin kendi migration'ına kopyalamak veya Go migration sabiti — reddedildi: DDL tek yerde olsun, SQL dosyası olarak okunsun.
+  - 200 ms poll — reddedildi: kullanıcı NOTIFY ile daha düşük gecikmeyi seçti.
+  - Sunucu tarafı BackOff veya yeniden denemesiz — reddedildi: gecikme mantığı kodda, sunucudan bağımsız test edilsin.
+  - 7 gün saklama veya outbox'ı hemen silmek — reddedildi: tam olay geçmişi tutulsun.
+  - Satır başına trigger veya tam indeks — reddedildi.
+- **Sonuçlar / bedel:** Tablolar sınırsız büyür; demo için sorun değil, uzun çalışan ortamda temizlik gerekir. `LISTEN` için havuz dışında ayrı bir bağlantı tutulur. Relay iki kez yayınlayabilir; JetStream dedup penceresi (2 dk) ve `processed_event` tekrarı engeller. İki servisin migration seti aynı şemada iki goose sürüm tablosu demektir.
+- **Ek (kullanıcı onayı, 2026-10-27):** Tüketicinin `AckWait`'i 30 saniyedir. Geçersiz JSON, boş veya UUID olmayan id taşıyan iletiler yeniden denenmeden loglanır ve `Term` edilir.
+- **Doğrulama:** 2026-10-27'de (T-012), testcontainers Postgres 18 + NATS 2.15 üzerinde: poll aralığı 1 saatken trigger relay'i uyandırdı ve olay yayınlandı (`TestRelay_NotifyWakesRelay`); relay başlamadan yazılan olaylar oluşturulma sırasıyla yayınlandı; geri alınan transaction hiçbir şey yayınlamadı; aynı outbox satırı yeniden yayınlanınca stream'de tek ileti kaldı; aynı olay iki farklı Msg-Id ile gelince handler bir kez çalıştı; sürekli hata veren handler tam `MaxDeliver` kez çağrılıp sonlandırıldı; bozuk ileti handler'a ulaşmadan sonlandırıldı. `UpPlatform` tabloları servis şemasına açtı. Kopan LISTEN bağlantısından toparlanma yolu kodda var, testi yok.
+
+## D-055: Olay tüketicisi backoff'u: 1 sn'den üstel, 15 dk tavan, 20 deneme
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** D-054 olay tüketicisi için 1 sn ×2, %20 jitter, 2 dk tavan ve 5 deneme seçmişti. Kullanıcı T-012 sırasında varsayılanın üstel kalmasını, en uzun beklemenin 15 dakika ve deneme sayısının 20 olmasını istedi. D-054'ün yalnız bu parametreleri değişir.
+- **Karar:** `consumer.DefaultBackoff` 1 saniyeden başlayıp ×2 artan, %20 jitter'lı, en fazla 15 dakikalık üstel geri çekilmedir; `consumer.MaxDeliver` 20'dir, son denemede log ve `Term`. Kapsam olay tüketicileridir; D-024'teki gönderim (`SEND`) retry'ı gönderim worker'ı yazılırken (T-029) ayrıca kararlaştırılır.
+- **Alternatifler:**
+  - D-054'teki 2 dk tavan ve 5 deneme — reddedildi: kullanıcı daha uzun toparlanma penceresi istedi.
+  - Aynı varsayılanı `SEND`'e de uygulamak — reddedildi: başarısız bir mesaj ~2,8 saat sonra `failed` olurdu; gönderim için ayrı karar.
+- **Sonuçlar / bedel:** Toplam yeniden deneme penceresi yaklaşık 2,8 saattir (1+2+…+512 sn, sonra 11 kez ~15 dk). Kalıcı bir hata, olayın terminate edilmesini saatlerce geciktirir ve aynı olay bu süre boyunca 20 kez işlenmeye çalışılır. `AckWait` 30 saniye kalır.
+- **Doğrulama:** 2026-10-27'de (T-012): `TestBackoff_Delay` 1, 2, 4 … 512 sn ve 11. denemeden itibaren 15 dk (±%20) değerlerini doğruluyor; `TestProcess_AlwaysFailingIsTerminatedAtMaxDeliver` testcontainers NATS üzerinde handler'ın tam 20 kez çağrılıp sonlandırıldığını gösterdi (testte küçük bir backoff ile).
+
 ---
 
 ## Açık konular
 
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
-- Retry ayrıntıları: hangi hatalar yeniden denenir, geri çekilme tabanı ve jitter, `sending` lease süresi (D-023, D-024)
+- Retry ayrıntıları: gönderimde (`SEND`) hangi hatalar yeniden denenir, geri çekilme ve deneme sayısı, `sending` lease süresi; olay tüketicisi için D-055 (D-023, D-024)
 - Customer GraphQL filtre girdi tiplerinin kesin şekli: `and`/`or`/`not`, `some`/`none`/`every`, `ago` ve `in` karşılıkları (D-039, D-044, D-045)
 - DSL'de null kuralları, sayı biçimi ve hata kodlarının kesin listesi (D-038, D-045)
 - `updateConsent` kapsamını hangi servisin taşıyacağı ve arayüzden nasıl çağrılacağı (D-011, D-043)
