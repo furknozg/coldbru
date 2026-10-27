@@ -50,6 +50,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-044 | Customer GraphQL şeması tek kaynak; Proposal kataloğu build'de üretilir; alan adları camelCase | LLM entegrasyonu | Kabul edildi |
 | D-045 | DSL 0.1 kapsamı: çekirdek işleçler, ilişki niceleyicileri, ago/date, in, boolean | LLM entegrasyonu | Kabul edildi |
 | D-046 | DSL 0.1: yalın boolean alan yazımı yok; boş in listesi hata | LLM entegrasyonu | Kabul edildi |
+| D-047 | Claude API istemcisi resmi anthropic-sdk-go v2 | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -680,6 +681,17 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Yalın boolean yazımı da desteklemek — reddedildi: dil bilgisi karmaşıklaşır, her yüklem bir karşılaştırma olmaz.
   - Boş listeyi geçerli ve her zaman yanlış saymak — reddedildi: 0 kişilik kitle sessizce üretilir.
 - **Sonuçlar / bedel:** LLM boolean koşulları biraz daha uzun yazar ve yalın yazımı denerse onarım turu harcar; sistem prompt'u açık karşılaştırmayı örneklemeli.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-047: Claude API istemcisi resmi anthropic-sdk-go v2
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-026 ve D-027 modelleri ve çıktı yöntemini seçti; Proposal'ın Claude API'ye hangi istemciyle bağlanacağı kayıtlı değildi. `tasks.csv` görev listesi hazırlanırken fark edildi.
+- **Karar:** Proposal, resmi Go SDK'sı `github.com/anthropics/anthropic-sdk-go/v2` ile çağırır (2026-10-27 araştırmasına göre son sürüm v2.3.0). Mock LLM testleri gerçek adaptörü `option.WithBaseURL` ile `httptest` sunucusuna bağlar (D-025). API anahtarı ortamdaki `ANTHROPIC_API_KEY`'den okunur; testler okumaz.
+- **Alternatifler:**
+  - `net/http` ile kendi istemcimiz — reddedildi: retry, streaming ve tipler elle yazılırdı.
+- **Sonuçlar / bedel:** Bir dış bağımlılık. v2 kırıcı bir sürümdü; eski örnekler v1 modül yolunu gösterir. SDK varsayılan olarak 2 kez yeniden dener; onarım döngüsüyle (D-027) birlikte toplam deneme sayısı hesaba katılmalı.
 - **Doğrulama:** Doğrulanmadı — henüz kod yok.
 
 ---
