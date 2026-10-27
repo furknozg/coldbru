@@ -4,6 +4,9 @@
 # proposal_db, notification_db, analytics_db, each with an owner role and a same-named schema.
 # Also runs NATS JetStream (file storage, volume natsdata). The one-shot `nats-init` service creates/updates
 # the streams from infra/nats/streams/*.json on every `up` (idempotent, D-049).
+# The five Go services (customer, proposal, notification, analytics, mockprovider) are built from the
+# root Dockerfile (SERVICE build arg) and wait for postgres / nats-init (D-056). Host ports: proposal 8081,
+# notification 8082, analytics 8083, mockprovider 8084; customer is reachable only inside the compose network.
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -72,6 +75,124 @@ services:
     volumes:
       - ./infra/nats:/nats-init:ro
     entrypoint: ["sh", "/nats-init/init-streams.sh"]
+
+  customer:
+    build:
+      context: .
+      args:
+        SERVICE: customer
+    image: coldbru-customer:dev
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://customer_svc:${CUSTOMER_DB_PASSWORD:-customer_svc_dev}@postgres:5432/customer_db?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  proposal:
+    build:
+      context: .
+      args:
+        SERVICE: proposal
+    image: coldbru-proposal:dev
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://proposal_svc:${PROPOSAL_DB_PASSWORD:-proposal_svc_dev}@postgres:5432/proposal_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+    ports:
+      - "${PROPOSAL_HOST_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  notification:
+    build:
+      context: .
+      args:
+        SERVICE: notification
+    image: coldbru-notification:dev
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://notification_svc:${NOTIFICATION_DB_PASSWORD:-notification_svc_dev}@postgres:5432/notification_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+    ports:
+      - "${NOTIFICATION_HOST_PORT:-8082}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  analytics:
+    build:
+      context: .
+      args:
+        SERVICE: analytics
+    image: coldbru-analytics:dev
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://analytics_svc:${ANALYTICS_DB_PASSWORD:-analytics_svc_dev}@postgres:5432/analytics_db?sslmode=disable
+      NATS_URL: nats://nats:4222
+    ports:
+      - "${ANALYTICS_HOST_PORT:-8083}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  mockprovider:
+    build:
+      context: .
+      args:
+        SERVICE: mockprovider
+    image: coldbru-mockprovider:dev
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: ":8080"
+    ports:
+      - "${MOCKPROVIDER_HOST_PORT:-8084}:8080"
+    healthcheck:
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
 volumes:
   pgdata:
