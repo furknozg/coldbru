@@ -1,6 +1,7 @@
 # Smart Campaign Composer — local stack.
 # Single Postgres service hosting one database per microservice (docs/database-architecture.md).
-# First `up` on an empty volume creates customer_db and seeds it from ./stub.
+# First `up` on an empty volume creates customer_db (seeded from ./stub) and the empty service DBs
+# proposal_db, notification_db, analytics_db, each with an owner role and a same-named schema.
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -13,6 +14,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: postgres
       CUSTOMER_DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-customer_svc_dev}
+      PROPOSAL_DB_PASSWORD: ${PROPOSAL_DB_PASSWORD:-proposal_svc_dev}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_svc_dev}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-analytics_svc_dev}
       TZ: UTC
       PGTZ: UTC
     ports:
@@ -23,8 +27,19 @@ services:
       - ./stub:/seed/stub:ro
     healthcheck:
       # TCP + app role + seeded table: the init-time server listens on a socket only,
-      # so this stays unhealthy until the seed has committed.
-      test: ["CMD-SHELL", "PGPASSWORD=\"$${CUSTOMER_DB_PASSWORD}\" psql -h 127.0.0.1 -U customer_svc -d customer_db -tAc 'SELECT 1 FROM dwh.dim_customer LIMIT 1' | grep -q 1"]
+      # so this stays unhealthy until the seed has committed. Each service role must also
+      # reach its own DB and see its own schema as current_schema() (D-048).
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$${CUSTOMER_DB_PASSWORD}" psql -h 127.0.0.1 -U customer_svc -d customer_db
+          -tAc 'SELECT 1 FROM dwh.dim_customer LIMIT 1' | grep -q 1
+          && PGPASSWORD="$${PROPOSAL_DB_PASSWORD}" psql -h 127.0.0.1 -U proposal_svc -d proposal_db
+          -tAc 'SELECT current_schema()' | grep -qx proposal
+          && PGPASSWORD="$${NOTIFICATION_DB_PASSWORD}" psql -h 127.0.0.1 -U notification_svc -d notification_db
+          -tAc 'SELECT current_schema()' | grep -qx notification
+          && PGPASSWORD="$${ANALYTICS_DB_PASSWORD}" psql -h 127.0.0.1 -U analytics_svc -d analytics_db
+          -tAc 'SELECT current_schema()' | grep -qx analytics
       interval: 5s
       timeout: 5s
       retries: 12
