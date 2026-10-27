@@ -41,7 +41,7 @@ flowchart LR
 | `notification_db` | `notification_svc` | notification service (teslimatlar, idempotency, outbox; D-023) | Planlandı (D-019) |
 | `analytics_db` | `analytics_svc` | analytics service (olay tüketicisi; D-018) | Planlandı (D-019) |
 
-Planlanan veritabanlarının rolü ve boş DB'si initdb'de `customer_db` ile aynı desenle açılacak; tabloları her servisin goose migration'ları kurar (D-019, D-020). Henüz uygulanmadı.
+Bu veritabanlarının tabloları, durum makineleri ve olay sözleşmeleri [domain-model.md](domain-model.md) belgesinde. Planlanan veritabanlarının rolü ve boş DB'si initdb'de `customer_db` ile aynı desenle açılacak; tabloları her servisin goose migration'ları kurar (D-019, D-020). Henüz uygulanmadı.
 
 ## 3. İzolasyon modeli
 
