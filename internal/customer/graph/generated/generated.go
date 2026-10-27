@@ -466,8 +466,8 @@ customers at different moments.
 input TimeValue @oneOf {
   """
   Relative time: a positive integer followed by ` + "`" + `d` + "`" + ` (days) or ` + "`" + `h` + "`" + ` (hours), matching
-  ^[1-9][0-9]*(d|h)$, for example "30d" or "12h". Validated by the server, not by the GraphQL
-  type system (D-058).
+  ^[1-9][0-9]*(d|h)$, for example "30d" or "12h", at most 36500d or 876000h (100 years).
+  Validated by the server, not by the GraphQL type system (D-058, D-062).
   """
   ago: String
   """Absolute calendar date, YYYY-MM-DD."""

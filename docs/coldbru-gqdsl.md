@@ -774,10 +774,10 @@ The GraphQL server enforces the same limits again, plus access control (§11). C
 | `TYPE_MISMATCH`          | Incompatible operand types                                  |
 | `UNSUPPORTED_OPERATOR`   | Reserved or rejected operator, or field-to-field comparison |
 | `INVALID_RELATION_SCOPE` | Invalid lambda or traversal                                 |
-| `COMPLEXITY_LIMIT`       | Query exceeds configured limits                             |
+| `COMPLEXITY_LIMIT`       | Query exceeds configured limits: nesting depth > 8, more than 100 condition nodes, or an `in` list over 100 values (D-062) |
 | `UNSUPPORTED_EXPRESSION` | JavaScript construct outside the DSL                        |
 
-Errors include source ranges so that the agent can repair an invalid expression. The final list of error codes is open (D-045).
+Errors include source ranges so that the agent can repair an invalid expression. The Customer service returns its own codes in GraphQL `extensions.code`; `UNKNOWN_VALUE` carries up to three `suggestions` (Levenshtein ≤ 2 or prefix on the canonical key), and `extensions.filterPath` points at the offending filter field. Empty `and`/`or` lists, a field without an operator and a relationship without a quantifier are rejected with `BAD_USER_INPUT` (D-062). The final list of error codes is open (D-045).
 
 ---
 
