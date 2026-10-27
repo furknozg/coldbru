@@ -456,8 +456,9 @@ see gqlgen.yml (D-058).
 directive @oneOf on INPUT_OBJECT
 
 """
-The caller's token must carry ` + "`" + `scope` + "`" + `, otherwise the field fails with extensions.code FORBIDDEN
-and the other fields of the operation still run (D-063). Scopes: ` + "`" + `audience:read` + "`" + ` (Proposal),
+The caller's token must carry ` + "`" + `scope` + "`" + `, otherwise the field fails with extensions.code FORBIDDEN.
+The guarded root fields are non-null, so a forbidden field makes the whole ` + "`" + `data` + "`" + ` null; the
+response carries one FORBIDDEN error (D-063). Scopes: ` + "`" + `audience:read` + "`" + ` (Proposal),
 ` + "`" + `consent:read` + "`" + ` (Notification and admin), ` + "`" + `consent:write` + "`" + ` (admin token only). Enforced at run time by
 graph.HasScope.
 """

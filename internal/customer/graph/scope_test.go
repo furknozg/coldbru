@@ -11,13 +11,13 @@ import (
 const (
 	scopePreview = `query($f: CustomerFilter!) { audiencePreview(filter: $f) { count } }`
 	scopeConsent = `{ consentStatus(customerIds: ["c1"], channel: "sms") { eligible } }`
-	scopeUpdate  = `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "test"}) { optedIn } }`
+	scopeUpdate  = `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "admin_tool"}) { optedIn } }`
 )
 
 // TestScopesThroughTheHandler runs real requests through the middleware, the
 // GraphQL handler and the @hasScope directive (D-063). A field that is allowed
 // reaches its resolver: audiencePreview hits the failing database (INTERNAL),
-// the consent fields answer NOT_IMPLEMENTED.
+// the consent fields too (the failing database answers INTERNAL).
 func TestScopesThroughTheHandler(t *testing.T) {
 	t.Parallel()
 	h := newServer(t)
@@ -33,11 +33,11 @@ func TestScopesThroughTheHandler(t *testing.T) {
 		{"proposal audiencePreview reaches the resolver", proposalToken, scopePreview, vars, graph.CodeInternal, "audiencePreview"},
 		{"proposal consentStatus forbidden", proposalToken, scopeConsent, nil, graph.CodeForbidden, "consentStatus"},
 		{"proposal updateConsent forbidden", proposalToken, scopeUpdate, nil, graph.CodeForbidden, "updateConsent"},
-		{"notification consentStatus reaches the resolver", notificationToken, scopeConsent, nil, graph.CodeNotImplemented, "consentStatus"},
+		{"notification consentStatus reaches the resolver", notificationToken, scopeConsent, nil, graph.CodeInternal, "consentStatus"},
 		{"notification audiencePreview forbidden", notificationToken, scopePreview, vars, graph.CodeForbidden, "audiencePreview"},
 		{"notification updateConsent forbidden", notificationToken, scopeUpdate, nil, graph.CodeForbidden, "updateConsent"},
-		{"admin updateConsent reaches the resolver", adminToken, scopeUpdate, nil, graph.CodeNotImplemented, "updateConsent"},
-		{"admin consentStatus reaches the resolver", adminToken, scopeConsent, nil, graph.CodeNotImplemented, "consentStatus"},
+		{"admin updateConsent reaches the resolver", adminToken, scopeUpdate, nil, graph.CodeInternal, "updateConsent"},
+		{"admin consentStatus reaches the resolver", adminToken, scopeConsent, nil, graph.CodeInternal, "consentStatus"},
 		{"admin audiencePreview forbidden", adminToken, scopePreview, vars, graph.CodeForbidden, "audiencePreview"},
 	}
 	for _, tt := range tests {
@@ -78,13 +78,13 @@ func TestPartialDataWithOneForbiddenField(t *testing.T) {
 }`
 	_, resp := postAs(t, newServer(t), notificationToken, query, map[string]any{"f": sampleFilter()})
 	if len(resp.Errors) != 2 {
-		t.Fatalf("errors = %+v, want 2 (NOT_IMPLEMENTED and FORBIDDEN)", resp.Errors)
+		t.Fatalf("errors = %+v, want 2 (INTERNAL and FORBIDDEN)", resp.Errors)
 	}
 	codes := map[any]any{}
 	for _, e := range resp.Errors {
 		codes[e.Extensions["code"]] = e.Path[0]
 	}
-	want := map[any]any{graph.CodeNotImplemented: "consentStatus", graph.CodeForbidden: "audiencePreview"}
+	want := map[any]any{graph.CodeInternal: "consentStatus", graph.CodeForbidden: "audiencePreview"}
 	if !reflect.DeepEqual(codes, want) {
 		t.Errorf("code -> path = %v, want %v", codes, want)
 	}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/furknozg/coldbru/internal/customer/audience"
 	"github.com/furknozg/coldbru/internal/customer/auth"
+	"github.com/furknozg/coldbru/internal/customer/consent"
 	"github.com/furknozg/coldbru/internal/customer/graph"
 )
 
@@ -83,7 +84,7 @@ func newServerDB(t *testing.T, dbErr error) (http.Handler, *failingDB) {
 	}
 	db := &failingDB{err: dbErr}
 	svc := audience.NewService(db, cities)
-	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil))))), db
+	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, consent.NewService(db), slog.New(slog.NewTextHandler(io.Discard, nil))))), db
 }
 
 // newBareHandler is the GraphQL handler without the auth middleware.
@@ -93,8 +94,8 @@ func newBareHandler(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := audience.NewService(&failingDB{err: errDatabaseDown}, cities)
-	return graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	db := &failingDB{err: errDatabaseDown}
+	return graph.NewHandler(graph.NewResolver(audience.NewService(db, cities), consent.NewService(db), slog.New(slog.NewTextHandler(io.Discard, nil))))
 }
 
 // post sends a GraphQL POST with the Proposal token and decodes the response.
@@ -274,32 +275,6 @@ func TestDecimalMustBeAString(t *testing.T) {
 			_, resp := post(t, h, previewQuery, map[string]any{"f": f})
 			if len(resp.Errors) != 1 || strings.Contains(resp.Errors[0].Message, "not implemented") {
 				t.Fatalf("errors = %+v, want one decimal error", resp.Errors)
-			}
-		})
-	}
-}
-
-func TestConsentResolversReturnNotImplemented(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		token string
-		query string
-		path  string
-	}{
-		{"consentStatus", notificationToken, `{ consentStatus(customerIds: ["c1"], channel: "sms") { eligible } }`, "consentStatus"},
-		{"updateConsent", adminToken, `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "test"}) { optedIn eligible } }`, "updateConsent"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			status, resp := postAs(t, newServer(t), tt.token, tt.query, nil)
-			if status != http.StatusOK {
-				t.Fatalf("status = %d, want 200", status)
-			}
-			wantCode(t, resp, graph.CodeNotImplemented)
-			if got := resp.Errors[0].Path; len(got) != 1 || got[0] != tt.path {
-				t.Errorf("path = %v, want [%s]", got, tt.path)
 			}
 		})
 	}
