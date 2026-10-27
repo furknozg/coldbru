@@ -154,3 +154,14 @@ Kod değiştiren her görevi bitirmeden önce:
 3. Yapılan iş `Kabul edildi` bir kayıtla çelişiyor mu?
 
 Bu üç kontrolden biri başarısızsa görev bitmiş sayılmaz.
+
+
+# Kodlama kuralları (ZORUNLU):
+
+1. Branch naming conventionunda suffixler belirtilen şekildedir: feature,doc,refactor,fix (suffix/geliştirme-adı)
+2. Codegraph skilli (/codegraph veya .claude/skills/codegraph) kurulum fazı kullanımı kuvvetle önerilir
+3. Kod inceleme, endeksli arama yardımcısı codegraph kullanımı ile gerçekleştirilmesi kuvvetle önerilir (desteklenmeyen diller durumunda normal yollara atlanabilir)
+4. Commit mesajları bütün featureları açıklamak için gerekmemekte, merge ve pull requestler bu ihtiyacı karşılamaktadır
+5. Olmasa bile branch kontrolü varmış gibi davranmak, bir değişiklik commit edilecekse checkout -b çalıştırıp commitlemek zorunludur. Merge için kullanıcı onayı istenebilir.
+6. Customer veritabanı haricinde, herhangi bir migration uygulanacaksa, mevcut migration managerlar ile uygulanmalı.
+7. Migration managerı ile uygulanan değişiklikler karar kurallarına tabiidir. endeks,şema değişikliği,stored procedure,listen/notify, RLS uygulanması kararları vb. kullanıcı onayı verilmelidir.
