@@ -7,6 +7,7 @@
 # The five Go services (customer, proposal, notification, analytics, mockprovider) are built from the
 # root Dockerfile (SERVICE build arg) and wait for postgres / nats-init (D-056). Host ports: proposal 8081,
 # notification 8082, analytics 8083, mockprovider 8084; customer is reachable only inside the compose network.
+# API_DOCS_ENABLED (default true here, false in code) serves /docs and /openapi.json on the four REST services (D-057).
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -107,6 +108,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       DATABASE_URL: postgres://proposal_svc:${PROPOSAL_DB_PASSWORD:-proposal_svc_dev}@postgres:5432/proposal_db?sslmode=disable
       NATS_URL: nats://nats:4222
     ports:
@@ -133,6 +135,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       DATABASE_URL: postgres://notification_svc:${NOTIFICATION_DB_PASSWORD:-notification_svc_dev}@postgres:5432/notification_db?sslmode=disable
       NATS_URL: nats://nats:4222
     ports:
@@ -159,6 +162,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       DATABASE_URL: postgres://analytics_svc:${ANALYTICS_DB_PASSWORD:-analytics_svc_dev}@postgres:5432/analytics_db?sslmode=disable
       NATS_URL: nats://nats:4222
     ports:
@@ -185,6 +189,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
     ports:
       - "${MOCKPROVIDER_HOST_PORT:-8084}:8080"
     healthcheck:

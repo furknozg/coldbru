@@ -20,6 +20,9 @@ const (
 	KeyLogLevel = "LOG_LEVEL"
 	// KeyShutdownTimeout is the graceful shutdown deadline as a duration string.
 	KeyShutdownTimeout = "SHUTDOWN_TIMEOUT"
+	// KeyAPIDocsEnabled turns on GET /docs (Scalar) and GET /openapi.json for
+	// services that embed an OpenAPI spec (D-057).
+	KeyAPIDocsEnabled = "API_DOCS_ENABLED"
 )
 
 // envFile is the optional dotenv file read from the working directory.
@@ -31,6 +34,7 @@ func PlatformDefaults() map[string]any {
 		KeyHTTPAddr:        ":8080",
 		KeyLogLevel:        "info",
 		KeyShutdownTimeout: "10s",
+		KeyAPIDocsEnabled:  false,
 	}
 }
 

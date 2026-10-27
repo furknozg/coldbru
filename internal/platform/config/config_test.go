@@ -110,3 +110,18 @@ func TestRequire(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIDocsDisabledByDefault(t *testing.T) {
+	chdirWithEnv(t, "")
+	v, err := config.New(config.PlatformDefaults())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if v.GetBool(config.KeyAPIDocsEnabled) {
+		t.Error("API_DOCS_ENABLED default = true, want false")
+	}
+	t.Setenv("API_DOCS_ENABLED", "true")
+	if !v.GetBool(config.KeyAPIDocsEnabled) {
+		t.Error("API_DOCS_ENABLED=true in env did not enable docs")
+	}
+}

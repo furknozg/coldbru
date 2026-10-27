@@ -60,6 +60,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-054 | Outbox ve processed_event platform migration setinde; relay LISTEN/NOTIFY + 1 sn poll; tüketicide NakWithDelay | Gönderim | Kabul edildi; tüketici backoff parametreleri yerini aldı → D-055 |
 | D-055 | Olay tüketicisi backoff'u: 1 sn'den üstel, 15 dk tavan, 20 deneme | Gönderim | Kabul edildi |
 | D-056 | Servis konteynerleri: platforma bağlı iskelet main'ler, distroless nonroot imaj, customer dışında host portları, postgres ve nats-init beklenir | Takip ve altyapı | Kabul edildi |
+| D-057 | Geliştirmede API belgeleri: API_DOCS_ENABLED ile servis başına Scalar (/docs) ve /openapi.json; swag v2 go tool, spec commit edilir | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -849,6 +850,26 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - `depends_on` olmadan servisin kendisinin yeniden denemesi — reddedildi.
 - **Sonuçlar / bedel:** İmajda kabuk yok; hata ayıklama için `docker compose exec` ile kabuk açılamaz. Statik binary cgo gerektiren kütüphane kullanamaz (pgx ve nats.go saf Go). `depends_on` yalnız ilk açılışı sıralar; bağımlılık sonradan düşerse `/readyz` 503 döner.
 - **Doğrulama:** 2026-10-27'de (T-013): `docker compose up` ile beş servis, postgres ve nats `healthy`, `nats-init` 0 ile çıktı. 8081–8083 `/readyz` postgres ve nats için `ok`, 8084 `ok`; customer host'tan erişilemiyor, ağ içinde sağlıklı. NATS durdurulunca proposal `/readyz` 503 döndü, `/healthz` 200 kaldı; NATS dönünce 2 saniyede 200'e döndü. `proposal_db`'de platform tabloları `proposal` şemasında. Boş `SERVICE` ile build açık hata mesajıyla duruyor. `coldbru-proposal:dev` 27,4 MB. `internal/platform/{app,natsconn}` testleri `make test`'te geçti.
+
+## D-057: Geliştirmede API belgeleri: API_DOCS_ENABLED ile servis başına Scalar (/docs) ve /openapi.json; swag v2 go tool, spec commit edilir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kullanıcı geliştirme ortamında Scalar API referans arayüzünün, ayarlanabilir bir ortam değişkeniyle açılmasını istedi (T-013'ten sonra). D-016 REST sözleşmesinin Go annotation'larından swag v2 ile OpenAPI 3 olarak üretilmesini seçmişti; çalıştırma yöntemi açıktı ve henüz spec yoktu. İş yeni görev T-042 olarak eklendi.
+- **Karar:**
+  - Scalar arayüzü `github.com/bdpiprava/scalar-go` (v0.13.0, MIT) ile üretilir.
+  - `API_DOCS_ENABLED` kodda varsayılan `false`; compose geliştirme yığını `${API_DOCS_ENABLED:-true}` verir. Kapalıyken yollar hiç kaydedilmez.
+  - Açıkken spec'i olan her HTTP servisi `GET /docs` (Scalar) ve `GET /openapi.json` (binary'ye gömülü spec) sunar. Spec'i olmayan servis bu yolları açmaz; customer GraphQL olduğu için kapsam dışıdır. nginx gelince (T-034) belgeler onun üzerinden de erişilir.
+  - swag `v2.0.0-rc6` `go.mod`'da `tool` olarak sabitlenir; `make generate` servis başına `go tool swag init` çalıştırır; üretilen spec commit edilir ve `go:embed` ile binary'ye girer (D-051 deseni). İlk spec platform uç noktalarını (`/healthz`, `/readyz`) belgeler.
+- **Alternatifler:**
+  - Scalar'ı sabit sürümle CDN'den yükleyen kendi HTML sayfamız veya standalone bundle'ı gömmek — reddedildi: kullanıcı Go paketini seçti.
+  - `APP_ENV=development` veya her yerde kapalı varsayılan — reddedildi.
+  - nginx'te tek birleşik belge sayfası — reddedildi: servis başına belge.
+  - Yalnız mekanizma veya T-025'e bırakmak — reddedildi: gerçek bir spec'le şimdi doğrulansın.
+  - swag'ı Docker build'de çalıştırıp spec'i commit etmemek — reddedildi.
+- **Sonuçlar / bedel:** scalar-go az bilinen bir bağımlılıktır ve Scalar'ın JS'ini tarayıcıda CDN'den yükler; internet yoksa arayüz açılmaz, `/openapi.json` yine çalışır. swag v2 hâlâ sürüm adayı (D-016). Annotation'lar değişince `make generate` çalıştırılmalı; unutulursa spec eski kalır.
+- **Uygulama notu:** swag v2 yalnız OpenAPI 3.1 çıktısı verir (`--v3.1`) ve dosya adı `swagger.json`'dur; servis `/openapi.json` yolunda sunar. scalar-go yalnız mutlak spec adresi kabul ettiği için sayfa bir yer tutucu adresle üretilip göreli `openapi.json`'a çevrilir; yer tutucu bulunamazsa servis açılmaz. Scalar JS'i `scalargo.WithCDN` ile `@scalar/api-reference@1.74.0`'a sabitlendi.
+- **Doğrulama:** 2026-10-27'de (T-042): `make generate` iki kez çalıştırıldığında spec'ler ve ağaç değişmedi; dört serviste `/docs` ve `/openapi.json` 200, spec `openapi: 3.1.0` ve yalnız `/healthz`, `/readyz` yollarını içeriyor; `API_DOCS_ENABLED=false` ile proposal'da ikisi 404, `/readyz` 200; yeniden açınca 200. `internal/platform/apidocs` ve spec testleri `make test`'te geçti.
 
 ---
 

@@ -42,44 +42,71 @@ func (r *Registry) Add(name string, c Check) {
 	r.checks[name] = c
 }
 
-type checkResult struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
+// CheckResult is the outcome of one readiness check.
+type CheckResult struct {
+	// Status is "ok" or "fail".
+	Status string `json:"status" example:"ok" enums:"ok,fail"`
+	// Error is the failure reason; empty when the check passed.
+	Error string `json:"error,omitempty" example:"context deadline exceeded"`
 }
 
-type report struct {
-	Status string                 `json:"status"`
-	Checks map[string]checkResult `json:"checks,omitempty"`
+// Report is the JSON body of /healthz and /readyz.
+type Report struct {
+	// Status is "ok" when every check passed, otherwise "fail".
+	Status string `json:"status" example:"ok" enums:"ok,fail"`
+	// Checks maps dependency name to its result; omitted when no check is registered.
+	Checks map[string]CheckResult `json:"checks,omitempty"`
 }
 
 // LivenessHandler always answers 200 {"status":"ok"} and checks no dependency.
 func LivenessHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, report{Status: statusOK})
-	})
+	return http.HandlerFunc(liveness)
+}
+
+// liveness godoc
+//
+//	@Summary		Liveness probe
+//	@Description	Answers 200 while the process is running. Checks no dependency.
+//	@Tags			platform
+//	@Produce		json
+//	@Success		200	{object}	health.Report
+//	@Router			/healthz [get]
+func liveness(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, Report{Status: statusOK})
 }
 
 // ReadinessHandler runs every registered check concurrently, each bounded by
 // the registry timeout. It answers 200 when all pass (or none are registered)
 // and 503 otherwise.
 func (r *Registry) ReadinessHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		rep := r.run(req.Context())
-		code := http.StatusOK
-		if rep.Status != statusOK {
-			code = http.StatusServiceUnavailable
-		}
-		writeJSON(w, code, rep)
-	})
+	return http.HandlerFunc(r.readiness)
 }
 
-func (r *Registry) run(ctx context.Context) report {
+// readiness godoc
+//
+//	@Summary		Readiness probe
+//	@Description	Runs every dependency check (for example postgres, nats) and answers 200 when all pass, 503 otherwise.
+//	@Tags			platform
+//	@Produce		json
+//	@Success		200	{object}	health.Report
+//	@Failure		503	{object}	health.Report
+//	@Router			/readyz [get]
+func (r *Registry) readiness(w http.ResponseWriter, req *http.Request) {
+	rep := r.run(req.Context())
+	code := http.StatusOK
+	if rep.Status != statusOK {
+		code = http.StatusServiceUnavailable
+	}
+	writeJSON(w, code, rep)
+}
+
+func (r *Registry) run(ctx context.Context) Report {
 	r.mu.RLock()
 	checks := make(map[string]Check, len(r.checks))
 	maps.Copy(checks, r.checks)
 	r.mu.RUnlock()
 
-	rep := report{Status: statusOK, Checks: make(map[string]checkResult, len(checks))}
+	rep := Report{Status: statusOK, Checks: make(map[string]CheckResult, len(checks))}
 	if len(checks) == 0 {
 		rep.Checks = nil
 		return rep
@@ -110,7 +137,7 @@ func (r *Registry) run(ctx context.Context) report {
 
 // runCheck runs c in its own goroutine so a check that ignores its context
 // cannot hold the probe past the timeout.
-func runCheck(ctx context.Context, timeout time.Duration, c Check) checkResult {
+func runCheck(ctx context.Context, timeout time.Duration, c Check) CheckResult {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -120,11 +147,11 @@ func runCheck(ctx context.Context, timeout time.Duration, c Check) checkResult {
 	select {
 	case err := <-done:
 		if err != nil {
-			return checkResult{Status: statusFail, Error: err.Error()}
+			return CheckResult{Status: statusFail, Error: err.Error()}
 		}
-		return checkResult{Status: statusOK}
+		return CheckResult{Status: statusOK}
 	case <-ctx.Done():
-		return checkResult{Status: statusFail, Error: ctx.Err().Error()}
+		return CheckResult{Status: statusFail, Error: ctx.Err().Error()}
 	}
 }
 

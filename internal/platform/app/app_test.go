@@ -1,10 +1,19 @@
 package app
 
 import (
+	"bytes"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/spf13/viper"
+
+	"github.com/furknozg/coldbru/internal/platform/config"
 )
 
 func TestPortOf(t *testing.T) {
@@ -89,5 +98,47 @@ func TestRun_PlatformMigrationsRequireDatabase(t *testing.T) {
 	err := Run(t.Context(), Options{Name: "x", PlatformMigrations: true}, nil, nil)
 	if err == nil {
 		t.Fatal("Run() error = nil, want error")
+	}
+}
+
+func TestMountAPIDocs(t *testing.T) {
+	t.Parallel()
+	const spec = `{"openapi":"3.1.0","info":{"title":"T","version":"1"},"paths":{}}`
+	tests := []struct {
+		name    string
+		enabled bool
+		spec    string
+		want    int
+		wantLog string
+	}{
+		{name: "enabled with spec", enabled: true, spec: spec, want: http.StatusOK, wantLog: "enabled=true"},
+		{name: "disabled with spec", enabled: false, spec: spec, want: http.StatusNotFound, wantLog: "enabled=false"},
+		{name: "enabled without spec", enabled: true, spec: "", want: http.StatusNotFound, wantLog: "enabled=false"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := viper.New()
+			v.Set(config.KeyAPIDocsEnabled, tt.enabled)
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, nil))
+			r := chi.NewRouter()
+
+			err := mountAPIDocs(r, v, Options{Name: "svc", OpenAPISpec: []byte(tt.spec)}, logger)
+			if err != nil {
+				t.Fatalf("mountAPIDocs() error = %v", err)
+			}
+			for _, p := range []string{"/docs", "/openapi.json"} {
+				rec := httptest.NewRecorder()
+				r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
+				if rec.Code != tt.want {
+					t.Errorf("GET %s = %d, want %d", p, rec.Code, tt.want)
+				}
+				_, _ = io.Copy(io.Discard, rec.Body)
+			}
+			if !strings.Contains(logs.String(), tt.wantLog) {
+				t.Errorf("log %q does not contain %q", logs.String(), tt.wantLog)
+			}
+		})
 	}
 }

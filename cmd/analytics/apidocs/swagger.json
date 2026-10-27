@@ -1,0 +1,115 @@
+{
+    "components": {
+        "schemas": {
+            "health.CheckResult": {
+                "properties": {
+                    "error": {
+                        "description": "Error is the failure reason; empty when the check passed.",
+                        "example": "context deadline exceeded",
+                        "type": "string"
+                    },
+                    "status": {
+                        "description": "Status is \"ok\" or \"fail\".",
+                        "enum": [
+                            "ok",
+                            "fail"
+                        ],
+                        "example": "ok",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "health.Report": {
+                "properties": {
+                    "checks": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/health.CheckResult"
+                        },
+                        "description": "Checks maps dependency name to its result; omitted when no check is registered.",
+                        "type": "object"
+                    },
+                    "status": {
+                        "description": "Status is \"ok\" when every check passed, otherwise \"fail\".",
+                        "enum": [
+                            "ok",
+                            "fail"
+                        ],
+                        "example": "ok",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "info": {
+        "description": "REST API of the analytics service: campaign delivery analytics.",
+        "title": "Coldbru Analytics API",
+        "version": "0.1.0"
+    },
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
+    "paths": {
+        "/healthz": {
+            "get": {
+                "description": "Answers 200 while the process is running. Checks no dependency.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "summary": "Liveness probe",
+                "tags": [
+                    "platform"
+                ]
+            }
+        },
+        "/readyz": {
+            "get": {
+                "description": "Runs every dependency check (for example postgres, nats) and answers 200 when all pass, 503 otherwise.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
+                    }
+                },
+                "summary": "Readiness probe",
+                "tags": [
+                    "platform"
+                ]
+            }
+        }
+    },
+    "openapi": "3.1.0",
+    "servers": [
+        {
+            "url": "/"
+        }
+    ]
+}

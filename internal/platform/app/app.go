@@ -22,6 +22,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/spf13/viper"
 
+	"github.com/furknozg/coldbru/internal/platform/apidocs"
 	"github.com/furknozg/coldbru/internal/platform/config"
 	"github.com/furknozg/coldbru/internal/platform/db"
 	"github.com/furknozg/coldbru/internal/platform/health"
@@ -44,6 +45,10 @@ type Options struct {
 	PlatformMigrations bool
 	// NATS connects to NATS_URL and registers a "nats" readiness check.
 	NATS bool
+	// OpenAPISpec is the service's embedded OpenAPI JSON. With API_DOCS_ENABLED
+	// true and a non-empty spec, GET /docs (Scalar) and GET /openapi.json are
+	// mounted; otherwise neither is (D-057).
+	OpenAPISpec []byte
 	// Setup, if set, runs after the dependencies are ready and before the HTTP
 	// server starts. Services mount routes and start workers here; workers must
 	// stop when ctx is cancelled. A Setup error aborts startup.
@@ -163,6 +168,10 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 		reg.Add("nats", natsconn.Check(nc))
 	}
 
+	if err := mountAPIDocs(d.Router, v, opts, logger); err != nil {
+		return err
+	}
+
 	if opts.Setup != nil {
 		if err := opts.Setup(ctx, d); err != nil {
 			return fmt.Errorf("setup: %w", err)
@@ -171,6 +180,19 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 
 	srv := httpserver.NewServer(v.GetString(config.KeyHTTPAddr), d.Router)
 	return httpserver.Run(ctx, srv, shutdownTimeout, logger)
+}
+
+// mountAPIDocs mounts /docs and /openapi.json when API_DOCS_ENABLED is true and
+// the service embeds a spec, and logs whether API docs are enabled (D-057).
+func mountAPIDocs(r chi.Router, v *viper.Viper, opts Options, logger *slog.Logger) error {
+	enabled := v.GetBool(config.KeyAPIDocsEnabled) && len(opts.OpenAPISpec) > 0
+	if enabled {
+		if err := apidocs.Mount(r, opts.OpenAPISpec, "Coldbru "+opts.Name+" API"); err != nil {
+			return fmt.Errorf("mount api docs: %w", err)
+		}
+	}
+	logger.Info("api docs", "service", opts.Name, "enabled", enabled)
+	return nil
 }
 
 // drain flushes pending NATS messages and closes the connection, waiting at

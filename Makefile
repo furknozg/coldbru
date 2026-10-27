@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -31,8 +31,24 @@ coverage:
 	go tool cover -html=coverage/go.out -o coverage/go.html
 	pnpm -C web test:unit --run --coverage
 
-# Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051).
-generate:
+# API_SPEC_SERVICES are the services that embed an OpenAPI spec (D-057); customer is GraphQL and has none.
+API_SPEC_SERVICES := proposal notification analytics mockprovider
+
+# Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051), then regenerates the
+# OpenAPI 3.1 spec of each service in API_SPEC_SERVICES into cmd/<svc>/apidocs/swagger.json (D-057).
+generate: generate-sqlc generate-openapi
+
+generate-sqlc:
 	@dirs=$$(find internal -name sqlc.yaml -exec dirname {} \;); \
 	if [ -z "$$dirs" ]; then echo "generate: no sqlc.yaml found, nothing to do"; exit 0; fi; \
 	for d in $$dirs; do echo "sqlc generate: $$d"; (cd "$$d" && go tool sqlc generate) || exit 1; done
+
+# swag parses the service main package plus internal/platform/health (the shared platform endpoints).
+# Add a service-specific handler package to --dir when it has annotations.
+generate-openapi:
+	@for s in $(API_SPEC_SERVICES); do \
+	  echo "swag init: cmd/$$s"; \
+	  mkdir -p cmd/$$s/apidocs; \
+	  go tool swag init --quiet -g main.go -d cmd/$$s,internal/platform/health --parseInternal --v3.1 \
+	    --outputTypes json -o cmd/$$s/apidocs || exit 1; \
+	done
