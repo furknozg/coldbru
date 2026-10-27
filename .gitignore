@@ -3,3 +3,4 @@
 .env
 .codegraph/
 .DS_Store
+coverage/

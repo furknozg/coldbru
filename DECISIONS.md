@@ -54,6 +54,8 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-048 | Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder | Takip ve altyapı | Kabul edildi |
 | D-049 | NATS: nats:2.15-alpine, dosya depolama, stream'leri nats-box init konteyneri kurar | Gönderim | Kabul edildi |
 | D-050 | Platform: /healthz + /readyz, ortam + isteğe bağlı .env, slog JSON istek logu, Prometheus /metrics | Takip ve altyapı | Kabul edildi |
+| D-051 | sqlc go tool ile, üretilen kod commit edilir; entegrasyon testleri integration tag'iyle make test içinde; migration'lar sıralı numaralı | Test ve kapsam | Kabul edildi |
+| D-052 | Unit test coverage yerel araçlarla raporlanır (go cover, vitest v8); eşik yok | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -341,7 +343,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Atlas + pgx — reddedildi: ek araç ve öğrenme maliyeti.
   - Gömülü düz SQL ve kendi koşucumuz — reddedildi: her şey elle.
 - **Sonuçlar / bedel:** `sqlc` bir kod üretim adımı ekler (D-007'deki gqlgen gibi); sürümü sabitlenmeli. Customer'daki dinamik segment SQL'i (D-007) `sqlc`'ye uymaz; derleyici parametreli sorguyu doğrudan `pgx` ile kurar.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-27'de (T-011): `internal/platform/db` (pgx/v5 v5.11.0) ve `internal/platform/migrate` (goose v3.29.0, gömülü `fs.FS`, Postgres session locker) entegrasyon testleriyle doğrulandı. sqlc henüz bir servis sorgusunda kullanılmadı.
 
 ## D-021: Tek Go modülü; cmd/ altında servis başına binary, internal/ altında kod
 
@@ -750,6 +752,37 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Prometheus'u servis görevlerine bırakmak veya OpenTelemetry — reddedildi: metrik uç noktası erkenden ve az bağımlılıkla gelsin.
 - **Sonuçlar / bedel:** JSON loglar terminalde okunması zor. `/readyz`'in 503'ü yük dengeleyiciyi o örnekten uzaklaştırır; DB kısa süre kesilse süreç ayakta kalır. Önek olmadan ortam değişkenleri servisler arasında aynı adları kullanır; her servis kendi değerini compose'da alır. Route şablonu etiketi kardinaliteyi düşük tutar.
 - **Doğrulama:** 2026-10-27'de (T-010): `internal/platform/{config,logging,health,metrics,httpserver}` birim testleri `go test -race` ile geçti; `go vet` temiz. Testler: ortamın `.env`'i ve varsayılanı ezmesi, eksik `.env`'in hata olmaması, `Require`'ın tüm eksikleri raporlaması, `/readyz`'in başarısız ve zaman aşımına uğrayan kontrolde 503 dönmesi, metriklerde `route` etiketinin chi şablonu olması, panik yapan isteğin 500 ile loglanıp sayılması, bağlam iptalinde sunucunun temiz kapanması. Henüz bir servis bu paketleri kullanmıyor.
+
+## D-051: sqlc go tool ile, üretilen kod commit edilir; entegrasyon testleri integration tag'iyle make test içinde; migration'lar sıralı numaralı
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Test ve kapsam
+- **Bağlam:** D-020 goose, sqlc ve pgx/v5'i, D-025 testcontainers-go ile entegrasyon testlerini seçti. sqlc'nin nasıl çalıştırılacağı, üretilen kodun durumu, entegrasyon testlerinin `make test`'teki yeri ve migration numaralandırması açıktı (T-011).
+- **Karar:**
+  - sqlc v1.31.1 `go.mod`'da `tool` olarak sabitlenir ve `go tool sqlc generate` ile çalışır. `make generate` hedefi eklenir. Üretilen kod commit edilir.
+  - Entegrasyon testleri `//go:build integration` ile ayrılır. `make test` birim ve entegrasyon testlerini birlikte çalıştırır (Docker gerekir); `make test-unit` yalnız birim testleri çalıştırır.
+  - goose migration dosyaları sıralı numaralıdır: `00001_<ad>.sql`.
+- **Alternatifler:**
+  - sqlc Docker imajıyla — reddedildi: Docker'a bağımlı kod üretimi.
+  - Üretilen kodu commit etmeyip build'de üretmek — reddedildi: derleme ve Dockerfile sqlc'ye bağımlı olur.
+  - Entegrasyonu ayrı `make test-integration` hedefine almak veya tag olmadan Docker yoksa atlamak — reddedildi: brief'in `make test` beklentisi tek komutta karşılansın, atlanan testler gözden kaçmasın.
+  - Zaman damgalı migration adları — reddedildi.
+- **Sonuçlar / bedel:** sqlc'nin Postgres ayrıştırıcısı cgo ister; ilk `go tool sqlc` derlemesi yavaştır ve bir C derleyicisi gerekir. `make test` Docker olmadan başarısız olur. Paralel dallarda aynı migration numarası çakışabilir; merge'de düzeltilir.
+- **Doğrulama:** 2026-10-27'de (T-011): `make test` birim ve entegrasyon testlerini birlikte çalıştırdı; testcontainers ile `postgres:18-alpine` üzerinde 7 test geçti (`TestUp_AppliesMigrations`, `TestUp_Idempotent`, `TestUp_UsesSearchPathSchema`, `TestUp_ConcurrentCallers`, `TestOpenAndCheck` …). `go tool sqlc version` v1.31.1 basıyor; `make generate` henüz `sqlc.yaml` olmadığı için hiçbir şey yapmıyor, döngüsü sınanmadı.
+
+## D-052: Unit test coverage yerel araçlarla raporlanır (go cover, vitest v8); eşik yok
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Test ve kapsam
+- **Bağlam:** Kullanıcı unit test coverage'ının bir araçla takip edilmesini istedi (T-011 sırasında).
+- **Karar:** Go için `go test -coverprofile` ve `go tool cover` (fonksiyon özeti + HTML), web için `@vitest/coverage-v8`. `make coverage` raporları kökteki `coverage/` dizinine yazar (gitignore) ve toplamları basar. Coverage yalnız raporlanır, alt sınır zorlanmaz. Kurulum T-011 içinde yapılır.
+- **Alternatifler:**
+  - Codecov / Coveralls — reddedildi: uzak repo ve CI gerekir, ikisi de henüz yok.
+  - Yerel + SonarQube — reddedildi: ağır konteyner ve kurulum.
+  - Go için %70 veya paket başına %80 alt sınır — reddedildi: kod tabanı yeni başlıyor; eşik servisler yazıldıkça ayrıca kararlaştırılabilir.
+  - Ayrı bir görev — reddedildi: Makefile aynı görevde bir kez düzenlensin.
+- **Sonuçlar / bedel:** Geçmiş ve trend yok; düşüş yalnız raporda görülür. Üretilen kod (sqlc, gqlgen) geldiğinde rapordan dışlanması gerekebilir.
+- **Doğrulama:** 2026-10-27'de (T-011): `make coverage` Go unit toplamını %80,2 olarak bastı, `coverage/go.out` ve `coverage/go.html` yazıldı; web özeti satırlarda %33,3 (tek kabuk testi). `migrate` paketi yalnız entegrasyon testine sahip olduğu için unit coverage'da %0 görünür.
 
 ---
 
