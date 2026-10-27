@@ -166,3 +166,7 @@ Bu üç kontrolden biri başarısızsa görev bitmiş sayılmaz.
 6. Customer veritabanı haricinde, herhangi bir migration uygulanacaksa, mevcut migration managerlar ile uygulanmalı.
 7. Migration managerı ile uygulanan değişiklikler karar kurallarına tabiidir. endeks,şema değişikliği,stored procedure,listen/notify, RLS uygulanması kararları vb. kullanıcı onayı verilmelidir.
 8. Kodlama görevlerinde /caveman skilli ile subagent kullanılır (skill agent cevaplarını küçültür, yazımları değil), subagent modeli birden fazla dosyayı ilgilendiriyor ise sonnet-5 kullanılır aşmıyorsa haiku, karar çıkarsa alt ajan durur, soruyu ana oturuma döndürür.
+
+# Task Takibi ve öngörü (Zorunlu):
+1. Tasklar /task skilli tetiklenerek incelenebilir, bu skill tetiklenmeden tasks.csv ile işlem yapılmamalı
+2. Task kullanıcı onayı alınmadan csv de done olarak işaretlenmez
