@@ -165,3 +165,4 @@ Bu üç kontrolden biri başarısızsa görev bitmiş sayılmaz.
 5. Olmasa bile branch kontrolü varmış gibi davranmak, bir değişiklik commit edilecekse checkout -b çalıştırıp commitlemek zorunludur. Merge için kullanıcı onayı istenebilir.
 6. Customer veritabanı haricinde, herhangi bir migration uygulanacaksa, mevcut migration managerlar ile uygulanmalı.
 7. Migration managerı ile uygulanan değişiklikler karar kurallarına tabiidir. endeks,şema değişikliği,stored procedure,listen/notify, RLS uygulanması kararları vb. kullanıcı onayı verilmelidir.
+8. Kodlama görevlerinde /caveman skilli ile subagent kullanılır (skill agent cevaplarını küçültür, yazımları değil), subagent modeli birden fazla dosyayı ilgilendiriyor ise sonnet-5 kullanılır aşmıyorsa haiku, karar çıkarsa alt ajan durur, soruyu ana oturuma döndürür.
