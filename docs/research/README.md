@@ -23,6 +23,10 @@ Kullanıcı bu araştırmadan sonra aşağıdakileri karara bağladı. Araştır
 | [D-010](../../DECISIONS.md#d-010-kanal-planı-ayrı-onay-adımı-snapshot-kişi-başına-atanmış-kanalı-taşır): kanal planı ayrı onay adımı, kişi başına atanmış kanal | Araştırmada yoktu; THOUGHTS §5 için tasarlandı. |
 | [D-011](../../DECISIONS.md#d-011-gönderim-anında-graphql-ile-batch-izin-kontrolü-circuit-breaker-ile-fail-closed): gönderimde GraphQL ile batch izin kontrolü, circuit breaker, `updateConsent` mutation | Araştırma 1'in "izin gönderim anında kontrol edilir" önerisi GraphQL üzerinden geri geldi; `consent.changed` olayları yok. |
 | [D-009](../../DECISIONS.md#d-009-içerik-ve-zamanlama-alıcının-diline-göre-tüm-diller-onaylanmadan-teklif-onaylanmaz): dil başına teklif ve zamanlama, tüm diller onaylanmadan onay yok | Araştırmada yoktu; teklif durum makinesi (Araştırma 3 §9) varyant düzeyine iner. |
+| [D-017](../../DECISIONS.md#d-017-seed-zaman-damgaları-yüklemede-bugüne-kaydırılır): seed zaman damgaları yüklemede bugüne kaydırılır | Araştırmada yoktu. |
+| [D-018](../../DECISIONS.md#d-018-dört-servis-ve-mock-provider-her-biri-ayrı-konteyner): dört servis + mock provider, Analytics dahil | Kesme sırasındaki "Analytics tüketicisi → ayrı analytics DB" adımları geçersiz; Analytics baştan kurulur. |
+| [D-019](../../DECISIONS.md#d-019-proposal_db-notification_db-analytics_db-rol-ve-boş-db-initdbde-açılır): `proposal_db`, `notification_db`, `analytics_db` | Uzlaştırma 5'teki diyagram adları seçildi; tasarım belgesindeki `campaign_db` / `delivery_db` geçersiz. |
+| [D-024](../../DECISIONS.md#d-024-nats-düzeni-dört-stream-teslimat-başına-ileti-kanal-başına-100s-limiter-nak-ile-retry): dört NATS stream'i, teslimat başına `SEND` iletisi, kanal başına `x/time/rate` | River işleri ve River üzerinden ölçülen kuyruk derinliği geçersiz; retry NATS `NakWithDelay` ve `MaxDeliver` ile. |
 
 ## Diyagramdaki "Technical Decisions" sorularına cevaplar
 
@@ -102,10 +106,10 @@ Diyagramdan farklar: Customer Service'te GraphQL isteğe bağlı; Proposal → C
 | İş kuyruğu ve zamanlama | River, sahibi Notification | **Karar: D-006** (NATS; sahibi Notification) |
 | İçerik dili | — | **Karar: D-009** |
 | Canlı durum | SSE (04 §3) | **Karar: D-013** (SSE; istek/yanıt REST) |
-| Model | Sonnet 5.5 (+ Haiku 5.5 ön eleme) (03 §1) | Açık |
-| SMS uzunluk politikası | En kötü durumda 160 karakter + segment/maliyet gösterimi (03 §5) | Açık |
+| Model | Sonnet 5.5 (+ Haiku 5.5 ön eleme) (03 §1) | **Karar: D-026**; çıktı yöntemi D-027 |
+| SMS uzunluk politikası | En kötü durumda 160 karakter + segment/maliyet gösterimi (03 §5) | **Karar: D-028** |
 | HTML email | Yuvalı şablon (03 §10) | Açık |
 | Bütçe anlamı | Kampanya harcama tavanı + ajan token tavanı (03 §9) | Açık |
 | LLM kataloğundaki hassas alanlar | `sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*` dahil mi? (02) | Açık |
-| Migration aracı | goose + sqlc + pgx (04 §1) | Açık |
+| Migration aracı | goose + sqlc + pgx (04 §1) | **Karar: D-020** |
 | Seed ölçeği | `STUB_SCALE=3` (04 §5) | Açık |

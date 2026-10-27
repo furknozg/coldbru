@@ -1,6 +1,6 @@
 # Veritabanı mimarisi
 
-Smart Campaign Composer için veri katmanının tasarımı. Kararların gerekçeleri ve bedelleri [DECISIONS.md](../DECISIONS.md) içindedir (D-003 … D-005); bu belge yapının kendisini anlatır.
+Smart Campaign Composer için veri katmanının tasarımı. Kararların gerekçeleri ve bedelleri [DECISIONS.md](../DECISIONS.md) içindedir (D-003 … D-005, D-017, D-019, D-020); bu belge yapının kendisini anlatır.
 
 ## 1. Amaç ve kapsam
 
@@ -21,23 +21,27 @@ flowchart LR
     subgraph pg["postgres servisi (tek konteyner, tek volume)"]
         direction TB
         cdb[("customer_db<br/>sahibi: customer_svc")]
-        kdb[("campaign_db<br/>planlandı")]:::planned
-        ddb[("delivery_db<br/>planlandı")]:::planned
+        pdb[("proposal_db<br/>planlandı")]:::planned
+        ndb[("notification_db<br/>planlandı")]:::planned
+        adb[("analytics_db<br/>planlandı")]:::planned
     end
     cs["customer service"] --> cdb
-    ks["campaign service"]:::planned -. "customer service API'si" .-> cs
-    ks -.-> kdb
-    ws["delivery worker"]:::planned -.-> ddb
+    ps["proposal service"]:::planned -. "GraphQL" .-> cs
+    ps -.-> pdb
+    ns["notification service"]:::planned -. "GraphQL izin kontrolü" .-> cs
+    ns -.-> ndb
+    as["analytics service"]:::planned -.-> adb
     classDef planned stroke-dasharray: 4 3,opacity:0.6
 ```
 
 | Veritabanı | Sahip rol | Servis | Durum |
 |---|---|---|---|
 | `customer_db` | `customer_svc` | customer service | **Bu aşamada kuruldu** |
-| `campaign_db` | `campaign_svc` | campaign service (brief, segment kuralı, içerik, onay) | Planlandı, ad geçici |
-| `delivery_db` | `delivery_svc` | delivery worker (kuyruk, idempotency, retry) | Planlandı, kuyruk kararına bağlı |
+| `proposal_db` | `proposal_svc` | proposal service (kampanya, teklif adımları ve varyantları, LLM çağrıları, outbox; D-022) | Planlandı (D-019) |
+| `notification_db` | `notification_svc` | notification service (teslimatlar, idempotency, outbox; D-023) | Planlandı (D-019) |
+| `analytics_db` | `analytics_svc` | analytics service (olay tüketicisi; D-018) | Planlandı (D-019) |
 
-Planlanan satırlar karar değildir; kuyruk ve servis sınırları kararlaştırıldıkça DECISIONS.md'ye işlenir.
+Planlanan veritabanlarının rolü ve boş DB'si initdb'de `customer_db` ile aynı desenle açılacak; tabloları her servisin goose migration'ları kurar (D-019, D-020). Henüz uygulanmadı.
 
 ## 3. İzolasyon modeli
 
@@ -46,7 +50,7 @@ Tek Postgres kümesi içinde servis sınırı veritabanı ve rol düzeyinde zorl
 - Her veritabanının sahibi yalnızca o servisin rolüdür (`CREATE DATABASE customer_db OWNER customer_svc`).
 - `REVOKE ALL ON DATABASE customer_db FROM PUBLIC` ile başka roller bağlanamaz bile.
 - Rol, `search_path`'i `dwh, public` olarak ayarlanmış şekilde gelir (`ALTER ROLE … IN DATABASE`).
-- Postgres veritabanları arası `JOIN` desteklemez. Bu demoda bir kısıt değil, istenen özelliktir: başka bir servis müşteri verisine **customer service üzerinden** ulaşır, doğrudan bağlanmaz. Bu etkileşimin biçimi (REST, gRPC, olay) henüz kararlaştırılmadı.
+- Postgres veritabanları arası `JOIN` desteklemez. Bu demoda bir kısıt değil, istenen özelliktir: başka bir servis müşteri verisine **customer service üzerinden** ulaşır, doğrudan bağlanmaz. Bu etkileşim senkron GraphQL çağrılarıyla olur (D-007, D-011); asenkron olaylar NATS üzerinden gider (D-006).
 - `postgres` süper kullanıcısı yalnızca kurulum (init) için kullanılır; uygulamalar ona bağlanmaz.
 
 Bedel: tüm servisler aynı süreç, bellek ve diski paylaşır; bir servisin ağır sorgusu diğerlerini etkiler. Gerçek ortamda her DB ayrı kümeye taşınabilir, bağlantı dizesi dışında kod değişmez.
@@ -103,7 +107,7 @@ WHERE c.city = 'İstanbul'
 -- beklenen: 33 satır (üreticinin bastığı huniyle aynı)
 ```
 
-Veri `AS_OF = 2026-10-26 12:00 UTC` anına göre üretildiği için örnek sorgu `now()` yerine bu sabiti kullanır.
+Veri `AS_OF = 2026-10-26 12:00 UTC` anına göre üretildiği için örnek sorgu `now()` yerine bu sabiti kullanır. D-017 ile seed tüm zaman kolonlarını yüklemede bugüne kaydıracak; uygulandığında bu sorgu `now()` kullanacak. Henüz uygulanmadı.
 
 ### `dim_customer` kolonları
 
@@ -178,9 +182,7 @@ docker compose exec postgres psql -U customer_svc -d customer_db
 
 ## 7. Açık konular
 
-- Diğer servis veritabanları ve sahip rolleri (kuyruk ve servis sınırı kararlarına bağlı). THOUGHTS.md diyagramı Proposal / Notification / Analytic DB adlarını kullanıyor; seçenekler [research/README.md](research/README.md).
-- customer service'in diğer servislere veri sunma biçimi.
-- Migration aracı: init scriptleri sadece ilk kurulum içindir; şema evrimi için Go tarafında bir araç seçilecek.
+- Diğer servis veritabanları, servisler arası erişim ve migration aracı karara bağlandı (D-011, D-019, D-020); kalan ayrıntılar DECISIONS.md'nin açık konularında.
 - 1000 kullanıcının "birkaç bin"e çıkarılması.
 - Türkçe büyük/küçük harf duyarsız şehir eşleşmesi (`İstanbul` / `istanbul`): veritabanı varsayılan `en_US.utf8` collation'ı ile oluşturulur, segment doğrulaması şimdilik tam eşleşme varsayar.
   - 2026-10-27 araştırması: Alpine/musl imajında `ILIKE` İ için eşleşiyor, noktasız ı için eşleşmiyor ve bu imaja bağlı. Öneri collation'a dayanmamak; ayrıntı [research/04-data-platform.md](research/04-data-platform.md#4-türkçe-büyükküçük-harf-duyarsız-şehir-eşleşmesi).

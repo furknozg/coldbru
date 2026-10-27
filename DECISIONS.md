@@ -20,6 +20,18 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-014 | Frontend testleri Vitest + Vue Test Utils; uçtan uca tarayıcı testi yok | Test ve kapsam | Kabul edildi |
 | D-015 | Tek nginx konteyneri: Vue statik build'ini sunar ve API gateway'dir | Takip ve altyapı | Kabul edildi |
 | D-016 | REST sözleşmesi Go kodundan swag v2 ile OpenAPI 3; TS tipleri ve istemci spec'ten üretilir | Takip ve altyapı | Kabul edildi |
+| D-017 | Seed zaman damgaları yüklemede bugüne kaydırılır | Mock provider ve seed | Kabul edildi |
+| D-018 | Dört servis ve mock provider, her biri ayrı konteyner | Takip ve altyapı | Kabul edildi |
+| D-019 | proposal_db, notification_db, analytics_db; rol ve boş DB initdb'de açılır | Takip ve altyapı | Kabul edildi |
+| D-020 | Migration ve DB erişimi goose + sqlc + pgx/v5 | Takip ve altyapı | Kabul edildi |
+| D-021 | Tek Go modülü; cmd/ altında servis başına binary, internal/ altında kod | Takip ve altyapı | Kabul edildi |
+| D-022 | Teklif modeli: campaign → proposal_step → proposal_variant | LLM entegrasyonu | Kabul edildi |
+| D-023 | Teslim modeli: UNIQUE(campaign_id, customer_id, channel), durum makinesi, Idempotency-Key | Gönderim | Kabul edildi |
+| D-024 | NATS düzeni: dört stream, teslimat başına ileti, kanal başına 100/s limiter, NAK ile retry | Gönderim | Kabul edildi |
+| D-025 | Backend testleri: birim sahte, entegrasyon testcontainers-go, mock LLM | Test ve kapsam | Kabul edildi |
+| D-026 | Modeller: segment ve metin Sonnet 5.5, enjeksiyon ön elemesi Haiku 5.5 | LLM entegrasyonu | Kabul edildi |
+| D-027 | Yapılandırılmış çıktı: segmentte strict tool döngüsü, metinde native structured outputs | LLM entegrasyonu | Kabul edildi |
+| D-028 | SMS en fazla 160 karakter; kodlama ve segment sayısı gösterilir | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -259,24 +271,190 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** swag v2 hâlâ sürüm adayı; annotation sözdizimi ve çıktısı değişebilir, sürüm `go.mod`'da sabitlenmeli. v2'nin ürettiği OpenAPI 3 dosyasının openapi-typescript ile uyumu iskelette doğrulanacak; sorun çıkarsa D-016 yeniden açılır. Annotation'lar handler'la elle senkron tutulur; yanlış annotation yanlış tip üretir. SSE akışları (D-013) OpenAPI'de tam ifade edilemeyebilir; olay tipleri ayrıca belgelenmeli.
 - **Doğrulama:** Doğrulanmadı — henüz kod yok. Sürümler 2026-10-27'de Go modül proxy'si ve npm registry'den okundu.
 
+## D-017: Seed zaman damgaları yüklemede bugüne kaydırılır
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Mock provider ve seed
+- **Bağlam:** Üretici veriyi `AS_OF = 2026-10-26 12:00 UTC` anına göre üretir (D-001); segment pencereleri gerçek `now()` kullanacak. Kaydırma olmazsa örnek brief kitlesi ("son 30 günde") 2026-11-25 civarında 0'a düşer.
+- **Karar:** `03_customer_seed.sql`, staging'den `dwh`'ye yazarken tüm zaman kolonlarını ileri kaydırır. `timestamptz` kolonları `now() - TIMESTAMPTZ '2026-10-26 12:00Z'` aralığı kadar, `date` kolonları aynı farkın tam gün sayısı kadar kayar. `date_of_birth` da kayar, böylece `age_years` tutarlı kalır. CSV'ler ve üreticinin md5 determinizmi değişmez; uygulama ve testler gerçek saati kullanır.
+- **Alternatifler:**
+  - Yapılandırılabilir saat (`CLOCK_NOW`) — reddedildi: zamanlama ve gönderim gerçek saatle çalışmalı, iki saat kavramı oluşur.
+  - Build'de `AS_OF=bugün` ile yeniden üretmek — reddedildi: CSV'ler her gün değişir, commit edilen veri ve md5 determinizmi bozulur.
+- **Sonuçlar / bedel:** Volume eskidikçe veri yine kayar; demodan önce `docker compose down -v && docker compose up -d` gerekir. DB'deki mutlak tarihler artık CSV'dekilerle aynı değildir; CSV ile DB'yi karşılaştıran kontroller farkı hesaba katmalı. Tasarım belgesindeki örnek sorgu `now()` kullanacak şekilde güncellenmeli (uygulandığında).
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı. Hedef: taze init'ten sonra örnek brief sorgusu `now()` ile `49 → 33 SMS / 33 email` vermeli.
+
+## D-018: Dört servis ve mock provider, her biri ayrı konteyner
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** THOUGHTS.md diyagramı Customer, Proposal, Notification ve Analytics servislerini gösteriyor. Araştırma Analytics'i ilk kesilecekler arasına koymuştu (docs/research/README.md).
+- **Karar:** Customer, Proposal, Notification ve Analytics ayrı Go süreçleri ve ayrı compose servisleridir. Mock SMS/e-posta provider da ayrı bir konteynerdir. Analytics `notification.completed` ve `token.completed` olaylarını NATS'ten tüketir ve kendi veritabanına yazar.
+- **Alternatifler:**
+  - Üç servis + mock, Analytics kesilir — reddedildi: diyagrama tam uyum istendi.
+  - Tek binary, alt komutlar — reddedildi: mikroservis gösterimi zayıflar.
+- **Sonuçlar / bedel:** Bir haftalık yapımda daha fazla iş. Analytics olay sözleşmelerine bağımlıdır ve eventual-consistent'tır. Compose'ta beş uygulama konteyneri, Postgres, NATS ve nginx çalışır. Dashboard'un canlı gönderim durumunu hangi servisten okuyacağı açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-019: proposal_db, notification_db, analytics_db; rol ve boş DB initdb'de açılır
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-003 servis başına veritabanı ve sahip rol getirdi. Tasarım belgesi geçici olarak `campaign_db` / `delivery_db` adlarını kullanıyordu; diyagram Proposal / Notification / Analytic DB diyor.
+- **Karar:** `proposal_db`/`proposal_svc`, `notification_db`/`notification_svc` ve `analytics_db`/`analytics_svc`. Analytics D-018 ile eklendiği için aynı adlandırma desenini alır. Rol ve boş veritabanı initdb'de `01_customer_db.sql` ile aynı desenle açılır: sahip rol, `REVOKE ALL … FROM PUBLIC`, `CONNECT` ve `TEMPORARY`. Parolalar compose ortam değişkenlerinden gelir, `.env.example`'da yalnız dev varsayılanları bulunur. Tablolar her servisin kendi migration'larıyla açılır (D-020). `customer_db`'nin şeması ve seed'i initdb'de kalır (D-005).
+- **Alternatifler:**
+  - Tasarım belgesindeki `campaign_db` / `delivery_db` — reddedildi: diyagramla uyum.
+  - Servisin açılışta süper kullanıcıyla kendi rolünü ve DB'sini açması — reddedildi: servislere süper kullanıcı parolası verilirdi.
+- **Sonuçlar / bedel:** Yeni bir DB eklemek initdb değişikliği ve `down -v` ister, çünkü init yalnız boş volume'da çalışır. İki şema mekanizması yan yana durur: `customer_db` initdb'de, diğerleri migration'da.
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı.
+
+## D-020: Migration ve DB erişimi goose + sqlc + pgx/v5
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-005'teki init scriptleri yalnız ilk kurulum içindir. Yeni servislerin şemaları evrilecek.
+- **Karar:** Her servisin SQL migration'ları `goose` ile yazılır, servis binary'sine `embed` ile gömülür ve servis açılışta kendi DB'sine uygular. Sorgular SQL olarak yazılır, `sqlc` tipli Go kodu üretir; sürücü `pgx/v5`. `customer_db` şimdilik initdb'de kalır.
+- **Alternatifler:**
+  - golang-migrate + pgx — reddedildi: kod üretimi yok, sorgular elle yazılır.
+  - Atlas + pgx — reddedildi: ek araç ve öğrenme maliyeti.
+  - Gömülü düz SQL ve kendi koşucumuz — reddedildi: her şey elle.
+- **Sonuçlar / bedel:** `sqlc` bir kod üretim adımı ekler (D-007'deki gqlgen gibi); sürümü sabitlenmeli. Customer'daki dinamik segment SQL'i (D-007) `sqlc`'ye uymaz; derleyici parametreli sorguyu doğrudan `pgx` ile kurar.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-021: Tek Go modülü; cmd/ altında servis başına binary, internal/ altında kod
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-018 beş binary getiriyor. Kökte `go.mod` var (`github.com/furknozg/coldbru`, D-002).
+- **Karar:** Kök modül korunur. `cmd/{customer,proposal,notification,analytics,mockprovider}/main.go`. Servis kodu `internal/<servis>/` altında; servisin migration'ları ve `sqlc.yaml`'ı o klasörde. Ortak altyapı `internal/platform/` altında (db, nats, outbox, http, config). Tek çok aşamalı Dockerfile, `SERVICE` build arg'ıyla hangi binary'nin derleneceğini seçer.
+- **Alternatifler:**
+  - `go.work` ile servis başına modül — reddedildi: go.mod ve sürüm bakımı artar, kökteki go.mod taşınır.
+  - Tek modül, `services/<servis>/` klasörleri — reddedildi: sınır klasörde görünür ama kazanç yok.
+- **Sonuçlar / bedel:** Go'nun `internal` kuralı aynı modül içinde servisler arası import'u engellemez; sınırı kod incelemesi korur. Tüm servisler aynı bağımlılık sürümlerini paylaşır.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-022: Teklif modeli: campaign → proposal_step → proposal_variant
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-009 ve D-010 adım başına onay, dil-kanal varyantı başına onay ve red, ek bağlam ve geçersiz kılma kuralları getirdi. Durum makinesinin şeması açıktı.
+- **Karar:** `proposal_db`'de:
+  - `campaign`: brief ve kampanyanın genel durumu.
+  - `proposal_step`: adım türü (kitle, kanal planı, metin, zamanlama), sürüm ve durum.
+  - `proposal_variant`: dil, kanal, içerik `jsonb`, durum `draft | approved | rejected | superseded`, red gerekçesi.
+  - Bir adım, tüm varyantları onaylanınca onaylanır (D-009).
+  - `context_note` ve `llm_call` ekleme-yalnız tablolardır.
+  - Geçersiz kılmada (D-010) eski satır `superseded` olur ve yeni sürüm açılır; satır silinmez.
+- **Alternatifler:**
+  - Adım başına JSONB belge — reddedildi: durum kuralları uygulama kodunda kalır, sorgulaması zor.
+  - Olay kaynağı (event sourcing) — reddedildi: kod ve test yükü en fazla.
+- **Sonuçlar / bedel:** Daha fazla tablo ve join; sürümler birikir. `campaign` ve `proposal_step` durum değerleri ve geçişleri, dil ve kanalı olmayan adımların (kitle, kanal planı) varyant biçimi açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-023: Teslim modeli: UNIQUE(campaign_id, customer_id, channel), durum makinesi, Idempotency-Key
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** Brief "aynı mesaj iki kez gitmez" diyor. JetStream en az bir kez teslim eder (D-006); retry ve worker çökmesi aynı işi iki kez işletebilir.
+- **Karar:**
+  - `notification_db.delivery` tablosunda `UNIQUE(campaign_id, customer_id, channel)`; alıcı batch'leri `ON CONFLICT DO NOTHING` ile yazılır.
+  - Durum: `pending → sending (lease) → sent | failed | skipped_no_consent | cancelled`.
+  - Provider'a `Idempotency-Key` = delivery uuid gönderilir.
+  - Tüketici dedup'u: olayı işleyen transaction'da `processed_event` tablosuna ekleme yapılır, aynı olay ikinci kez işlenmez.
+- **Alternatifler:**
+  - Yalnız `Nats-Msg-Id` ve JetStream dedup penceresi — reddedildi: pencere dışı tekrarları ve yeniden başlatmayı korumaz.
+  - Unique kısıt, idempotency anahtarı yok — reddedildi: timeout sonrası yeniden denemede provider tarafında çift gönderim olabilir.
+- **Sonuçlar / bedel:** Her gönderim bir DB yazımı ekler. Garanti "en az bir kez teslim + DB'de tekil satır"dır. Provider isteği kabul edip yanıt kaybolursa yeniden deneme provider'ın idempotency'sine güvenir; mock provider anahtarı saklamalıdır. Lease süresi açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef testler: aynı alıcı batch'i iki kez gelince tek satır; eşzamanlı iki worker tek gönderim yapar.
+
+## D-024: NATS düzeni: dört stream, teslimat başına ileti, kanal başına 100/s limiter, NAK ile retry
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** D-006 tüm asenkron işi NATS JetStream'e verdi; rate limit ve retry parametreleri açıktı. Brief kanal başına 100 msg/s ve retry istiyor.
+- **Karar:**
+  - `EVENTS`: servisler arası olaylar, ör. `evt.proposal.confirmed.v1`; servis başına durable tüketici.
+  - `RECIPIENTS`: work-queue; alıcı batch'leri (D-010).
+  - `SCHEDULES`: `AllowMsgSchedules` açık; dil varyantı başına bir zamanlama konusu (D-006, D-009).
+  - `SEND`: work-queue; `send.sms` ve `send.email`, teslimat başına bir ileti.
+  - Rate limit: Notification içinde kanal başına `golang.org/x/time/rate` limiter, 100 msg/s. 429 gelirse o kanal `Retry-After` kadar duraklar.
+  - Retry: `NakWithDelay` ile üstel geri çekilme, `MaxDeliver` 5; son denemeden sonra teslimat `failed` olur.
+- **Alternatifler:**
+  - Tek stream, konu hiyerarşisi — reddedildi: work-queue ve olay saklama politikaları karışır, `AllowMsgSchedules` hepsine açılır.
+  - Teslimatları DB'den `SKIP LOCKED` ile claim etmek — reddedildi: D-006'daki "ileti başına iş kuyruğu NATS'te" kararından sapar.
+- **Sonuçlar / bedel:** Limiter süreç içidir; Notification tek replika varsayılır, yatay ölçek dağıtık limit ister. Kampanya boyu kadar ileti stream'e girer. `AllowMsgSchedules` geri alınamadığı için zamanlamalar ayrı stream'dedir. Hangi hataların yeniden deneneceği, geri çekilme tabanı ve jitter açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-025: Backend testleri: birim sahte, entegrasyon testcontainers-go, mock LLM
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Test ve kapsam
+- **Bağlam:** "İki kez gitmez", unique kısıt ve JetStream davranışı ancak gerçek Postgres ve NATS'e karşı kanıtlanır. Testler gerçek API anahtarı olmadan koşmalı (CLAUDE.md).
+- **Karar:** Birim testleri sahte arayüzlerle. Entegrasyon testleri `go test` içinde `testcontainers-go` ile geçici Postgres 18 ve NATS açar; compose'un ayakta olması gerekmez. LLM için senaryolu sahte ve `httptest` Messages SSE sunucusu kullanılır; gerçek adaptör `option.WithBaseURL` ile bu sunucuya bağlanır. Gerçek API çağrısı yalnız `live` build tag'iyle yapılır; testler `ANTHROPIC_API_KEY` okumaz.
+- **Alternatifler:**
+  - Çalışan compose yığınına karşı test — reddedildi: testler paylaşılan duruma bağlı, paralel çalışması zor.
+  - Yalnız birim testi — reddedildi: gerçek SQL, unique kısıt ve JetStream davranışı test edilmez.
+- **Sonuçlar / bedel:** Testler Docker ister ve ilk çalıştırmada imaj çekimi yavaştır. Bu makinede Docker CLI PATH'te değil; testcontainers'ın Docker soketini bulup bulmadığı doğrulanmadı.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-026: Modeller: segment ve metin Sonnet 5.5, enjeksiyon ön elemesi Haiku 5.5
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Yanlış segment kuralı gerçek müşterilere dokunur; Türkçe ton kalitesi önemli; brief içinde prompt enjeksiyonu olabilir. Fiyatlar 2026-10-27 araştırmasından (docs/research/03 §1).
+- **Karar:** Segment çağrısı `claude-sonnet-5-5`, `effort: "medium"`. Metin çağrısı `claude-sonnet-5-5`, `effort` low veya medium. Brief'in enjeksiyon ön elemesi `claude-haiku-5-5`. Uzun sistem prompt'u ve alan kataloğu prompt caching ile önbelleğe alınır.
+- **Alternatifler:**
+  - Yalnız Sonnet 5.5 — reddedildi: enjeksiyon savunması yalnız doğrulama hattında kalır.
+  - Segmentte Opus 5.5 — reddedildi: maliyet ve gecikme yükselir.
+  - Yalnız Haiku 5.5 — reddedildi: Türkçe ton ve karmaşık kural kalitesi düşebilir.
+- **Sonuçlar / bedel:** Her brief'e bir ön eleme çağrısı ve gecikmesi eklenir. 5.x modellerinde `temperature` ve prefill 400 döner; istemci bunları göndermemeli. Ön elemenin işaretlediği brief'te ne olacağı açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-027: Yapılandırılmış çıktı: segmentte strict tool döngüsü, metinde native structured outputs
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-007 LLM'in segment kuralını DSL string olarak yazmasını istiyor. Strict şemalar özyinelemeli şemayı ve `maxLength`'i desteklemez; Sonnet 5.5 zorlanmış `tool_choice`'u desteklemez (docs/research/03 §2).
+- **Karar:**
+  - Segment: `tool_choice: auto` ile strict tool döngüsü. `propose_segment` tool'unun tek alanı DSL string; ajan `count_audience` ile kitle sayısını yoklayabilir.
+  - Metin: native structured outputs (JSON şeması) ve streaming.
+  - Claude'a sade bir "tel" şeması gider; Go'da `maxLength` ve aralıkları içeren tam doğrulama şeması çalışır.
+  - Doğrulama başarısızsa hata mesajıyla onarım istenir, en fazla 3 deneme.
+- **Alternatifler:**
+  - Her şey strict tool — reddedildi: metin akışı tool girdisi streaming'iyle gelir, arayüzde parçalı dolum zorlaşır.
+  - Her şey native çıktı, tool yok — reddedildi: ajan kitle sayısını kendisi yoklayamaz.
+- **Sonuçlar / bedel:** İki mekanizma ve iki şema bakımı. `tool_choice: auto` ile model tool çağırmayabilir; bu durum onarım denemesi sayılmalı. `refusal` ve `max_tokens` durumlarında JSON ayrıştırmadan önce `stop_reason` kontrol edilmeli. Üç onarım başarısız olursa kullanıcıya ne gösterileceği açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-028: SMS en fazla 160 karakter; kodlama ve segment sayısı gösterilir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Brief SMS'i 160 karakterle sınırlıyor. Türkçe ç, ş, ğ, ı, İ mesajı UCS-2'ye çevirir: tek SMS 70, birleştirilmiş mesajda segment başına 67 karakter (docs/research/03 §5).
+- **Karar:** SMS metni en fazla 160 karakterdir. Ölçüm `{{first_name}}` kitledeki en uzun adla genişletilerek yapılır ve gönderimden hemen önce alıcı başına tekrar edilir. Teklifte kodlama (GSM-7 / UCS-2), segment sayısı ve maliyet gösterilir.
+- **Alternatifler:**
+  - Tek segment sınırı (GSM-7'de 160, UCS-2'de 70) — reddedildi: Türkçe metin çok kısa kalır.
+  - ASCII katlama ile GSM-7 — reddedildi: metin bozulur.
+- **Sonuçlar / bedel:** Türkçe SMS çoğunlukla 3 UCS-2 segmentidir, maliyet buna göre artar. Segment sayısı UCS-2'de UTF-16 kod birimiyle hesaplanmalıdır. Gönderim anında bir alıcının metni 160'ı aşarsa ne yapılacağı açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
 ---
 
 ## Açık konular
 
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
-- Kanal başına 100 msg/s rate limit yöntemi ve NATS üzerinde retry parametreleri (D-006)
-- Idempotency anahtarı ve Notification DB'deki teslim durum makinesi (D-006)
+- Retry ayrıntıları: hangi hatalar yeniden denenir, geri çekilme tabanı ve jitter, `sending` lease süresi (D-023, D-024)
 - Customer GraphQL şeması: filtre girdi tipleri (araştırma önerisi Hasura tarzı `where`, ilişki filtreleri, göreli zaman pencereleri) (D-007)
-- Teklif, kanal planı ve dil varyantı durum makinesi şeması (D-009, D-010)
+- `campaign` ve `proposal_step` durum değerleri ve geçişleri; kitle ve kanal planı adımlarının varyant biçimi (D-022)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
-- Servis veritabanlarının adları ve sahip rolleri (diyagram: Proposal / Notification / Analytic DB)
+- Dashboard'un canlı gönderim durumunu hangi servisten okuduğu; Analytics'in tuttuğu metrikler (D-018)
 - LLM kataloğundaki alanlar: hassas hedefleme alanları (`sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*`) dahil mi (D-004, D-007)
-- Model seçimi ve yapılandırılmış çıktı yöntemi (metin ve kanal teklifleri için)
-- SMS uzunluk politikası: Türkçe metin UCS-2'ye geçer (tek SMS 70, segment başına 67 karakter)
+- Üç onarım denemesi başarısız olunca ve ön eleme brief'i işaretleyince kullanıcıya ne gösterilir (D-026, D-027)
+- Gönderim anında bir alıcının SMS metni 160 karakteri aşarsa ne yapılır (D-028)
+- HTML email biçimi (araştırma önerisi yuvalı şablon)
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
-- Migration aracı (init scriptleri yalnızca ilk kurulum için, D-005)
 - Mock provider hata/gecikme/429 oranları
 - SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016)
 - Kimlik doğrulama (arayüz ve SSE için) (D-013)
+- Go HTTP router, metrik biçimi ve health check içeriği
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği
