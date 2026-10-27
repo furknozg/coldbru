@@ -16,8 +16,30 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/furknozg/coldbru/internal/customer/audience"
+	"github.com/furknozg/coldbru/internal/customer/auth"
 	"github.com/furknozg/coldbru/internal/customer/graph"
 )
+
+// Test bearer tokens, one per caller (D-063).
+const (
+	proposalToken     = "proposal-test-token"
+	notificationToken = "notification-test-token"
+	adminToken        = "admin-test-token"
+)
+
+// withAuth wraps h in the bearer-token middleware the way cmd/customer does.
+func withAuth(t *testing.T, h http.Handler) http.Handler {
+	t.Helper()
+	set, err := auth.NewTokenSet(map[string]string{
+		auth.CallerProposal:     proposalToken,
+		auth.CallerNotification: notificationToken,
+		auth.CallerAdmin:        adminToken,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set.Middleware(h)
+}
 
 // response is the GraphQL response envelope.
 type response struct {
@@ -61,11 +83,28 @@ func newServerDB(t *testing.T, dbErr error) (http.Handler, *failingDB) {
 	}
 	db := &failingDB{err: dbErr}
 	svc := audience.NewService(db, cities)
-	return graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil)))), db
+	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil))))), db
 }
 
-// post sends a GraphQL POST and decodes the response.
+// newBareHandler is the GraphQL handler without the auth middleware.
+func newBareHandler(t *testing.T) http.Handler {
+	t.Helper()
+	cities, err := audience.NewCities([]string{"İstanbul"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := audience.NewService(&failingDB{err: errDatabaseDown}, cities)
+	return graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil))))
+}
+
+// post sends a GraphQL POST with the Proposal token and decodes the response.
 func post(t *testing.T, h http.Handler, query string, variables map[string]any) (int, response) {
+	t.Helper()
+	return postAs(t, h, proposalToken, query, variables)
+}
+
+// postAs is post with an explicit bearer token.
+func postAs(t *testing.T, h http.Handler, token, query string, variables map[string]any) (int, response) {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
@@ -73,6 +112,7 @@ func post(t *testing.T, h http.Handler, query string, variables map[string]any) 
 	}
 	req := httptest.NewRequest(http.MethodPost, "/graphql", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	var resp response
@@ -243,16 +283,17 @@ func TestConsentResolversReturnNotImplemented(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
+		token string
 		query string
 		path  string
 	}{
-		{"consentStatus", `{ consentStatus(customerIds: ["c1"], channel: "sms") { eligible } }`, "consentStatus"},
-		{"updateConsent", `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "test"}) { optedIn eligible } }`, "updateConsent"},
+		{"consentStatus", notificationToken, `{ consentStatus(customerIds: ["c1"], channel: "sms") { eligible } }`, "consentStatus"},
+		{"updateConsent", adminToken, `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "test"}) { optedIn eligible } }`, "updateConsent"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			status, resp := post(t, newServer(t), tt.query, nil)
+			status, resp := postAs(t, newServer(t), tt.token, tt.query, nil)
 			if status != http.StatusOK {
 				t.Fatalf("status = %d, want 200", status)
 			}
@@ -292,6 +333,7 @@ func TestOnlyPostIsServed(t *testing.T) {
 	t.Parallel()
 	h := newServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/graphql?query=%7B__typename%7D", nil)
+	req.Header.Set("Authorization", "Bearer "+proposalToken)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code == http.StatusOK {

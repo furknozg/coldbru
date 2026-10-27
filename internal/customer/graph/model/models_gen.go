@@ -274,7 +274,7 @@ type TimeValue struct {
 	At *time.Time `json:"at,omitempty"`
 }
 
-// Records a consent change (D-058). Requires its own scope (D-043).
+// Records a consent change (D-058). Requires its own scope, `consent:write` (D-043, D-063).
 type UpdateConsentInput struct {
 	CustomerID string `json:"customerId"`
 	// email or sms.

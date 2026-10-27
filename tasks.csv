@@ -14,7 +14,7 @@ T-012,Platform: outbox ve olay zarfı,"Outbox tablosu ve relay, processed_event 
 T-013,Dockerfile ve compose servisleri,"SERVICE build arg'lı tek çok aşamalı Dockerfile; beş servis compose'a eklenir (D-018, D-021).",docker-compose.yml;DECISIONS.md,done
 T-014,Customer: GraphQL şeması,"gqlgen kurulumu ve .graphqls şeması: camelCase katalog, ilişkiler, ago ve in girdileri; filtre girdi tiplerinin kesin şekli açık karar (D-007, D-042, D-044).",docs/coldbru-gqdsl.md;docs/domain-model.md;DECISIONS.md,done
 T-015,Customer: filtre → SQL derleyicisi,"Beyaz listeli, parametreli SQL; ulaşılabilirlik koşulu, ago'nun now() ile çözümü, şehir kanonik anahtarı, derinlik ve karmaşıklık sınırları (D-007, D-039, D-040).",docs/coldbru-gqdsl.md;docs/research/04-data-platform.md;DECISIONS.md,done
-T-016,Customer: servis token'ı ve kapsam,"Authorization header ile servis kimliği; Proposal ve Notification kapsamları, updateConsent ayrı kapsam (D-043).",docs/coldbru-gqdsl.md;DECISIONS.md,todo
+T-016,Customer: servis token'ı ve kapsam,"Authorization header ile servis kimliği; Proposal ve Notification kapsamları, updateConsent ayrı kapsam (D-043).",docs/coldbru-gqdsl.md;DECISIONS.md,done
 T-017,Customer: izin kontrolü ve updateConsent,Batch izin kontrolü sorgusu ve fact_consent + dim_customer'ı aynı transaction'da güncelleyen mutation (D-011).,docs/database-architecture.md;DECISIONS.md,todo
 T-018,Proposal: DSL ayrıştırıcısı,"Lexer, Pratt parser, tipli AST, konumlu hatalar ve fuzz testleri; 0.1 kapsamı (D-038, D-045, D-046).",docs/coldbru-gqdsl.md;DECISIONS.md,todo
 T-019,Proposal: katalog üretimi ve tip denetimi,Customer şemasından ve metadata dosyasından build'de katalog üretimi; ad çözümleme ve tip denetimi (D-044).,docs/coldbru-gqdsl.md;DECISIONS.md,todo

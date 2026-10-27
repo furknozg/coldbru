@@ -711,7 +711,7 @@ The server must expose:
 
 The server must enforce, independently of the client (D-043):
 
-- Service tokens and scopes. Proposal may call preview and recipients. Notification may call the consent check. `updateConsent` is a separate scope.
+- Service tokens and scopes (D-063): each caller sends `Authorization: Bearer <token>`; a missing or unknown token gets HTTP 401 before GraphQL. Scopes are declared in the schema with `@hasScope`: Proposal has `audience:read` (preview, recipients), Notification has `consent:read` (consent check), and only an admin token has `consent:write` (`updateConsent`) plus `consent:read`. A field outside the caller's scopes returns `FORBIDDEN`.
 - The field whitelist (D-042).
 - The reachability and consent condition on every audience query (D-007).
 - City canonicalization and known-value validation (D-040).
