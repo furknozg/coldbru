@@ -2,9 +2,16 @@
 -- Each CSV lands in a session-only TEMP table whose column names equal the CSV header,
 -- so HEADER MATCH aborts the load if a stub file's columns change. TEMP tables are not
 -- WAL-logged and vanish with the session: card, CVV and IBAN never reach a durable table.
+-- D-017: time columns shift from AS_OF 2026-10-26 12:00 UTC to load time (timestamptz by interval, date by whole days).
 \set ON_ERROR_STOP on
 BEGIN;
 SET LOCAL search_path = dwh;
+
+-- D-017: shift generated timestamps (AS_OF = 2026-10-26 12:00 UTC) to load time.
+-- now() is the transaction start time, so every row gets the same shift.
+SELECT now() - TIMESTAMPTZ '2026-10-26 12:00:00Z' AS ts_shift,
+       (now() AT TIME ZONE 'UTC')::date - DATE '2026-10-26' AS day_shift
+\gset
 
 -- ------------------------------------------------------------------ staging
 CREATE TEMP TABLE stg_user (
@@ -78,19 +85,20 @@ INSERT INTO dim_customer (
     employer_company, yearly_salary_gbp, yearly_pension_gbp, retired, commute_distance_km,
     vehicle_make, vehicle_model, vehicle_year, vehicle_type)
 SELECT
-    "Customer ID", "First Name", "Last Name", "Sex", "Date of Birth"::date, "Age (Years)"::smallint,
+    "Customer ID", "First Name", "Last Name", "Sex", "Date of Birth"::date + :day_shift, "Age (Years)"::smallint,
     "Marital Status", NULLIF("Dependants", '')::smallint,
     "Email", "Email Bounced"::boolean, NULLIF("Phone (E.164)", ''), "Country Code", "City", "Language", "Timezone",
     "Address Street", "Address City", "Address Postcode",
-    "Signup Date"::date, "Account Status", NULLIF("Deleted At", '')::timestamptz, "Last Active Date"::date,
+    "Signup Date"::date + :day_shift, "Account Status", NULLIF("Deleted At", '')::timestamptz + :'ts_shift'::interval,
+    "Last Active Date"::date + :day_shift,
     "Preferred Platform",
-    "Email Opt In"::boolean, "SMS Opt In"::boolean, "Consent Updated At"::timestamptz,
+    "Email Opt In"::boolean, "SMS Opt In"::boolean, "Consent Updated At"::timestamptz + :'ts_shift'::interval,
     "Total Orders"::integer, "Total Spend (GBP)"::numeric, "Average Order Value (GBP)"::numeric,
-    NULLIF("First Order Date", '')::date, NULLIF("Last Order Date", '')::date,
-    NULLIF("Favourite Category", ''), NULLIF("Last Cart Add Date", '')::date, "Has Open Cart"::boolean,
+    NULLIF("First Order Date", '')::date + :day_shift, NULLIF("Last Order Date", '')::date + :day_shift,
+    NULLIF("Favourite Category", ''), NULLIF("Last Cart Add Date", '')::date + :day_shift, "Has Open Cart"::boolean,
     "Open Cart Value (GBP)"::numeric, "Sessions (90d)"::integer,
     "Loyalty Tier", "Loyalty Points"::integer, "Campaigns Received (90d)"::integer,
-    "Emails Opened (90d)"::integer, NULLIF("Last Campaign Sent At", '')::timestamptz,
+    "Emails Opened (90d)"::integer, NULLIF("Last Campaign Sent At", '')::timestamptz + :'ts_shift'::interval,
     NULLIF(NULLIF("Employer Company", ''), 'N/A'), NULLIF("Yearly Salary (GBP)", '')::integer,
     NULLIF("Yearly Pension (GBP)", '')::integer, "Retired"::boolean,
     NULLIF("Distance Commuted to Work (Km)", '')::numeric,
@@ -106,7 +114,7 @@ FROM stg_product;
 INSERT INTO fact_order (order_id, customer_id, order_date, order_status, items_count, subtotal_gbp,
                         discount_code, discount_gbp, shipping_gbp, total_gbp, payment_method, platform,
                         shipping_city, country_code)
-SELECT "Order ID", "Customer ID", "Order Date"::timestamptz, "Order Status", "Items Count"::integer,
+SELECT "Order ID", "Customer ID", "Order Date"::timestamptz + :'ts_shift'::interval, "Order Status", "Items Count"::integer,
        "Subtotal (GBP)"::numeric, NULLIF("Discount Code", ''), "Discount (GBP)"::numeric,
        "Shipping (GBP)"::numeric, "Total (GBP)"::numeric, "Payment Method", "Platform", "Shipping City",
        "Country Code"
@@ -120,17 +128,18 @@ FROM stg_order_item;
 INSERT INTO fact_cart_item (cart_item_id, customer_id, product_id, quantity, unit_price_gbp, added_at,
                             cart_status, converted_at, order_id)
 SELECT "Cart Item ID", "Customer ID", "Product ID", "Quantity"::integer, "Unit Price (GBP)"::numeric,
-       "Added At"::timestamptz, "Cart Status", NULLIF("Converted At", '')::timestamptz, NULLIF("Order ID", '')
+       "Added At"::timestamptz + :'ts_shift'::interval, "Cart Status",
+       NULLIF("Converted At", '')::timestamptz + :'ts_shift'::interval, NULLIF("Order ID", '')
 FROM stg_cart_item;
 
 INSERT INTO fact_event (event_id, customer_id, session_id, event_type, event_time, platform, product_id,
                         category, value_gbp, order_id)
-SELECT "Event ID", "Customer ID", "Session ID", "Event Type", "Event Time"::timestamptz, "Platform",
+SELECT "Event ID", "Customer ID", "Session ID", "Event Type", "Event Time"::timestamptz + :'ts_shift'::interval, "Platform",
        NULLIF("Product ID", ''), NULLIF("Category", ''), NULLIF("Value", '')::numeric, NULLIF("Order ID", '')
 FROM stg_event;
 
 INSERT INTO fact_consent (consent_id, customer_id, channel, consent_status, source, changed_at)
-SELECT "Consent ID", "Customer ID", "Channel", "Consent Status", "Source", "Changed At"::timestamptz
+SELECT "Consent ID", "Customer ID", "Channel", "Consent Status", "Source", "Changed At"::timestamptz + :'ts_shift'::interval
 FROM stg_consent;
 
 -- ------------------------------------------------------------------ validation (abort = rollback)
@@ -165,6 +174,14 @@ BEGIN
     JOIN (SELECT order_id, sum(line_total_gbp) AS s FROM dwh.fact_order_item GROUP BY order_id) i USING (order_id)
     WHERE abs(o.subtotal_gbp - i.s) > 0.01;
     IF n > 0 THEN RAISE EXCEPTION 'seed check: % orders have subtotal <> sum of lines', n; END IF;
+
+    SELECT count(*) INTO n
+    FROM (SELECT event_time AS ts FROM dwh.fact_event
+          UNION ALL SELECT order_date FROM dwh.fact_order
+          UNION ALL SELECT added_at   FROM dwh.fact_cart_item
+          UNION ALL SELECT changed_at FROM dwh.fact_consent) f
+    WHERE ts > now();
+    IF n > 0 THEN RAISE EXCEPTION 'seed check: % shifted timestamps are later than now()', n; END IF;
 END $$;
 
 COMMIT;

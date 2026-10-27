@@ -100,14 +100,14 @@ WHERE c.city = 'İstanbul'
   AND c.sms_opt_in AND c.phone_e164 IS NOT NULL
   AND EXISTS (SELECT 1 FROM dwh.fact_cart_item ci
               WHERE ci.customer_id = c.customer_id
-                AND ci.added_at >= TIMESTAMPTZ '2026-10-26 12:00Z' - INTERVAL '30 days')
+                AND ci.added_at >= now() - INTERVAL '30 days')
   AND NOT EXISTS (SELECT 1 FROM dwh.fact_order o
                   WHERE o.customer_id = c.customer_id
-                    AND o.order_date >= TIMESTAMPTZ '2026-10-26 12:00Z' - INTERVAL '30 days');
+                    AND o.order_date >= now() - INTERVAL '30 days');
 -- beklenen: 33 satır (üreticinin bastığı huniyle aynı)
 ```
 
-Veri `AS_OF = 2026-10-26 12:00 UTC` anına göre üretildiği için örnek sorgu `now()` yerine bu sabiti kullanır. D-017 ile seed tüm zaman kolonlarını yüklemede bugüne kaydıracak; uygulandığında bu sorgu `now()` kullanacak. Henüz uygulanmadı.
+Üretici veriyi `AS_OF = 2026-10-26 12:00 UTC` anına göre üretir. Seed yüklenirken tüm zaman kolonları yükleme anına kaydırılır (D-017), bu yüzden örnek sorgu `now()` kullanır. Volume eskidikçe veri yine kayar; `docker compose down -v && docker compose up -d` veriyi tazeler.
 
 ### `dim_customer` kolonları
 
@@ -152,11 +152,12 @@ Akış:
 1. `docker compose up` ilk kez, **boş volume** ile çalışınca Postgres imajı `/docker-entrypoint-initdb.d/00-init.sh`'i çalıştırır. Alt dizindeki `.sql` dosyaları imaj tarafından otomatik çalıştırılmaz; sırayı `00-init.sh` belirler.
 2. `stub/` dizini konteynere `/seed/stub` olarak **salt-okunur** bağlanır.
 3. Seed her CSV'yi, kolon adları CSV başlıklarıyla birebir aynı olan bir `TEMP` tabloya `COPY … (FORMAT csv, HEADER MATCH)` ile alır. `HEADER MATCH`, CSV kolon sırası değişirse yüklemeyi hatayla durdurur.
-4. Tiplere dönüştürülmüş veri `dwh` tablolarına yazılır. Kart, CVV ve IBAN yalnızca oturuma özel, WAL'a yazılmayan `TEMP` tabloda bulunur ve oturum bitince silinir; kalıcı hiçbir tabloya girmez.
+4. Tiplere dönüştürülmüş veri `dwh` tablolarına yazılır. Bu sırada `timestamptz` kolonları `now() - AS_OF` aralığı, `date` kolonları aynı farkın tam gün sayısı kadar ileri kaydırılır (D-017); fark psql `\gset` ile bir kez hesaplanır. Kart, CVV ve IBAN yalnızca oturuma özel, WAL'a yazılmayan `TEMP` tabloda bulunur ve oturum bitince silinir; kalıcı hiçbir tabloya girmez.
 5. Seed sonunda doğrulama yapılır; biri tutmazsa transaction geri alınır ve konteyner kurulumu hata verir:
    - her tablo boş değil,
    - `dim_customer.email_opt_in` / `sms_opt_in`, `fact_consent`'teki son kayıtla aynı,
-   - her siparişin `subtotal_gbp` değeri satırlarının toplamına eşit.
+   - her siparişin `subtotal_gbp` değeri satırlarının toplamına eşit,
+   - olay, sipariş, sepet ve izin zaman damgalarının hiçbiri `now()`'dan sonra değil.
 6. Healthcheck, `customer_svc` ile TCP üzerinden `dwh.dim_customer`'dan satır okuyabildiğinde servisi `healthy` sayar. Init sırasında geçici sunucu TCP dinlemediği için seed bitmeden `healthy` görünmez.
 
 Init yalnızca boş volume'da çalışır. Şema veya stub değişince sıfırdan kurmak gerekir:

@@ -301,7 +301,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Yapılandırılabilir saat (`CLOCK_NOW`) — reddedildi: zamanlama ve gönderim gerçek saatle çalışmalı, iki saat kavramı oluşur.
   - Build'de `AS_OF=bugün` ile yeniden üretmek — reddedildi: CSV'ler her gün değişir, commit edilen veri ve md5 determinizmi bozulur.
 - **Sonuçlar / bedel:** Volume eskidikçe veri yine kayar; demodan önce `docker compose down -v && docker compose up -d` gerekir. DB'deki mutlak tarihler artık CSV'dekilerle aynı değildir; CSV ile DB'yi karşılaştıran kontroller farkı hesaba katmalı. Tasarım belgesindeki örnek sorgu `now()` kullanacak şekilde güncellenmeli (uygulandığında).
-- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı. Hedef: taze init'ten sonra örnek brief sorgusu `now()` ile `49 → 33 SMS / 33 email` vermeli.
+- **Doğrulama:** 2026-10-27'de `docker compose down -v && up` sonrası (T-007): seed tüm kontrollerden geçti, satır sayıları ve NULL sayıları CSV ile aynı, en yeni olay `now()`'dan birkaç dakika önce. Örnek brief sorgusu `now()` ile `90 → 49 → 33 SMS / 33 email` verdi. Seed'e zaman damgalarının `now()`'ı aşmadığı kontrolü eklendi; tutmazsa yükleme geri alınır (kullanıcı onayladı). Elle doğrulandı, otomatik test henüz yok.
 
 ## D-018: Dört servis ve mock provider, her biri ayrı konteyner
 
