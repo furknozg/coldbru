@@ -1,0 +1,56 @@
+# gqlgen config for the Customer GraphQL service (D-058). Paths are relative to this file;
+# run via `make generate-graphql`, which cd's here first.
+schema:
+  - schema.graphqls
+
+exec:
+  layout: single-file
+  filename: generated/generated.go
+  package: generated
+
+model:
+  filename: model/models_gen.go
+  package: model
+
+# Resolvers live next to the schema, one file per schema file (follow-schema).
+resolver:
+  layout: follow-schema
+  dir: .
+  package: graph
+  filename_template: "{name}.resolvers.go"
+
+# model/ also holds the hand-written scalar types, so gqlgen reuses them.
+autobind:
+  - github.com/furknozg/coldbru/internal/customer/graph/model
+
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+  # Decimal is a JSON string such as "1234.50", validated in model/decimal.go.
+  Decimal:
+    model: github.com/furknozg/coldbru/internal/customer/graph/model.Decimal
+  # Date is YYYY-MM-DD, see model/date.go.
+  Date:
+    model: github.com/furknozg/coldbru/internal/customer/graph/model.Date
+  # DateTime is RFC 3339, mapped to gqlgen's built-in time.Time scalar.
+  DateTime:
+    model: github.com/99designs/gqlgen/graphql.Time
+
+# @oneOf is built into the GraphQL validator (no declaration needed) but the validator only checks
+# literals; gqlgen skips it at runtime by default, so a variable like {ago: "1d", date: "..."}
+# would pass. skip_runtime: false makes gqlgen call DirectiveRoot.OneOf (graph.OneOf) on every
+# TimeValue it unmarshals (D-058).
+directives:
+  oneOf:
+    skip_runtime: false
+
+# Optional pointers for nullable input fields so "absent" and "zero" differ (null-safe eq/ne, D-058).
+nullable_input_omittable: false
+return_pointers_in_unmarshalinput: false
+omit_slice_element_pointers: false
+skip_validation: false
+skip_mod_tidy: true

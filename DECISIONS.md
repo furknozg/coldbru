@@ -61,6 +61,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-055 | Olay tüketicisi backoff'u: 1 sn'den üstel, 15 dk tavan, 20 deneme | Gönderim | Kabul edildi |
 | D-056 | Servis konteynerleri: platforma bağlı iskelet main'ler, distroless nonroot imaj, customer dışında host portları, postgres ve nats-init beklenir | Takip ve altyapı | Kabul edildi |
 | D-057 | Geliştirmede API belgeleri: API_DOCS_ENABLED ile servis başına Scalar (/docs) ve /openapi.json; swag v2 go tool, spec commit edilir | Takip ve altyapı | Kabul edildi |
+| D-058 | Customer GraphQL sözleşmesi: alan başına tipli filtre işleçleri, TimeValue @oneOf, tam işlem seti, Decimal string, null-güvenli eq/ne; gqlgen v0.17.95 | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -871,6 +872,32 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Uygulama notu:** swag v2 yalnız OpenAPI 3.1 çıktısı verir (`--v3.1`) ve dosya adı `swagger.json`'dur; servis `/openapi.json` yolunda sunar. scalar-go yalnız mutlak spec adresi kabul ettiği için sayfa bir yer tutucu adresle üretilip göreli `openapi.json`'a çevrilir; yer tutucu bulunamazsa servis açılmaz. Scalar JS'i `scalargo.WithCDN` ile `@scalar/api-reference@1.74.0`'a sabitlendi.
 - **Doğrulama:** 2026-10-27'de (T-042): `make generate` iki kez çalıştırıldığında spec'ler ve ağaç değişmedi; dört serviste `/docs` ve `/openapi.json` 200, spec `openapi: 3.1.0` ve yalnız `/healthz`, `/readyz` yollarını içeriyor; `API_DOCS_ENABLED=false` ile proposal'da ikisi 404, `/readyz` 200; yeniden açınca 200. `internal/platform/apidocs` ve spec testleri `make test`'te geçti.
 
+## D-058: Customer GraphQL sözleşmesi: alan başına tipli filtre işleçleri, TimeValue @oneOf, tam işlem seti, Decimal string, null-güvenli eq/ne; gqlgen v0.17.95
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-007 Customer'ın gqlgen ile GraphQL sunmasını, D-044 şemanın tek kaynak ve camelCase olmasını seçti; filtre girdi tiplerinin kesin şekli, null kuralları, sayı biçimi ve `ago` birimleri açıktı (T-014).
+- **Karar:**
+  - Filtre: `CustomerFilter { and, or, not, <alan>: <Tip>Filter …, orders/cartItems/events: { some, none, every } }`. `StringFilter { eq, ne, in }`; sayı, Decimal, Date ve DateTime filtreleri `{ eq, ne, gt, gte, lt, lte, in }`; `BooleanFilter { eq, ne }`. Kategorik alanlar (`loyaltyTier`, `sex` …) String'dir, geçerli değerleri sunucu doğrular. İlişki filtreleri ilgili tablonun katalog alanlarını alır (D-042).
+  - Zaman değeri: `input TimeValue @oneOf { ago: String, date: Date, at: DateTime }`; tarih ve zaman işleçleri bunu alır (`{ gte: { ago: "30d" } }`). `ago` birimi `d` veya `h`, pozitif tam sayı (`30d`, `12h`).
+  - Skalerler: `Decimal` JSON'da string (`"1234.50"`), `Date` `YYYY-MM-DD`, `DateTime` RFC 3339 UTC.
+  - Null: `eq`/`ne` null-güvenli (`IS NOT DISTINCT FROM` / `IS DISTINCT FROM`); sıralama işleçleri null'da eşleşmez; 0.1'de `isNull` yok.
+  - İşlemler (sözleşme bir kerede): `audiencePreview(filter)` → sayım ve kanal kapsaması (dil kırılımlı); `audienceRecipients(filter, first, after)` → `customerId` üzerinde keyset sayfalama, `first` en fazla 1000, opak cursor; `consentStatus(customerIds, channel)` → `[{customerId, channel, optedIn, eligible}]`; mutation `updateConsent(input {customerId, channel, optedIn, source})` → `ConsentStatus`. Kanal `"email"`/`"sms"` String. `Recipient { customerId, firstName, language, emailEligible, smsEligible, email, phone }`; iletişim bilgisi yalnız ilgili kanal uygunsa döner. Resolver'lar T-015 ve T-017'ye kadar "not implemented" döner.
+  - Araç: gqlgen v0.17.95 (2026-09-01) `go.mod`'da `tool`; şema `internal/customer/graph/schema.graphqls`; `make generate` gqlgen'i çalıştırır, üretilen kod commit edilir.
+- **Alternatifler:**
+  - Kategorik alanlar için GraphQL enum'ları veya genel koşul listesi — reddedildi.
+  - Ayrı `…Ago` işleçleri veya düz string zaman — reddedildi.
+  - Yalnız kitle işlemleri veya sayfalamasız alıcı listesi — reddedildi.
+  - gqlgen v0.17.98 — reddedildi: 5 günlük.
+  - Decimal'i JSON sayısı olarak taşımak — reddedildi: float yuvarlama.
+  - Düz SQL null anlamı veya `isNull` işleci — reddedildi.
+  - `ago`'da yalnız gün veya hafta birimi — reddedildi.
+  - Kanal enum'u veya alıcıda iletişim bilgisi olmaması — reddedildi.
+- **Sonuçlar / bedel:** Kategorik değer hataları GraphQL doğrulamasında değil sunucu kodunda yakalanır. `@oneOf` görece yeni bir GraphQL özelliğidir; istemci araçlarının desteği değişebilir. Alıcı listesi kişisel veri taşır; erişimi kapsam kontrolü korur (D-043). Kampanya kitlesi büyüdükçe alıcılar birden çok sayfada alınır.
+- **Ek (kullanıcı onayı, 2026-10-27):** Introspection kapalıdır. Alıcı sayfası `RecipientConnection { nodes, pageInfo { hasNextPage, endCursor } }` biçimindedir. Bir ilişki filtresindeki birden çok niceleyici (`some`/`none`/`every`) VE ile birleşir. `audiencePreview.count` yalnız en az bir kanaldan ulaşılabilenleri sayar; `coverage.unreachable` filtreye uyup hiçbir kanaldan ulaşılamayanlardır ve `count`'a dahil değildir.
+- **Uygulama notu:** gqlgen v0.17.95, `@oneOf`'u yalnız sorgu içine yazılmış değerlerde doğruluyor, değişkenle gelen değerlerde doğrulamıyor; Proposal filtreyi değişkenle gönderdiği için kural şemada açık bir `@oneOf` directive'iyle çalışma anında da zorlanır (`BAD_USER_INPUT`). Introspection eklenmedi (D-044 build-time katalog); yalnız `POST /graphql` sunulur. `ago` biçimi henüz sunucuda doğrulanmıyor (T-015).
+- **Doğrulama:** 2026-10-27'de (T-014): `make generate` iki kez çalıştırıldığında değişiklik yok; handler testleri DSL belgesinin örnek filtresinin doğrulamadan geçtiğini, değişkenle gelen çift alanlı `TimeValue`'nun reddedildiğini, 13 kişisel/izin alanının şemada olmadığını, yer tutucu resolver'ların `NOT_IMPLEMENTED` döndüğünü ve introspection'ın kapalı olduğunu gösteriyor. Çalışan customer konteynerinde aynı davranış compose ağı içinden doğrulandı.
+
 ---
 
 ## Açık konular
@@ -878,8 +905,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
 - Retry ayrıntıları: gönderimde (`SEND`) hangi hatalar yeniden denenir, geri çekilme ve deneme sayısı, `sending` lease süresi; olay tüketicisi için D-055 (D-023, D-024)
-- Customer GraphQL filtre girdi tiplerinin kesin şekli: `and`/`or`/`not`, `some`/`none`/`every`, `ago` ve `in` karşılıkları (D-039, D-044, D-045)
-- DSL'de null kuralları, sayı biçimi ve hata kodlarının kesin listesi (D-038, D-045)
+- DSL hata kodlarının kesin listesi; null ve sayı biçimi D-058'de (D-038, D-045)
 - `updateConsent` kapsamını hangi servisin taşıyacağı ve arayüzden nasıl çağrılacağı (D-011, D-043)
 - Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
 - `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
