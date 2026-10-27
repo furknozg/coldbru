@@ -2,14 +2,20 @@ package graph_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/furknozg/coldbru/internal/customer/audience"
 	"github.com/furknozg/coldbru/internal/customer/graph"
 )
 
@@ -23,9 +29,39 @@ type response struct {
 	} `json:"errors"`
 }
 
+// failingDB is a database that always fails to begin a transaction. A request
+// that reaches it has passed GraphQL validation and the filter compiler, which
+// is what the validation tests below need to show; real queries run in the
+// integration tests.
+type failingDB struct {
+	err   error
+	calls atomic.Int32
+}
+
+func (d *failingDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	d.calls.Add(1)
+	return nil, d.err
+}
+
+var errDatabaseDown = errors.New("database down")
+
 func newServer(t *testing.T) http.Handler {
 	t.Helper()
-	return graph.NewHandler(graph.NewResolver(nil, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	h, _ := newServerDB(t, errDatabaseDown)
+	return h
+}
+
+// newServerDB returns the handler and the database stand-in; dbErr is what
+// BeginTx fails with.
+func newServerDB(t *testing.T, dbErr error) (http.Handler, *failingDB) {
+	t.Helper()
+	cities, err := audience.NewCities([]string{"İstanbul", "Ankara", "Eskişehir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := &failingDB{err: dbErr}
+	svc := audience.NewService(db, cities)
+	return graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil)))), db
 }
 
 // post sends a GraphQL POST and decodes the response.
@@ -48,6 +84,17 @@ func post(t *testing.T, h http.Handler, query string, variables map[string]any) 
 }
 
 const previewQuery = `query($f: CustomerFilter!) { audiencePreview(filter: $f) { count } }`
+
+// wantReachedDatabase fails unless the request passed validation and the
+// compiler and then hit the (failing) database: an INTERNAL error that does not
+// leak the cause.
+func wantReachedDatabase(t *testing.T, resp response) {
+	t.Helper()
+	wantCode(t, resp, graph.CodeInternal)
+	if got := resp.Errors[0].Message; got != "internal error" {
+		t.Errorf("message = %q, want %q (no internal details)", got, "internal error")
+	}
+}
 
 // wantCode fails unless resp holds exactly one error with extensions.code code.
 func wantCode(t *testing.T, resp response, code string) {
@@ -79,10 +126,7 @@ func TestSampleFilterPassesValidation(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
-	wantCode(t, resp, graph.CodeNotImplemented)
-	if got := resp.Errors[0].Message; got != "not implemented" {
-		t.Errorf("message = %q, want %q", got, "not implemented")
-	}
+	wantReachedDatabase(t, resp)
 }
 
 func TestAllFilterOperatorsPassValidation(t *testing.T) {
@@ -101,7 +145,7 @@ func TestAllFilterOperatorsPassValidation(t *testing.T) {
 		},
 	}
 	_, resp := post(t, newServer(t), previewQuery, map[string]any{"f": filter})
-	wantCode(t, resp, graph.CodeNotImplemented)
+	wantReachedDatabase(t, resp)
 }
 
 func TestTimeValueRequiresExactlyOneField(t *testing.T) {
@@ -144,7 +188,7 @@ func TestTimeValueRequiresExactlyOneField(t *testing.T) {
 		f := map[string]any{"signupDate": map[string]any{"gte": map[string]any{"ago": "30d", "date": nil}}}
 		_, resp := post(t, h, previewQuery, map[string]any{"f": f})
 		// null counts as unset, so this is a valid single-field TimeValue.
-		wantCode(t, resp, graph.CodeNotImplemented)
+		wantReachedDatabase(t, resp)
 	})
 }
 
@@ -195,14 +239,13 @@ func TestDecimalMustBeAString(t *testing.T) {
 	}
 }
 
-func TestPlaceholderResolversReturnNotImplemented(t *testing.T) {
+func TestConsentResolversReturnNotImplemented(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
 		query string
 		path  string
 	}{
-		{"audienceRecipients", `{ audienceRecipients(filter: {city: {eq: "Ankara"}}, first: 10) { nodes { customerId } pageInfo { endCursor } } }`, "audienceRecipients"},
 		{"consentStatus", `{ consentStatus(customerIds: ["c1"], channel: "sms") { eligible } }`, "consentStatus"},
 		{"updateConsent", `mutation { updateConsent(input: {customerId: "c1", channel: "email", optedIn: false, source: "test"}) { optedIn eligible } }`, "updateConsent"},
 	}

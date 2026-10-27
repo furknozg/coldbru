@@ -265,8 +265,8 @@ type StringFilter struct {
 // customers at different moments.
 type TimeValue struct {
 	// Relative time: a positive integer followed by `d` (days) or `h` (hours), matching
-	// ^[1-9][0-9]*(d|h)$, for example "30d" or "12h". Validated by the server, not by the GraphQL
-	// type system (D-058).
+	// ^[1-9][0-9]*(d|h)$, for example "30d" or "12h", at most 36500d or 876000h (100 years).
+	// Validated by the server, not by the GraphQL type system (D-058, D-062).
 	Ago *string `json:"ago,omitempty"`
 	// Absolute calendar date, YYYY-MM-DD.
 	Date *Date `json:"date,omitempty"`

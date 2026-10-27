@@ -6,18 +6,18 @@ package graph
 import (
 	"log/slog"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/furknozg/coldbru/internal/customer/audience"
 )
 
 // Resolver holds the dependencies of every resolver.
 type Resolver struct {
-	// Pool is the customer_db pool; nil until a resolver needs it (T-015).
-	Pool *pgxpool.Pool
+	// Audience compiles filters and runs the audience queries (D-062).
+	Audience *audience.Service
 	// Logger is the service logger.
 	Logger *slog.Logger
 }
 
-// NewResolver returns a Resolver. pool may be nil in tests.
-func NewResolver(pool *pgxpool.Pool, logger *slog.Logger) *Resolver {
-	return &Resolver{Pool: pool, Logger: logger}
+// NewResolver returns a Resolver over the audience service.
+func NewResolver(svc *audience.Service, logger *slog.Logger) *Resolver {
+	return &Resolver{Audience: svc, Logger: logger}
 }

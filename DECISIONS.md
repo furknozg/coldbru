@@ -65,6 +65,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-059 | Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi | LLM entegrasyonu | Kabul edildi |
 | D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi |
 | D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
+| D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
 
 ---
 
@@ -162,7 +163,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - REST + JSON AST — reddedildi: GraphQL tercih edildi.
   - graph-gophers/graphql-go — reddedildi: codegen yok, daha az tip güvenliği.
 - **Sonuçlar / bedel:** İki çeviri katmanı (DSL → GraphQL Proposal'da, GraphQL → SQL Customer'da) ve iki doğrulama noktası. Customer'ın GraphQL girdisi her istemciye açık olduğu için alan beyaz listesi, düğüm/derinlik ve karmaşıklık sınırları Customer'da da zorunlu. gqlgen codegen adımı ekler ve hâlâ 0.x. Hassas hedefleme alanlarının kataloğa girip girmeyeceği ayrı bir karar. Hipotez olarak: DSL sayesinde output tokenleri filtre oluşturmada azaltılabilir, bunun yerine input token masraf bağlamında daha tasarrufludur ve context cache'e dsl spesifikasyonunun girmesinin ihtimali ölçekle artar
-- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef test: örnek brief için DSL → GraphQL → SQL zinciri 33 kişi döndürmeli.
+- **Doğrulama:** Kısmen, 2026-10-27'de (T-015): GraphQL → SQL zinciri örnek brief için 33 SMS / 33 e-posta uygun kişi döndürüyor; ulaşılabilirlik koşulu resolver'da her sorguya ekleniyor. DSL → GraphQL kısmı Proposal'da (T-018–T-020) doğrulanacak.
 
 ## D-008: Alıcı verisi zamanlamada NATS snapshot'ıyla taşınır; izin segment sorgusunda baştan uygulanır
 
@@ -618,7 +619,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Büyük/küçük harfe duyarlı tam eşleşme — reddedildi: "istanbul" 0 kişi döndürür.
   - `~=` ile trigram benzerliği — reddedildi: `pg_trgm` gerekir, yanlış şehri eşleyebilir.
 - **Sonuçlar / bedel:** Şehir listesi ve kanonik anahtar Customer'da tutulmalı (ör. kanonik anahtar kolonu veya bellekte sözlük; seçim migration/uygulama sırasında). Yeni şehir eklenince liste güncellenir.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-27'de (T-015): `İstanbul`, `istanbul`, `ISTANBUL`, `Istanbul`, `ıstanbul` aynı sayımı verdi; `Istnbul` `UNKNOWN_VALUE` ve `İstanbul` önerisi döndü (entegrasyon testi, seed'li customer_db).
 
 ## D-041: LLM yalnız filtreyi yazar; varlık ve dönen alanlar Proposal kodunda sabittir
 
@@ -898,7 +899,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kanal enum'u veya alıcıda iletişim bilgisi olmaması — reddedildi.
 - **Sonuçlar / bedel:** Kategorik değer hataları GraphQL doğrulamasında değil sunucu kodunda yakalanır. `@oneOf` görece yeni bir GraphQL özelliğidir; istemci araçlarının desteği değişebilir. Alıcı listesi kişisel veri taşır; erişimi kapsam kontrolü korur (D-043). Kampanya kitlesi büyüdükçe alıcılar birden çok sayfada alınır.
 - **Ek (kullanıcı onayı, 2026-10-27):** Introspection kapalıdır. Alıcı sayfası `RecipientConnection { nodes, pageInfo { hasNextPage, endCursor } }` biçimindedir. Bir ilişki filtresindeki birden çok niceleyici (`some`/`none`/`every`) VE ile birleşir. `audiencePreview.count` yalnız en az bir kanaldan ulaşılabilenleri sayar; `coverage.unreachable` filtreye uyup hiçbir kanaldan ulaşılamayanlardır ve `count`'a dahil değildir.
-- **Uygulama notu:** gqlgen v0.17.95, `@oneOf`'u yalnız sorgu içine yazılmış değerlerde doğruluyor, değişkenle gelen değerlerde doğrulamıyor; Proposal filtreyi değişkenle gönderdiği için kural şemada açık bir `@oneOf` directive'iyle çalışma anında da zorlanır (`BAD_USER_INPUT`). Introspection eklenmedi (D-044 build-time katalog); yalnız `POST /graphql` sunulur. `ago` biçimi henüz sunucuda doğrulanmıyor (T-015).
+- **Uygulama notu:** gqlgen v0.17.95, `@oneOf`'u yalnız sorgu içine yazılmış değerlerde doğruluyor, değişkenle gelen değerlerde doğrulamıyor; Proposal filtreyi değişkenle gönderdiği için kural şemada açık bir `@oneOf` directive'iyle çalışma anında da zorlanır (`BAD_USER_INPUT`). Introspection eklenmedi (D-044 build-time katalog); yalnız `POST /graphql` sunulur. `ago` biçimi T-015'ten beri sunucuda doğrulanıyor (D-062).
 - **Doğrulama:** 2026-10-27'de (T-014): `make generate` iki kez çalıştırıldığında değişiklik yok; handler testleri DSL belgesinin örnek filtresinin doğrulamadan geçtiğini, değişkenle gelen çift alanlı `TimeValue`'nun reddedildiğini, 13 kişisel/izin alanının şemada olmadığını, yer tutucu resolver'ların `NOT_IMPLEMENTED` döndüğünü ve introspection'ın kapalı olduğunu gösteriyor. Çalışan customer konteynerinde aynı davranış compose ağı içinden doğrulandı.
 
 ## D-059: Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi
@@ -957,6 +958,31 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Önbellek tanılamayı hiç kullanmamak — reddedildi.
 - **Sonuçlar / bedel:** promptfoo Node bağımlılığı ekler ve kurallar kısmen YAML'da ikinci kez yazılır; model değerlendirmeli kontrolleri sağlayıcı (API anahtarı) ister. `make eval-live` her çalıştırmada küçük bir API maliyeti doğurur (araştırmadaki tahmin tur başına yaklaşık 0,3 $, ölçülmedi). promptfoo sürümü ve vaka biçimi açıktır. İnceleme görüşmesinde sürüm izi arayüzden değil DB ve git'ten anlatılır.
 - **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-062: Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-007 GraphQL filtresinin beyaz listeli derleyiciyle parametreli SQL'e çevrilmesini ve her kitle sorgusuna ulaşılabilirlik koşulu eklenmesini, D-040 kapalı şehir listesini, D-058 filtre sözleşmesini belirledi. Koşulun tam tanımı, şehir anahtarının nerede tutulacağı, hangi değerlerin doğrulanacağı, SQL kurma yöntemi ve sınırlar açıktı (T-015).
+- **Karar:**
+  - E-posta uygun: `email` dolu, `email_opt_in` ve `email_bounced` değil. SMS uygun: `phone_e164` dolu ve `sms_opt_in`. Kitlenin tabanı filtre + `account_status = 'active'`; ulaşılabilir = tabandakiler içinde en az bir kanala uygun olanlar. `audiencePreview.count` ulaşılabilirleri sayar; `coverage.unreachable` tabanda olup hiçbir kanala uygun olmayanlardır (D-058); filtreye uyan inactive ve deleted hesaplar hiçbir sayıma girmez (kullanıcı ayrıca onayladı).
+  - Şehir: Customer açılışta `SELECT DISTINCT city`'yi yükler ve `key(city) → kanonik ad` sözlüğü kurar (`ı`, `İ`, `I` → `i`, sonra NFD, birleşen işaretler atılır, küçültülür; `golang.org/x/text`). Filtredeki değer kanonik ada çevrilir, SQL `city = $n` olarak kalır. customer_db şeması değişmez.
+  - Kapalı listeyle doğrulanan alanlar: veritabanında CHECK kısıtı olanlar (`sex`, `language`, `countryCode`, `preferredPlatform`, `loyaltyTier`, `orderStatus`, `cartStatus`, `eventType`; değerler kodda sabit) ve `city` (sözlükten). Bilinmeyen değer `UNKNOWN_VALUE` döner; `extensions.suggestions` kanonik anahtarlar üzerinde Levenshtein uzaklığı ≤ 2 veya önek eşleşmesiyle en yakın en fazla 3 değeri taşır (`github.com/agnivade/levenshtein`, gqlgen ile zaten gelen). Diğer String alanlar tam eşleşir, doğrulanmaz.
+  - SQL elle, küçük bir derleyiciyle kurulur: kolon adları yalnız katalog beyaz listesinden, değerler yalnız `$n` argümanı; ilişkiler `EXISTS` / `NOT EXISTS` alt sorgularıdır.
+  - Sınırlar: `and`/`or`/`not` ve ilişki iç içeliği en fazla 8 seviye, en fazla 100 koşul düğümü, bir `in` listesi en fazla 100 değer; aşılırsa `COMPLEXITY_LIMIT`. Kitle sorguları `statement_timeout = 5s` olan salt okunur bir transaction'da çalışır.
+  - Kapsam: derleyiciyle birlikte `audiencePreview` ve `audienceRecipients` resolver'ları gerçek veriyle çalışır; `consentStatus` ve `updateConsent` T-017'de.
+- **Alternatifler:**
+  - Bounce'u saymamak veya inactive hesapları dahil etmek — reddedildi.
+  - Üretilmiş `city_key` kolonu veya sorguda SQL fonksiyonu — reddedildi: şema değişikliği ya da indekssiz sorgu, öneri üretilemez.
+  - Tüm kategorikleri DB'den doğrulamak veya yalnız şehri — reddedildi.
+  - squirrel — reddedildi: bir bağımlılık, EXISTS ve null-güvenli işleçler için yine özel kod.
+  - Daha sıkı (5/50/50/2 sn) veya daha gevşek (12/300/1000/15 sn) sınırlar — reddedildi.
+  - Tüm geçerli değerleri listelemek veya öneri vermemek — reddedildi.
+  - Yalnız derleyici — reddedildi: gerçek veriyle doğrulama bu görevde yapılsın.
+- **Sonuçlar / bedel:** Yeni bir şehir eklenirse sözlük Customer yeniden başlatılınca güncellenir. Kodda sabit kategori listeleri CHECK kısıtlarıyla elle senkron tutulur. Örnek brief'te `count` 46 olur (20 iki kanal + 13 yalnız e-posta + 13 yalnız SMS), `unreachable` 3; SMS'e 33, e-postaya 33 kişi uygundur (D-010).
+- **Ek (kullanıcı onayı, 2026-10-27):** Boş `and`/`or` listesi, işleçsiz alan (`city: {}`) ve niceleyicisiz ilişki (`orders: {}`) `BAD_USER_INPUT` döner; tamamen boş kök filtre `{}` tüm müşteriler demektir. `ago` en fazla 36500 gün / 876000 saattir. `byLanguage` kitle tabanındaki her dili listeler, yalnız ulaşılamayanları olan diller dahil (`count` 0).
+- **Uygulama notu:** Sınır sayımı: kök filtre derinlik 1'dir; `and`/`or` elemanı, `not` işleneni veya `some`/`none`/`every` nesnesi bir seviye derindir. Her karşılaştırma işleci (`in` listesi uzunluğundan bağımsız) ve her `and`/`or`/`not` ile niceleyici bir düğümdür. Hatalar `extensions.filterPath` ile filtredeki yeri gösterir; zaman aşımı `QUERY_TIMEOUT`, iç hata `INTERNAL` döner (iç ayrıntı yalnız loglanır); bu iki kod ve `filterPath` kullanıcı tarafından ayrıca onaylandı. CHECK'i olmayan `orders.countryCode`, `shippingCity` ve `platform` alanları serbest metindir.
+- **Doğrulama:** 2026-10-27'de (T-015), testcontainers ile seed'lenen taze bir customer_db'de örnek brief: `count` 46, kapsama 20 / 13 / 13 / 3, yani 33 SMS ve 33 e-posta uygun; alıcılar 10'luk sayfalarla 46 kişiyi tekrarsız ve sıralı döndürdü; İstanbul'un beş yazımı aynı sayımı verdi; `Istnbul` → `İstanbul`, `gold` → `Gold` önerisi; `ne` null'ları kapsıyor; sınır ve biçim hataları beklenen kodları döndürdü; 27 altın derleme vakası Postgres'te çalıştı ve 14 filtre elle yazılmış SQL ile aynı sonucu verdi. Compose'daki 7 saatlik veritabanı aynı brief için 47 döndürdü: bir müşterinin son siparişi 30 günlük pencereden çıktı (D-017'deki bilinen kayma; `down -v` ile tazelenince 46).
 
 ---
 

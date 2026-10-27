@@ -19,12 +19,20 @@ func (r *mutationResolver) UpdateConsent(ctx context.Context, input model.Update
 
 // AudiencePreview is the resolver for the audiencePreview field.
 func (r *queryResolver) AudiencePreview(ctx context.Context, filter model.CustomerFilter) (*model.AudiencePreview, error) {
-	return nil, errNotImplemented(ctx)
+	out, err := r.Audience.Preview(ctx, &filter)
+	if err != nil {
+		return nil, r.audienceError(ctx, err)
+	}
+	return out, nil
 }
 
 // AudienceRecipients is the resolver for the audienceRecipients field.
 func (r *queryResolver) AudienceRecipients(ctx context.Context, filter model.CustomerFilter, first int, after *string) (*model.RecipientConnection, error) {
-	return nil, errNotImplemented(ctx)
+	out, err := r.Audience.Recipients(ctx, &filter, first, after)
+	if err != nil {
+		return nil, r.audienceError(ctx, err)
+	}
+	return out, nil
 }
 
 // ConsentStatus is the resolver for the consentStatus field.
