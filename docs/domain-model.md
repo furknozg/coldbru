@@ -45,6 +45,20 @@ flowchart LR
 
 `outbox` (taslak): `id uuid` (olay id'si), `subject`, `payload jsonb` (zarf, §6), `created_at`, `published_at NULL`.
 
+### Servis platformu (D-031, D-050)
+
+Her Go servisi `internal/platform/` paketlerini kullanır:
+
+| Paket | Sağladığı |
+|---|---|
+| `config` | Viper: koddaki varsayılanlar, çalışma dizinindeki isteğe bağlı `.env`, sonra öneksiz ortam değişkenleri (ortam önceliklidir); `Require` eksik anahtarları tek hatada toplar |
+| `logging` | `log/slog` JSON logger, seviye `LOG_LEVEL` |
+| `health` | `/healthz` (yalnız süreç) ve `/readyz` (kayıtlı kontroller eşzamanlı, kontrol başına 2 sn; JSON `{status, checks}`, başarısızlıkta 503) |
+| `metrics` | Servise özel Prometheus registry, Go ve process collector'ları, `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route}` |
+| `httpserver` | chi router (RequestID → istek logu → metrik → Recoverer), `/healthz`, `/readyz`, `/metrics`; `WriteTimeout`'suz sunucu (SSE) ve bağlam iptalinde zarif kapanış |
+
+Ortak anahtarlar: `HTTP_ADDR` (`:8080`), `LOG_LEVEL` (`info`), `SHUTDOWN_TIMEOUT` (`10s`). Servise özel anahtarlar (`DATABASE_URL`, `NATS_URL` …) servis görevlerinde eklenir.
+
 ## 3. proposal_db
 
 ```mermaid
