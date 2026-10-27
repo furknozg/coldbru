@@ -110,6 +110,6 @@ Diyagramdan farklar: Customer Service'te GraphQL isteğe bağlı; Proposal → C
 | SMS uzunluk politikası | En kötü durumda 160 karakter + segment/maliyet gösterimi (03 §5) | **Karar: D-028** |
 | HTML email | Yuvalı şablon (03 §10) | Açık |
 | Bütçe anlamı | Kampanya harcama tavanı + ajan token tavanı (03 §9) | Açık |
-| LLM kataloğundaki hassas alanlar | `sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*` dahil mi? (02) | Açık |
+| LLM kataloğundaki hassas alanlar | `sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*` dahil mi? (02) | **Karar: D-042** (kişisel olmayan tüm alanlar dahil) |
 | Migration aracı | goose + sqlc + pgx (04 §1) | **Karar: D-020** |
 | Seed ölçeği | `STUB_SCALE=3` (04 §5) | Açık |

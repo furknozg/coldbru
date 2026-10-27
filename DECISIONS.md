@@ -10,7 +10,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-004 | customer_db filtrelenmiş DWH: yıldız şema, kart/CVV/IBAN hariç | Kitle ve izinler | Kabul edildi |
 | D-005 | Şema ve seed Postgres init scriptleriyle yüklenir | Mock provider ve seed | Kabul edildi |
 | D-006 | Tüm servisler arası mesajlaşma, iş kuyruğu ve zamanlama NATS JetStream; yayın transactional outbox ile | Gönderim | Kabul edildi |
-| D-007 | Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok | LLM entegrasyonu | Kabul edildi |
+| D-007 | Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok | LLM entegrasyonu | Kabul edildi; ayrıştırıcı kısmı yerini aldı → D-038 |
 | D-008 | Alıcı verisi zamanlamada NATS snapshot'ıyla taşınır; izin segment sorgusunda baştan uygulanır | Kitle ve izinler | Yerini aldı → D-010, D-011 |
 | D-009 | İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz | LLM entegrasyonu | Kabul edildi |
 | D-010 | Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır | Kitle ve izinler | Kabul edildi |
@@ -41,6 +41,15 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-035 | NATS olayları kendi JSON zarfıyla; konu evt.<servis>.<olay>.v1 | Gönderim | Kabul edildi |
 | D-036 | Canlı dashboard Notification'dan; kampanya özetleri Analytics'te | Takip ve altyapı | Kabul edildi |
 | D-037 | Vue: oxlint ESLint'in yanında kalır; Geist fontu pakete gömülür | Takip ve altyapı | Kabul edildi |
+| D-038 | DSL kendi Pratt ayrıştırıcımızla ayrıştırılır; D-007'deki expr-lang seçiminin yerini alır | LLM entegrasyonu | Kabul edildi |
+| D-039 | Göreli zaman ago("30d") ile yazılır, Customer sorgu anında now() ile çözer | LLM entegrasyonu | Kabul edildi |
+| D-040 | Şehir kapalı listeden ve kanonik anahtarla eşleşir | Kitle ve izinler | Kabul edildi |
+| D-041 | LLM yalnız filtreyi yazar; varlık ve dönen alanlar Proposal kodunda sabittir | LLM entegrasyonu | Kabul edildi |
+| D-042 | Filtre kataloğu kişisel olmayan tüm alanları içerir; izin ve hesap alanları dışarıda | Kitle ve izinler | Kabul edildi |
+| D-043 | Erişim kontrolü Customer GraphQL uç noktasında; servis token'ı ve kapsam | Kitle ve izinler | Kabul edildi |
+| D-044 | Customer GraphQL şeması tek kaynak; Proposal kataloğu build'de üretilir; alan adları camelCase | LLM entegrasyonu | Kabul edildi |
+| D-045 | DSL 0.1 kapsamı: çekirdek işleçler, ilişki niceleyicileri, ago/date, in, boolean | LLM entegrasyonu | Kabul edildi |
+| D-046 | DSL 0.1: yalın boolean alan yazımı yok; boş in listesi hata | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -122,7 +131,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-007: Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; `expr-lang/expr` ile ayrıştırma kısmı yerini aldı → D-038 · 2026-10-27
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** LLM'in ürettiği segment kuralı backend'de doğrulanmalı ve SQL olarak çalıştırılmamalı. THOUGHTS.md GraphQL, MCP ve JS benzeri filtre dilini değerlendiriyor; hedef çıktı token verimliliği.
 - **Karar:**
@@ -560,6 +569,119 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** İki lint aracı ve iki yapılandırma dosyası (`.oxlintrc.json`, `eslint.config.ts`). Font dosyaları build'i yaklaşık 46 kB büyütür.
 - **Doğrulama:** 2026-10-27'de `pnpm -C web lint` ve `pnpm -C web build` geçti; `src/` ve `dist/` içinde `googleapis` geçmiyor.
 
+## D-038: DSL kendi Pratt ayrıştırıcımızla ayrıştırılır; D-007'deki expr-lang seçiminin yerini alır
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-007, Proposal'ın DSL'i `expr-lang/expr` ile ayrıştırmasını öngörüyordu. Kullanıcının DSL belgesi (`docs/coldbru-gqdsl.md`) `===`, `~=` ve `orders.some(o => …)` sözdizimini tanımlıyor; bunlar expr'in sözdizimi değil.
+- **Karar:** Proposal'da DSL için kendi lexer'ımız ve öncelik farkındalıklı (Pratt) ayrıştırıcımız yazılır. Çıktı tipli bir AST'dir; ad çözümleme ve tip denetimi ayrı bir geçiştir. Hata mesajları kaynak konumu taşır, böylece LLM onarım denemesinde (D-027) hatayı görür. D-007'nin geri kalanı geçerlidir.
+- **Alternatifler:**
+  - Dil bilgisini expr sözdizimine uydurmak — reddedildi: `~=` ve ok fonksiyonları gider, sözdizimi LLM'e daha az tanıdık.
+  - goja + ön işleme — reddedildi: token farkındalıklı ön işleme ve konum eşlemesi gerekir.
+- **Sonuçlar / bedel:** Lexer, ayrıştırıcı ve testleri bizim bakımımızda; fuzz testi gerekir. Dil bilgisindeki muğlaklıklar (alan ile ilişki referansının aynı başlaması, `some`/`none`/`every`'nin ayrılmış kelime olması, sayı biçimi) ayrıştırıcı yazılırken kesinleşmeli.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-039: Göreli zaman ago("30d") ile yazılır, Customer sorgu anında now() ile çözer
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Örnek brief "son 30 günde" diyor. DSL belgesinin 0.1 kapsamında tarih değeri yoktu, bu yüzden örnek brief ifade edilemiyordu.
+- **Karar:** DSL'de göreli zaman `ago("30d")`, mutlak tarih `date("2026-01-01")` ile yazılır. Derleyici göreli değeri GraphQL'e göreli biçimde taşır (ör. `{gte: {ago: "30d"}}`); Customer bunu sorgu anında `now()` ile mutlak zamana çevirir. LLM tarih aritmetiği yapmaz.
+- **Alternatifler:**
+  - Yalnız mutlak tarih — reddedildi: LLM tarih hesabında hata yapabilir, sorgu sonra çalışınca bayatlar.
+  - Yalnız `dim_customer` özet alanları — reddedildi: ilişki pencereli kurallar kaba kalır.
+- **Sonuçlar / bedel:** Aynı kural farklı anda farklı kitle döndürür; önizleme ile alıcı listesi arasındaki fark bu yüzden beklenir. D-017'deki seed kaydırmasıyla birlikte örnek brief tazeyken çalışır. Süre birimleri (`d`, `h` …) ve GraphQL girdi biçimi şema yazılırken kesinleşir.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef test: örnek brief'in DSL'i `ago("30d")` ile 33 kişi döndürmeli.
+
+## D-040: Şehir kapalı listeden ve kanonik anahtarla eşleşir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** "İstanbul", "istanbul" ve "ISTANBUL" aynı şehir olmalı. Alpine/musl'de `ILIKE` noktalı İ için eşleşiyor, noktasız ı için eşleşmiyor (docs/research/04 §4).
+- **Karar:** `city === "…"` iki tarafı kanonik anahtara çevirerek karşılaştırır: ı, İ ve I önce i olur, sonra NFD ve küçük harf. Değer bilinen şehir listesinde yoksa `UNKNOWN_VALUE` hatası öneri listesiyle döner. Birden çok şehir `city in ["İstanbul", "Ankara"]` ile yazılır. Kural Customer'da uygulanır, collation'a dayanmaz.
+- **Alternatifler:**
+  - Büyük/küçük harfe duyarlı tam eşleşme — reddedildi: "istanbul" 0 kişi döndürür.
+  - `~=` ile trigram benzerliği — reddedildi: `pg_trgm` gerekir, yanlış şehri eşleyebilir.
+- **Sonuçlar / bedel:** Şehir listesi ve kanonik anahtar Customer'da tutulmalı (ör. kanonik anahtar kolonu veya bellekte sözlük; seçim migration/uygulama sırasında). Yeni şehir eklenince liste güncellenir.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-041: LLM yalnız filtreyi yazar; varlık ve dönen alanlar Proposal kodunda sabittir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** DSL belgesinin sorgu zarfı entity, filter ve selection içeriyor. D-027'de `propose_segment` tool'unun tek alanı DSL metni.
+- **Karar:** LLM yalnız filtre ifadesini yazar. Kök varlık her zaman müşteridir. Dönen alanlar Proposal kodunda amaç başına sabittir: önizlemede sayım ve kanal kapsaması, alıcı listesinde kimlik, ad, dil ve iletişim bilgisi. D-027'deki tek alanlı tool korunur.
+- **Alternatifler:**
+  - LLM varlık ve filtre yazar — reddedildi: kampanyada kök hep müşteri, kazanç yok.
+  - LLM tüm zarfı yazar — reddedildi: tool şeması büyür, kişisel veri istenebilir.
+- **Sonuçlar / bedel:** DSL belgesindeki seçim (§7) bu projede LLM'e açılmaz; yalnız Proposal kodu kullanır. Yeni bir görünüm gerekirse kod değişikliği ister.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-042: Filtre kataloğu kişisel olmayan tüm alanları içerir; izin ve hesap alanları dışarıda
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-004 ve D-007 hassas hedefleme alanlarının kataloğa girip girmeyeceğini ayrı karara bırakmıştı. Kullanıcı erişim yönetiminin her durumda GraphQL uç noktasında olacağını belirtti.
+- **Karar:**
+  - Customer GraphQL filtre girdisi `dim_customer`'ın kişisel olmayan tüm alanlarını içerir: şehir, ülke, dil, saat dilimi, platform, kayıt ve aktivite tarihleri, sipariş/harcama/sepet özetleri, favori kategori, sadakat alanları, kampanya sayıları; yaş, cinsiyet, medeni durum, bakmakla yükümlü olunan kişi sayısı, maaş, emeklilik, emekli olma, işe uzaklık ve araç alanları dahil.
+  - Dışarıda kalanlar: ad, soyad, e-posta, telefon, ham adres alanları, doğum tarihi ve işveren adı (kişisel tanımlayıcılar); `emailOptIn`, `smsOptIn`, `emailBounced`, `accountStatus`, `deletedAt` ve `consentUpdatedAt` (ulaşılabilirlik sunucu kuralı ve kanal planı adımında kalır, D-007, D-010).
+  - İlişkiler: siparişler, sepet kalemleri ve olaylar, kendi kişisel olmayan alanlarıyla.
+  - Katalogda olmayan alan sunucuda reddedilir; Proposal'daki denetim yalnız kolaylıktır.
+- **Alternatifler:**
+  - Yalnız davranış ve temel profil — reddedildi: kullanıcı daha geniş hedefleme istedi.
+  - Bunlara ek yalnız yaş ve cinsiyet — reddedildi: aynı nedenle.
+- **Sonuçlar / bedel:** Yaş, cinsiyet, maaş ve araç gibi alanlarla ayrımcı veya hassas hedefleme mümkün olur; bu bilinçli olarak kabul edildi. Ad, soyad, doğum tarihi ve işveren adının "kişisel" sayılmasını kullanıcı ayrıca onayladı. Sipariş kalemi ve ürün alanlarının ilişki filtresine girip girmeyeceği açık.
+- **Doğrulama:** Doğrulanmadı — henüz şema yok.
+
+## D-043: Erişim kontrolü Customer GraphQL uç noktasında; servis token'ı ve kapsam
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** Kullanıcı erişim yönetiminin her durumda GraphQL uç noktası üzerinden olacağını belirtti. Proposal ve Notification aynı uç noktayı farklı amaçlarla çağırıyor (D-007, D-011).
+- **Karar:** Her servis Customer'ı kendi token'ıyla çağırır (`Authorization` header; değer compose ortam değişkeninden, `.env.example`'da yalnız dev varsayılanı). Resolver çağıranın kapsamını kontrol eder. Proposal: sayım, önizleme ve alıcı listesi. Notification: izin kontrolü. `updateConsent` ayrı bir kapsamdır. nginx Customer'ı dışarı açmaz. Alan beyaz listesi, derinlik ve karmaşıklık sınırları da aynı uç noktada zorlanır.
+- **Alternatifler:**
+  - Çağıran kimliği olmadan şema şekli + ağ yalıtımı — reddedildi: iç ağdaki her istemci her şeyi çağırabilir.
+  - JWT + rol — reddedildi: anahtar yönetimi ve süre yenileme demo için ağır.
+- **Sonuçlar / bedel:** Statik token'lar süresiz; sızarsa elle değiştirilir. Arayüzden izin geri çekme gösterimi (D-011) için `updateConsent` kapsamını hangi servisin taşıyacağı açık.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-044: Customer GraphQL şeması tek kaynak; Proposal kataloğu build'de üretilir; alan adları camelCase
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Proposal'daki DSL derleyicisi alan ve tip bilgisine ihtiyaç duyar; erişimi Customer zorlar (D-043).
+- **Karar:** Customer'ın gqlgen şeması (`.graphqls`) tek kaynaktır. Proposal'ın kataloğu build sırasında bu şemadan ve prompt açıklamalarını içeren küçük bir metadata dosyasından üretilir; çalışma anında introspection yapılmaz. GraphQL ve DSL alan adları camelCase'dir (`totalSpendGbp`); snake_case kolonlara eşleme Customer'dadır.
+- **Alternatifler:**
+  - Çalışma anında introspection — reddedildi: Customer ayakta olmadan Proposal başlayamaz.
+  - Elle yazılmış katalog — reddedildi: şema değişince iki yer elle güncellenir.
+  - snake_case alan adları — reddedildi: GraphQL ve JS benzeri DSL için alışılmadık.
+- **Sonuçlar / bedel:** Bir kod üretim adımı daha (gqlgen ve sqlc'nin yanında). Metadata dosyası şemayla elle senkron tutulur; sapma build'de yakalanmalı.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-045: DSL 0.1 kapsamı: çekirdek işleçler, ilişki niceleyicileri, ago/date, in, boolean
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** DSL belgesinin §15 kapsamı örnek brief'i ifade edemiyordu ve tanımsız eşleşme modlu `~=` ile alanlar arası karşılaştırmayı içeriyordu.
+- **Karar:** 0.1'de `===`, `!==`, `>`, `>=`, `<`, `<=`, `&&`, `||`, `!`, parantez, `some` / `none` / `every`, `ago()` ve `date()` (D-039), `in [...]` ve `true` / `false` desteklenir. `~=` ve alanlar arası karşılaştırma ayrılmıştır; kullanılırsa `UNSUPPORTED_OPERATOR` döner. `==` ve `!=` tanımsız kalır ve reddedilir.
+- **Alternatifler:**
+  - Belgedeki §15'in tamamı ve eklemeler — reddedildi: `~=` için eşleşme modu ve `pg_trgm` kararı gerekir, `compare` girdi tipi şemayı büyütür; katalogda serbest metin alanı yok.
+  - Yalnız §15 — reddedildi: örnek brief ifade edilemez.
+- **Sonuçlar / bedel:** Metin araması ve alan-alan karşılaştırması gerekirse yeni bir karar ve sürüm ister. Null kuralları ve sayı biçimi ayrıştırıcı yazılırken kesinleşmeli.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-046: DSL 0.1: yalın boolean alan yazımı yok; boş in listesi hata
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-045 boolean değerleri ve `in`'i 0.1'e aldı. DSL belgesi güncellenirken iki dil bilgisi ayrıntısı ortaya çıktı.
+- **Karar:** Boolean alanlar yalnız açık karşılaştırmayla yazılır (`hasOpenCart === true`); `hasOpenCart` veya `!retired` gibi yalın yazım 0.1 dil bilgisinde yoktur. `in` listesi en az bir değer içerir; `city in []` `SYNTAX_ERROR` döner.
+- **Alternatifler:**
+  - Yalın boolean yazımı da desteklemek — reddedildi: dil bilgisi karmaşıklaşır, her yüklem bir karşılaştırma olmaz.
+  - Boş listeyi geçerli ve her zaman yanlış saymak — reddedildi: 0 kişilik kitle sessizce üretilir.
+- **Sonuçlar / bedel:** LLM boolean koşulları biraz daha uzun yazar ve yalın yazımı denerse onarım turu harcar; sistem prompt'u açık karşılaştırmayı örneklemeli.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
 ---
 
 ## Açık konular
@@ -567,11 +689,13 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
 - Retry ayrıntıları: hangi hatalar yeniden denenir, geri çekilme tabanı ve jitter, `sending` lease süresi (D-023, D-024)
-- Customer GraphQL şeması: filtre girdi tipleri (araştırma önerisi Hasura tarzı `where`, ilişki filtreleri, göreli zaman pencereleri) (D-007)
+- Customer GraphQL filtre girdi tiplerinin kesin şekli: `and`/`or`/`not`, `some`/`none`/`every`, `ago` ve `in` karşılıkları (D-039, D-044, D-045)
+- DSL'de null kuralları, sayı biçimi ve hata kodlarının kesin listesi (D-038, D-045)
+- `updateConsent` kapsamını hangi servisin taşıyacağı ve arayüzden nasıl çağrılacağı (D-011, D-043)
+- Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
 - `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
 - Olay listesi ve `data` alanlarının kesinleşmesi (taslak: `docs/domain-model.md`) (D-035)
-- LLM kataloğundaki alanlar: hassas hedefleme alanları (`sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*`) dahil mi (D-004, D-007)
 - Üç onarım denemesi başarısız olunca ve ön eleme brief'i işaretleyince kullanıcıya ne gösterilir (D-026, D-027)
 - Gönderim anında bir alıcının SMS metni 160 karakteri aşarsa ne yapılır (D-028)
 - HTML email biçimi (araştırma önerisi yuvalı şablon)
