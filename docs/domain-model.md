@@ -43,7 +43,7 @@ flowchart LR
 - **Tüketici dedup'u:** olay tüketen her serviste `processed_event(event_id PRIMARY KEY, processed_at)`. Olayı işleyen transaction'da önce buraya yazılır; çakışma olursa olay atlanır (D-023).
 - **Sabit değerler:** dil `tr | en` ve kanal `sms | email`, `customer_db` ile aynıdır.
 
-`outbox` (taslak): `id uuid` (olay id'si), `subject`, `payload jsonb` (zarf, §6), `created_at`, `published_at NULL`.
+`outbox`: `id uuid DEFAULT uuidv7()` (olay id'si), `subject`, `payload jsonb` (id'siz zarf; relay yayınlarken id'yi ekler), `created_at`, `published_at NULL`; yayınlanmamışlar için kısmi indeks ve `pg_notify('outbox', '')` çağıran statement trigger'ı. `processed_event`: `event_id uuid PRIMARY KEY`, `processed_at`. İkisini de platform migration seti (`goose_platform_version`) servis migration'larından önce açar; satırlar silinmez (D-054).
 
 ### Servis platformu (D-031, D-050)
 
@@ -57,6 +57,9 @@ Her Go servisi `internal/platform/` paketlerini kullanır:
 | `metrics` | Servise özel Prometheus registry, Go ve process collector'ları, `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route}` |
 | `db` | pgx/v5 havuzu (`DATABASE_URL`; havuz ayarları URL'den) ve `/readyz` için ping kontrolü (D-020) |
 | `migrate` | Gömülü goose migration'ları açılışta Postgres advisory lock altında uygular; sürüm tablosu rolün `search_path`'indeki ilk şemaya düşer (D-020, D-048, D-051) |
+| `events` | D-035 zarfı (`Envelope`), `Subject` (`evt.<servis>.<olay>.v<n>`) ve ad doğrulaması |
+| `outbox` | `Write` (iş transaction'ı içinde), `Relay` (ayrı bağlantıda `LISTEN outbox`, 1 sn poll yedeği, `SKIP LOCKED`, `Nats-Msg-Id` = olay id'si, PubAck sonrası `published_at`) (D-054) |
+| `consumer` | `Processor.Process`: `processed_event` ile dedup ve handler aynı transaction'da, ack commit'ten sonra; hatada `NakWithDelay` (1 sn ×2, %20 jitter, 15 dk tavan), `MaxDeliver` 20 sonunda `Term`; bozuk ileti hemen `Term` (D-054, D-055) |
 | `httpserver` | chi router (RequestID → istek logu → metrik → Recoverer), `/healthz`, `/readyz`, `/metrics`; `WriteTimeout`'suz sunucu (SSE) ve bağlam iptalinde zarif kapanış |
 
 Ortak anahtarlar: `HTTP_ADDR` (`:8080`), `LOG_LEVEL` (`info`), `SHUTDOWN_TIMEOUT` (`10s`), `DATABASE_URL`. Servise özel anahtarlar (`NATS_URL` …) servis görevlerinde eklenir.

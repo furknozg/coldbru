@@ -4,6 +4,7 @@ package migrate
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -27,6 +28,34 @@ import (
 // the first schema of the role's search_path (D-048); no schema is hard-coded.
 // Each applied migration is logged with its version, source and duration.
 func Up(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS, logger *slog.Logger) error {
+	return apply(ctx, pool, migrations, logger)
+}
+
+// platformTable is the goose version table of the platform migration set. It
+// differs from goose's default so the platform set and a service's own set
+// keep separate histories in the same schema (D-054).
+const platformTable = "goose_platform_version"
+
+//go:embed platform/*.sql
+var platformFS embed.FS
+
+// UpPlatform applies the platform migrations embedded in this package: the
+// outbox and processed_event tables (D-054). It behaves like Up, but tracks
+// its history in the goose_platform_version table.
+//
+// Services call UpPlatform before Up. The tables land in the first schema of
+// the role's search_path (D-048). Calling it again is a no-op.
+func UpPlatform(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
+	sub, err := fs.Sub(platformFS, "platform")
+	if err != nil {
+		return fmt.Errorf("open embedded platform migrations: %w", err)
+	}
+	return apply(ctx, pool, sub, logger, goose.WithTableName(platformTable))
+}
+
+// apply runs every pending migration in migrations; extra provider options
+// (for example a custom version table) are passed through to goose.
+func apply(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS, logger *slog.Logger, opts ...goose.ProviderOption) error {
 	locker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
 		return fmt.Errorf("create migration locker: %w", err)
@@ -35,7 +64,8 @@ func Up(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS, logger *slog.
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer closeDB(logger, sqlDB)
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrations, goose.WithSessionLocker(locker))
+	opts = append(opts, goose.WithSessionLocker(locker))
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, migrations, opts...)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
 	}

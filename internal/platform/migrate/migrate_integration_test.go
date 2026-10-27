@@ -297,3 +297,98 @@ func (s *syncBuilder) String() string {
 	defer s.mu.Unlock()
 	return s.sb.String()
 }
+
+func TestUpPlatform_ThenUp_UsesSearchPathSchema(t *testing.T) {
+	ctx := t.Context()
+	dsn := newDatabase(t)
+
+	setup := openPool(t, dsn)
+	if _, err := setup.Exec(ctx, "CREATE SCHEMA svc"); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	pool := openPool(t, withParams(t, dsn, "", map[string]string{"search_path": "svc,public"}))
+
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	if err := migrate.UpPlatform(ctx, pool, logger); err != nil {
+		t.Fatalf("UpPlatform() error = %v", err)
+	}
+	if got := strings.Count(buf.String(), "migration applied"); got != 2 {
+		t.Fatalf("UpPlatform() logged %d applied migrations, want 2", got)
+	}
+	if err := migrate.Up(ctx, pool, testMigrations(t), logger); err != nil {
+		t.Fatalf("Up() error = %v", err)
+	}
+
+	tests := []struct {
+		table  string
+		schema string
+		want   bool
+	}{
+		{table: "goose_platform_version", schema: "svc", want: true},
+		{table: "goose_db_version", schema: "svc", want: true},
+		{table: "outbox", schema: "svc", want: true},
+		{table: "processed_event", schema: "svc", want: true},
+		{table: "probe", schema: "svc", want: true},
+		{table: "goose_platform_version", schema: "public", want: false},
+		{table: "outbox", schema: "public", want: false},
+		{table: "processed_event", schema: "public", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.schema+"."+tt.table, func(t *testing.T) {
+			var exists bool
+			err := pool.QueryRow(ctx,
+				"SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = $1 AND tablename = $2)",
+				tt.schema, tt.table).Scan(&exists)
+			if err != nil {
+				t.Fatalf("query pg_tables: %v", err)
+			}
+			if exists != tt.want {
+				t.Errorf("table %s.%s exists = %v, want %v", tt.schema, tt.table, exists, tt.want)
+			}
+		})
+	}
+
+	t.Run("separate version histories", func(t *testing.T) {
+		if got, want := fmt.Sprint(appliedVersions(t, pool)), "[1 2]"; got != want {
+			t.Errorf("goose_db_version = %s, want %s", got, want)
+		}
+		var n int
+		err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_platform_version WHERE version_id > 0").Scan(&n)
+		if err != nil {
+			t.Fatalf("query goose_platform_version: %v", err)
+		}
+		if n != 2 {
+			t.Errorf("goose_platform_version rows = %d, want 2", n)
+		}
+	})
+
+	t.Run("second UpPlatform is a no-op", func(t *testing.T) {
+		buf.Reset()
+		if err := migrate.UpPlatform(ctx, pool, logger); err != nil {
+			t.Fatalf("second UpPlatform() error = %v", err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("second UpPlatform() logged %q, want nothing applied", buf.String())
+		}
+	})
+
+	t.Run("outbox schema", func(t *testing.T) {
+		var id string
+		err := pool.QueryRow(ctx,
+			`INSERT INTO outbox (subject, payload) VALUES ('evt.a.b.v1', '{}') RETURNING id::text`).Scan(&id)
+		if err != nil {
+			t.Fatalf("insert outbox: %v", err)
+		}
+		if len(id) != 36 || id[14] != '7' {
+			t.Errorf("id = %q, want a UUID version 7", id)
+		}
+		var idx bool
+		err = pool.QueryRow(ctx,
+			"SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'svc' AND indexname = 'outbox_unpublished_idx')").Scan(&idx)
+		if err != nil || !idx {
+			t.Errorf("outbox_unpublished_idx exists = %v, err = %v", idx, err)
+		}
+	})
+}
