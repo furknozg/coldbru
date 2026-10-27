@@ -34,6 +34,20 @@ flowchart LR
     N -- "Idempotency-Key" --> M["Mock provider"]
 ```
 
+### Konteynerler (D-021, D-056)
+
+Her servis `Dockerfile`'dan `SERVICE` build arg'ıyla derlenen distroless (nonroot) bir imajdır; `main`'i `internal/platform/app` üzerinden çalışır.
+
+| Servis | Bağımlılıklar | Host portu | Readiness kontrolleri |
+|---|---|---|---|
+| customer | `customer_db` | yok (yalnız compose ağı, D-043) | postgres |
+| proposal | `proposal_db` + platform migration'ları, NATS | 8081 | postgres, nats |
+| notification | `notification_db` + platform migration'ları, NATS | 8082 | postgres, nats |
+| analytics | `analytics_db` + platform migration'ları, NATS | 8083 | postgres, nats |
+| mockprovider | yok | 8084 | — |
+
+Konteyner içinde hepsi `:8080` dinler; compose healthcheck'i `/app -healthcheck` ile `/readyz`'i yoklar. Servisler `postgres` sağlıklı olana ve `nats-init` bitene kadar bekler. İş mantığı, route'lar ve worker'lar servis görevlerinde `app.Options.Setup` kancasıyla eklenir.
+
 ## 2. Ortak kurallar
 
 - **Kimlik:** yeni tablolarda `id uuid DEFAULT uuidv7()` (D-030). Olay id'si ve `Idempotency-Key` de UUIDv7.

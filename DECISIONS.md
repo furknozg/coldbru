@@ -59,6 +59,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-053 | NATS Go istemcisi nats.go v1.54.0, jetstream paketi | Gönderim | Kabul edildi |
 | D-054 | Outbox ve processed_event platform migration setinde; relay LISTEN/NOTIFY + 1 sn poll; tüketicide NakWithDelay | Gönderim | Kabul edildi; tüketici backoff parametreleri yerini aldı → D-055 |
 | D-055 | Olay tüketicisi backoff'u: 1 sn'den üstel, 15 dk tavan, 20 deneme | Gönderim | Kabul edildi |
+| D-056 | Servis konteynerleri: platforma bağlı iskelet main'ler, distroless nonroot imaj, customer dışında host portları, postgres ve nats-init beklenir | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -321,7 +322,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Üç servis + mock, Analytics kesilir — reddedildi: diyagrama tam uyum istendi.
   - Tek binary, alt komutlar — reddedildi: mikroservis gösterimi zayıflar.
 - **Sonuçlar / bedel:** Bir haftalık yapımda daha fazla iş. Analytics olay sözleşmelerine bağımlıdır ve eventual-consistent'tır. Compose'ta beş uygulama konteyneri, Postgres, NATS ve nginx çalışır. Dashboard'un canlı gönderim durumunu hangi servisten okuyacağı açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-27'de (T-013): dört servis ve mock provider ayrı compose servisleri olarak iskelet hâlinde çalışıyor; iş mantığı yok.
 
 ## D-019: proposal_db, notification_db, analytics_db; rol ve boş DB initdb'de açılır
 
@@ -358,7 +359,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - `go.work` ile servis başına modül — reddedildi: go.mod ve sürüm bakımı artar, kökteki go.mod taşınır.
   - Tek modül, `services/<servis>/` klasörleri — reddedildi: sınır klasörde görünür ama kazanç yok.
 - **Sonuçlar / bedel:** Go'nun `internal` kuralı aynı modül içinde servisler arası import'u engellemez; sınırı kod incelemesi korur. Tüm servisler aynı bağımlılık sürümlerini paylaşır.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-27'de (T-013): tek modül, `cmd/<servis>/main.go` ve tek Dockerfile ile beş imaj derlendi ve compose'da çalıştı.
 
 ## D-022: Teklif modeli: campaign → proposal_step → proposal_variant
 
@@ -830,6 +831,24 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Aynı varsayılanı `SEND`'e de uygulamak — reddedildi: başarısız bir mesaj ~2,8 saat sonra `failed` olurdu; gönderim için ayrı karar.
 - **Sonuçlar / bedel:** Toplam yeniden deneme penceresi yaklaşık 2,8 saattir (1+2+…+512 sn, sonra 11 kez ~15 dk). Kalıcı bir hata, olayın terminate edilmesini saatlerce geciktirir ve aynı olay bu süre boyunca 20 kez işlenmeye çalışılır. `AckWait` 30 saniye kalır.
 - **Doğrulama:** 2026-10-27'de (T-012): `TestBackoff_Delay` 1, 2, 4 … 512 sn ve 11. denemeden itibaren 15 dk (±%20) değerlerini doğruluyor; `TestProcess_AlwaysFailingIsTerminatedAtMaxDeliver` testcontainers NATS üzerinde handler'ın tam 20 kez çağrılıp sonlandırıldığını gösterdi (testte küçük bir backoff ile).
+
+## D-056: Servis konteynerleri: platforma bağlı iskelet main'ler, distroless nonroot imaj, customer dışında host portları, postgres ve nats-init beklenir
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-018 beş servisi ayrı konteyner yaptı, D-021 tek çok aşamalı Dockerfile ve `SERVICE` build arg'ını seçti. `cmd/` altında henüz `main` yoktu; binary'lerin ne yapacağı, çalışma imajı, portlar ve açılış sırası açıktı (T-013).
+- **Karar:**
+  - Her servisin `main`'i platforma bağlı bir iskelettir: yapılandırma, log, `/healthz` `/readyz` `/metrics`, sinyalle kapanış. DB'li servislerde pgx havuzu ve readiness kontrolü; Proposal, Notification ve Analytics'te ayrıca `UpPlatform` ve NATS bağlantısı ile readiness kontrolü. İş mantığı yoktur.
+  - İmaj: builder `golang:1.27-alpine`, `CGO_ENABLED=0` statik binary; çalışma imajı `gcr.io/distroless/static-debian12:nonroot`. Kabuk olmadığı için compose healthcheck binary'nin kendi `-healthcheck` bayrağıyla `/readyz`'i yoklar.
+  - Portlar: konteyner içinde hepsi `:8080`. Host'ta proposal 8081, notification 8082, analytics 8083, mockprovider 8084 (ortam değişkeniyle değişir); customer yalnız compose ağında (D-043).
+  - Açılış: servisler `postgres` sağlıklı olana ve `nats-init` başarıyla bitene kadar bekler (`depends_on`); mockprovider hiçbir şeyi beklemez.
+- **Alternatifler:**
+  - Yalnız HTTP iskeleti veya compose profile'ında bekletmek — reddedildi: compose'da servisler gerçek bağımlılıklarıyla sağlıklı görünsün.
+  - alpine veya scratch çalışma imajı — reddedildi: daha büyük saldırı yüzeyi ya da elle eklenen sertifika/kullanıcı.
+  - Hiç port açmamak veya customer'ı da açmak — reddedildi.
+  - `depends_on` olmadan servisin kendisinin yeniden denemesi — reddedildi.
+- **Sonuçlar / bedel:** İmajda kabuk yok; hata ayıklama için `docker compose exec` ile kabuk açılamaz. Statik binary cgo gerektiren kütüphane kullanamaz (pgx ve nats.go saf Go). `depends_on` yalnız ilk açılışı sıralar; bağımlılık sonradan düşerse `/readyz` 503 döner.
+- **Doğrulama:** 2026-10-27'de (T-013): `docker compose up` ile beş servis, postgres ve nats `healthy`, `nats-init` 0 ile çıktı. 8081–8083 `/readyz` postgres ve nats için `ok`, 8084 `ok`; customer host'tan erişilemiyor, ağ içinde sağlıklı. NATS durdurulunca proposal `/readyz` 503 döndü, `/healthz` 200 kaldı; NATS dönünce 2 saniyede 200'e döndü. `proposal_db`'de platform tabloları `proposal` şemasında. Boş `SERVICE` ile build açık hata mesajıyla duruyor. `coldbru-proposal:dev` 27,4 MB. `internal/platform/{app,natsconn}` testleri `make test`'te geçti.
 
 ---
 

@@ -1,0 +1,14 @@
+# Only cmd/, internal/, go.mod and go.sum reach the build.
+.git
+.env
+.env.*
+**/node_modules
+web/
+coverage/
+.codegraph/
+stub/
+docs/
+infra/
+.claude/
+.codex/
+.copilot/
