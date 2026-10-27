@@ -11,8 +11,9 @@ Bu aşamada teslim edilenler:
 - Docker üzerinde tek Postgres servisi (`postgres:18-alpine`, 18.6).
 - Kök dizinde başlangıç `docker-compose.yml`.
 - `customer_db` veritabanının oluşturulması ve `stub/` altındaki müşteri verisiyle doldurulması.
+- `proposal_db`, `notification_db` ve `analytics_db`'nin sahip rolleri ve servis adlı boş şemalarıyla açılması (T-008, D-019, D-048).
 
-Bu aşamada **yapılmayanlar**: kampanya ve gönderim veritabanları, servisler arası erişim (API/olay), migration aracı. Kampanya stub'ları (`acw_campaigns.csv`, `acw_campaign_messages.csv`) yüklenmez.
+Bu aşamada **yapılmayanlar**: servis veritabanlarının tabloları (goose migration'larıyla gelecek, D-020), servisler arası erişim (API/olay). Kampanya stub'ları (`acw_campaigns.csv`, `acw_campaign_messages.csv`) yüklenmez.
 
 ## 2. Hedef yerleşim
 
@@ -21,9 +22,9 @@ flowchart LR
     subgraph pg["postgres servisi (tek konteyner, tek volume)"]
         direction TB
         cdb[("customer_db<br/>sahibi: customer_svc")]
-        pdb[("proposal_db<br/>planlandı")]:::planned
-        ndb[("notification_db<br/>planlandı")]:::planned
-        adb[("analytics_db<br/>planlandı")]:::planned
+        pdb[("proposal_db<br/>sahibi: proposal_svc")]
+        ndb[("notification_db<br/>sahibi: notification_svc")]
+        adb[("analytics_db<br/>sahibi: analytics_svc")]
     end
     cs["customer service"] --> cdb
     ps["proposal service"]:::planned -. "GraphQL" .-> cs
@@ -37,11 +38,11 @@ flowchart LR
 | Veritabanı | Sahip rol | Servis | Durum |
 |---|---|---|---|
 | `customer_db` | `customer_svc` | customer service | **Bu aşamada kuruldu** |
-| `proposal_db` | `proposal_svc` | proposal service (kampanya, teklif adımları ve varyantları, LLM çağrıları, outbox; D-022) | Planlandı (D-019) |
-| `notification_db` | `notification_svc` | notification service (teslimatlar, idempotency, outbox; D-023) | Planlandı (D-019) |
-| `analytics_db` | `analytics_svc` | analytics service (olay tüketicisi; D-018) | Planlandı (D-019) |
+| `proposal_db` | `proposal_svc` | proposal service (kampanya, teklif adımları ve varyantları, LLM çağrıları, outbox; D-022) | Kuruldu, boş `proposal` şeması |
+| `notification_db` | `notification_svc` | notification service (teslimatlar, idempotency, outbox; D-023) | Kuruldu, boş `notification` şeması |
+| `analytics_db` | `analytics_svc` | analytics service (olay tüketicisi; D-018) | Kuruldu, boş `analytics` şeması |
 
-Bu veritabanlarının tabloları, durum makineleri ve olay sözleşmeleri [domain-model.md](domain-model.md) belgesinde. Planlanan veritabanlarının rolü ve boş DB'si initdb'de `customer_db` ile aynı desenle açılacak; tabloları her servisin goose migration'ları kurar (D-019, D-020). Henüz uygulanmadı.
+Bu veritabanlarının tabloları, durum makineleri ve olay sözleşmeleri [domain-model.md](domain-model.md) belgesinde. Servis veritabanları initdb'de `customer_db` ile aynı desenle açılır: sahip rol, `REVOKE ALL … FROM PUBLIC`, `CONNECT` ve `TEMPORARY`. Her birinde rolün sahibi olduğu, servis adlı bir şema vardır ve rolün `search_path`'i `<şema>, public`'tir (D-019, D-048). Tabloları her servisin goose migration'ları kurar (D-020).
 
 ## 3. İzolasyon modeli
 
@@ -144,7 +145,8 @@ infra/postgres/initdb/
 └── sql/
     ├── 01_customer_db.sql      # rol + veritabanı + yetkiler (süper kullanıcı, postgres DB'sinde)
     ├── 02_customer_schema.sql  # dwh şeması ve tablolar (customer_svc sahipliğinde)
-    └── 03_customer_seed.sql    # CSV → TEMP staging → dwh, doğrulama, ANALYZE (tek transaction)
+    ├── 03_customer_seed.sql    # CSV → TEMP staging → dwh, doğrulama, ANALYZE (tek transaction)
+    └── 04_service_db.sql       # servis başına rol + DB + şema; -v svc=<ad> ile üç kez çalışır
 ```
 
 Akış:
@@ -158,7 +160,8 @@ Akış:
    - `dim_customer.email_opt_in` / `sms_opt_in`, `fact_consent`'teki son kayıtla aynı,
    - her siparişin `subtotal_gbp` değeri satırlarının toplamına eşit,
    - olay, sipariş, sepet ve izin zaman damgalarının hiçbiri `now()`'dan sonra değil.
-6. Healthcheck, `customer_svc` ile TCP üzerinden `dwh.dim_customer`'dan satır okuyabildiğinde servisi `healthy` sayar. Init sırasında geçici sunucu TCP dinlemediği için seed bitmeden `healthy` görünmez.
+6. `00-init.sh`, seed'den sonra `04_service_db.sql`'i `proposal`, `notification` ve `analytics` için çalıştırır.
+7. Healthcheck, `customer_svc` ile TCP üzerinden `dwh.dim_customer`'dan satır okuyabildiğinde ve her servis rolü kendi DB'sine bağlanıp `current_schema()` olarak kendi şemasını gördüğünde servisi `healthy` sayar (D-048). Init sırasında geçici sunucu TCP dinlemediği için init bitmeden `healthy` görünmez.
 
 Init yalnızca boş volume'da çalışır. Şema veya stub değişince sıfırdan kurmak gerekir:
 
@@ -171,8 +174,8 @@ docker compose down -v && docker compose up -d
 | Değer | Varsayılan | Değişken |
 |---|---|---|
 | Host portu | `5433` (makinedeki 5432 başka projede) | `POSTGRES_HOST_PORT` |
-| Veritabanı | `customer_db` | — |
-| Uygulama rolü | `customer_svc` | parola: `CUSTOMER_DB_PASSWORD` |
+| Veritabanları | `customer_db`, `proposal_db`, `notification_db`, `analytics_db` | — |
+| Uygulama rolleri | `customer_svc`, `proposal_svc`, `notification_svc`, `analytics_svc` | parola: `CUSTOMER_DB_PASSWORD`, `PROPOSAL_DB_PASSWORD`, `NOTIFICATION_DB_PASSWORD`, `ANALYTICS_DB_PASSWORD` |
 | Süper kullanıcı | `postgres` | `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 
 Varsayılan parolalar yalnızca yerel geliştirme içindir; `.env.example` kopyalanıp `.env` ile değiştirilebilir. `.env` git'e girmez.

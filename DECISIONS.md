@@ -51,6 +51,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-045 | DSL 0.1 kapsamı: çekirdek işleçler, ilişki niceleyicileri, ago/date, in, boolean | LLM entegrasyonu | Kabul edildi |
 | D-046 | DSL 0.1: yalın boolean alan yazımı yok; boş in listesi hata | LLM entegrasyonu | Kabul edildi |
 | D-047 | Claude API istemcisi resmi anthropic-sdk-go v2 | LLM entegrasyonu | Kabul edildi |
+| D-048 | Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -325,7 +326,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Tasarım belgesindeki `campaign_db` / `delivery_db` — reddedildi: diyagramla uyum.
   - Servisin açılışta süper kullanıcıyla kendi rolünü ve DB'sini açması — reddedildi: servislere süper kullanıcı parolası verilirdi.
 - **Sonuçlar / bedel:** Yeni bir DB eklemek initdb değişikliği ve `down -v` ister, çünkü init yalnız boş volume'da çalışır. İki şema mekanizması yan yana durur: `customer_db` initdb'de, diğerleri migration'da.
-- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı.
+- **Doğrulama:** 2026-10-27'de `docker compose down -v && up` sonrası (T-008): üç servis rolü kendi DB'sine bağlanıp tablo yazabiliyor; beş çapraz bağlantı denemesi (ör. `proposal_svc → customer_db`, `customer_svc → analytics_db`) "User does not have CONNECT privilege" ile reddedildi. Elle doğrulandı.
 
 ## D-020: Migration ve DB erişimi goose + sqlc + pgx/v5
 
@@ -693,6 +694,19 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - `net/http` ile kendi istemcimiz — reddedildi: retry, streaming ve tipler elle yazılırdı.
 - **Sonuçlar / bedel:** Bir dış bağımlılık. v2 kırıcı bir sürümdü; eski örnekler v1 modül yolunu gösterir. SDK varsayılan olarak 2 kez yeniden dener; onarım döngüsüyle (D-027) birlikte toplam deneme sayısı hesaba katılmalı.
 - **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
+## D-048: Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-019 servis veritabanlarını ve rollerini initdb'ye verdi; tabloların hangi şemada duracağı ve compose sağlık kontrolünün yeni DB'leri kapsayıp kapsamayacağı açıktı (T-008).
+- **Karar:** initdb her servis DB'sinde servis adıyla bir şema açar (`proposal`, `notification`, `analytics`), sahibi servis rolüdür; rolün o DB'deki `search_path`'i `<şema>, public` olur (customer_db'deki `dwh, public` deseni). goose sürüm tablosu da bu şemaya düşer. Postgres healthcheck'i mevcut customer kontrolüne ek olarak her servis rolünün kendi DB'sine TCP'den bağlanıp kendi şemasını gördüğünü kontrol eder.
+- **Alternatifler:**
+  - `public` şeması — reddedildi: customer_db'deki desenle tutarsız.
+  - Şemayı ilk migration'ın açması — reddedildi: ilk migration'a kadar `search_path` olmayan bir şemayı gösterir.
+  - Healthcheck yalnız customer_db — reddedildi: yeni DB'lerin açılışı sağlık durumuna yansımaz.
+- **Sonuçlar / bedel:** Şema adı initdb ile migration'lar arasında sabit bir sözleşmedir; değişirse ikisi birlikte değişir. Healthcheck komutu uzar.
+- **Doğrulama:** 2026-10-27'de (T-008): her DB'de servis adlı şema servis rolünün sahipliğinde, `current_schema()` servis adını döndürüyor, `uuidv7()` varsayılanlı bir deneme tablosu o şemaya yazıldı ve silindi; compose healthcheck `healthy`. Elle doğrulandı.
 
 ---
 
