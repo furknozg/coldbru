@@ -16,7 +16,7 @@ Smart Campaign Composer'ın servisleri, veri modelleri, durum makineleri ve olay
 | Analytics | `analytics_db` / `analytics_svc` | Kampanya özeti, LLM kullanımı ve maliyeti (D-036) | — | `notification.completed`, `proposal.token_completed` |
 | Mock provider | DB yok | Idempotency yanıt önbelleği (bellekte, taslak) | — | — |
 
-Senkron çağrılar yalnız Customer'ın GraphQL'ine gider: Proposal kitle sayımı ve alıcı listesi için (D-007), Notification gönderim öncesi izin kontrolü için (D-011). Canlı durum, Notification'dan SSE ile gelir (D-036). Diğer her şey NATS'tir (D-006).
+Senkron çağrılar yalnız Customer'ın GraphQL'ine gider: Proposal kitle sayımı ve alıcı listesi için (D-007), Notification gönderim öncesi izin kontrolü için (D-011). Erişim her durumda bu uç noktada zorlanır: her servis kendi token'ı ve kapsamıyla çağırır, alan beyaz listesi sunucudadır ve nginx Customer'ı dışarı açmaz (D-042, D-043). Canlı durum, Notification'dan SSE ile gelir (D-036). Diğer her şey NATS'tir (D-006).
 
 ```mermaid
 flowchart LR
@@ -211,7 +211,7 @@ erDiagram
     delivery {
         uuid id PK "Idempotency-Key"
         uuid campaign_id FK
-        bigint customer_id "customer_db kopyası"
+        text customer_id "customer_db kopyası"
         text channel
         text language
         text first_name
@@ -226,7 +226,7 @@ erDiagram
     }
 ```
 
-Tablo adları ve kolonlar taslaktır. `send_campaign` adı, Proposal'daki `campaign`'den ayırmak için seçildi. `customer_id`'nin tipi `customer_db`'deki tiple aynı olmalı.
+Tablo adları ve kolonlar taslaktır. `send_campaign` adı, Proposal'daki `campaign`'den ayırmak için seçildi. `customer_id`, `customer_db`'deki gibi `text`'tir.
 
 Kesin olanlar (D-023):
 
@@ -347,7 +347,7 @@ sequenceDiagram
 
     U->>P: brief
     P->>P: Haiku ön eleme (D-026)
-    P->>C: GraphQL sayım + kapsama (DSL → GraphQL, D-007)
+    P->>C: GraphQL sayım + kapsama (DSL → GraphQL, D-038, D-041)
     U->>P: kitle onayı → kanal planı onayı (D-010)
     P->>P: dil × kanal metinleri, stream (D-009, D-027)
     U->>P: metin ve dil başına zaman onayı
