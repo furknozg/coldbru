@@ -2,3 +2,4 @@
 .copilot
 .env
 .codegraph/
+.DS_Store

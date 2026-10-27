@@ -53,6 +53,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-047 | Claude API istemcisi resmi anthropic-sdk-go v2 | LLM entegrasyonu | Kabul edildi |
 | D-048 | Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder | Takip ve altyapı | Kabul edildi |
 | D-049 | NATS: nats:2.15-alpine, dosya depolama, stream'leri nats-box init konteyneri kurar | Gönderim | Kabul edildi |
+| D-050 | Platform: /healthz + /readyz, ortam + isteğe bağlı .env, slog JSON istek logu, Prometheus /metrics | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -732,6 +733,24 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** İç ağdaki her istemci her konuya yayın yapabilir; erişim kontrolü yalnız Customer GraphQL'de (D-043). `SCHEDULES` süresiz olduğu için tetiklenen `fire.*` iletileri birikir; temizlik veya `fire.*` tüketim politikası Notification yazılırken ele alınmalı. Stream tanımı değişince init konteyneri yeniden çalıştırılmalı.
 - **Doğrulama:** 2026-10-27'de (T-009): `docker compose up` ile NATS `healthy`, `nats-init` dört stream'i oluşturdu ve çıkış kodu 0; ikinci çalıştırma stream'leri güncelledi. Her `docker compose up` init'i yeniden çalıştırır. nats-box ile denendi: `@at` zamanlaması 6 saniye sonra `fire.*` konusuna düştü; aynı `Nats-Msg-Id` ile iki yayın tek ileti oldu; `SEND` iletisi ack sonrası silindi; NATS restart'ından sonra iletiler kaldı. Deneme iletileri temizlendi. Elle doğrulandı.
 
+## D-050: Platform: /healthz + /readyz, ortam + isteğe bağlı .env, slog JSON istek logu, Prometheus /metrics
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-031 chi, slog ve Viper'ı seçti; health içeriği, metrik biçimi ve yapılandırma dosyası açıktı (T-010). Brief canlı durum, metrics ve health check uç noktaları istiyor; API anahtarı `.env`'den okunmalı.
+- **Karar:**
+  - Health: `/healthz` süreç ayaktaysa 200 döner, bağımlılığa bakmaz. `/readyz` servisin kaydettiği kontrolleri (DB ping, NATS bağlantısı vb.) kontrol başına 2 saniye sınırla çalıştırır; yanıt JSON `{status, checks}`, biri başarısızsa 503. Compose ve nginx `/readyz`'e bakar.
+  - Yapılandırma: önek olmadan ortam değişkenleri (`HTTP_ADDR`, `DATABASE_URL`, `NATS_URL`, `ANTHROPIC_API_KEY` …), kodda varsayılanlar; çalışma dizininde `.env` varsa Viper onu da okur, ortam önceliklidir. Zorunlu anahtarlar açılışta doğrulanır. YAML dosyası yok.
+  - Log: `log/slog` JSON stdout'a, seviye `LOG_LEVEL` (varsayılan `info`). chi `RequestID` ve `Recoverer`; kendi slog istek logu (method, path, status, süre, request_id).
+  - Metrik: `github.com/prometheus/client_golang` (2026-10-27 itibarıyla v1.25.0); platformda `/metrics` ve HTTP istek metrikleri (sayı ve süre histogramı, route şablonu etiketiyle). Servise özel metrikler servis görevlerinde eklenir.
+- **Alternatifler:**
+  - Tek `/health` veya yalnız `/healthz` — reddedildi: bağımlılık kesintisi süreç sağlığıyla karışır ya da hiç görünmez.
+  - Yalnız ortam veya YAML + ortam — reddedildi: brief yerelde `.env` okumayı istiyor; YAML gereksiz dosya ekler.
+  - Ortama göre log formatı veya istek logu olmadan — reddedildi.
+  - Prometheus'u servis görevlerine bırakmak veya OpenTelemetry — reddedildi: metrik uç noktası erkenden ve az bağımlılıkla gelsin.
+- **Sonuçlar / bedel:** JSON loglar terminalde okunması zor. `/readyz`'in 503'ü yük dengeleyiciyi o örnekten uzaklaştırır; DB kısa süre kesilse süreç ayakta kalır. Önek olmadan ortam değişkenleri servisler arasında aynı adları kullanır; her servis kendi değerini compose'da alır. Route şablonu etiketi kardinaliteyi düşük tutar.
+- **Doğrulama:** 2026-10-27'de (T-010): `internal/platform/{config,logging,health,metrics,httpserver}` birim testleri `go test -race` ile geçti; `go vet` temiz. Testler: ortamın `.env`'i ve varsayılanı ezmesi, eksik `.env`'in hata olmaması, `Require`'ın tüm eksikleri raporlaması, `/readyz`'in başarısız ve zaman aşımına uğrayan kontrolde 503 dönmesi, metriklerde `route` etiketinin chi şablonu olması, panik yapan isteğin 500 ile loglanıp sayılması, bağlam iptalinde sunucunun temiz kapanması. Henüz bir servis bu paketleri kullanmıyor.
+
 ---
 
 ## Açık konular
@@ -753,5 +772,4 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - Mock provider hata/gecikme/429 oranları
 - SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016)
 - Kimlik doğrulama (arayüz ve SSE için) (D-013)
-- Metrik biçimi ve health check içeriği; Viper ile yapılandırma dosyası kullanılıp kullanılmayacağı (D-031)
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği
