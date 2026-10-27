@@ -62,6 +62,9 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-056 | Servis konteynerleri: platforma bağlı iskelet main'ler, distroless nonroot imaj, customer dışında host portları, postgres ve nats-init beklenir | Takip ve altyapı | Kabul edildi |
 | D-057 | Geliştirmede API belgeleri: API_DOCS_ENABLED ile servis başına Scalar (/docs) ve /openapi.json; swag v2 go tool, spec commit edilir | Takip ve altyapı | Kabul edildi |
 | D-058 | Customer GraphQL sözleşmesi: alan başına tipli filtre işleçleri, TimeValue @oneOf, tam işlem seti, Decimal string, null-güvenli eq/ne; gqlgen v0.17.95 | LLM entegrasyonu | Kabul edildi |
+| D-059 | Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi | LLM entegrasyonu | Kabul edildi |
+| D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi |
+| D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -898,6 +901,63 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Uygulama notu:** gqlgen v0.17.95, `@oneOf`'u yalnız sorgu içine yazılmış değerlerde doğruluyor, değişkenle gelen değerlerde doğrulamıyor; Proposal filtreyi değişkenle gönderdiği için kural şemada açık bir `@oneOf` directive'iyle çalışma anında da zorlanır (`BAD_USER_INPUT`). Introspection eklenmedi (D-044 build-time katalog); yalnız `POST /graphql` sunulur. `ago` biçimi henüz sunucuda doğrulanmıyor (T-015).
 - **Doğrulama:** 2026-10-27'de (T-014): `make generate` iki kez çalıştırıldığında değişiklik yok; handler testleri DSL belgesinin örnek filtresinin doğrulamadan geçtiğini, değişkenle gelen çift alanlı `TimeValue`'nun reddedildiğini, 13 kişisel/izin alanının şemada olmadığını, yer tutucu resolver'ların `NOT_IMPLEMENTED` döndüğünü ve introspection'ın kapalı olduğunu gösteriyor. Çalışan customer konteynerinde aynı davranış compose ağı içinden doğrulandı.
 
+## D-059: Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Kullanıcı prompt'ların bundan sonra nasıl sürümleneceğinin araştırılmasını istedi; bulgular `docs/research/05-prompt-versioning.md`'de. Kullanıcı `go:embed` ile dosya yaklaşımını ve araştırmanın sürüm kimliği önerisini kabul etti. Araştırmadaki diğer maddeler açık kaldı.
+- **Karar:**
+  - Prompt'ların kaynağı repodaki dosyalardır; Proposal binary'sine `go:embed` ile gömülür. Değişiklikler PR'da incelenir, git geçmişi sürüm geçmişidir. Prompt değişikliği yeniden derleme ve dağıtım demektir.
+  - Her prompt paketinin sürüm kimliği iki parçalıdır: elle verilen `ad@semver` (ör. `segment@1.2.0`) ve otomatik `sha256`. Hash, gerçekten gönderilen önek üzerinden kanonik biçimde hesaplanır: `system` + `tools` + `output_config.format` şeması (anahtar sıralı JSON) + `model` + `effort`. Kullanıcı mesajı hash'e girmez.
+  - Commit edilen `prompts.lock.json` her paket için `{name, version, sha256}` tutar; `make generate` yeniden üretir. Bir test hash'i yeniden hesaplar: kilitle uyuşmazsa `make generate` ister; hash değişip sürüm aynı kaldıysa sürüm artırılmasını ister.
+  - Semver anlamı: MAJOR = çıktı sözleşmesi değişti (tool/JSON şeması, DSL sürümü); MINOR = davranış değişikliği (talimat, örnek); PATCH = davranışı etkilemeyen düzeltme. Hash her değişiklikte değiştiği için PATCH'te de sürüm artırımı zorunludur. Paketin gerektirdiği DSL sürümü (`requires_dsl`, D-045) ayrıştırıcının sürümüyle testte karşılaştırılır.
+- **Alternatifler:**
+  - `proposal_db` içinde prompt kayıt defteri — reddedildi: PR incelemesi ve DSL/kod ile birlikte sürümlenme kaybolur, yeni tablo gerekir.
+  - Harici araçlar (Langfuse, PromptLayer, Braintrust, Humanloop, Helicone, Anthropic Console) — reddedildi: `docker compose up` ve anahtarsız test koşullarını bozar, Go desteği zayıf veya ücretli.
+  - Yalnız içerik hash'i, yalnız elle semver veya tam sayı revizyon — reddedildi: hash insan tarafından okunmaz; elle sürüm unutulur ve kayıt yanlış olur.
+- **Sonuçlar / bedel:** Prompt canlıda kod değiştirmeden düzenlenemez. Her sürüm artışı Claude prompt önbelleğini bir kez soğutur. Sistem metnine istemeden dinamik veri girmesi önbelleği ve hash'i bozar; dinamik veri kullanıcı mesajında kalmalıdır. Kilit dosyası ve test küçük bir bakım yüküdür. Biçim (düz metin veya şablon), `llm_call` sütunları, olay alanları, değerlendirme katmanları ve arayüz gösterimi açık konudur.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok (Proposal LLM görevlerinde, T-022).
+
+## D-060: Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-059 prompt'ların `go:embed` ile dosya olarak tutulmasını ve sürüm kimliğini belirledi; biçim ve sürümün sistemde nasıl izleneceği açıktı (`docs/research/05-prompt-versioning.md` §1.1, §5).
+- **Karar:**
+  - Prompt dosyaları düz metindir; şablon motoru kullanılmaz. Katalog ve DSL dilbilgisi parçaları açılışta sabit sırayla birleştirilir. Brief, bağlam notları, dil gibi çağrıya özgü veri kullanıcı mesajında JSON blok olarak gider; sistem metni bayt bayt sabittir.
+  - `llm_call` (proposal_db, D-022) şu sütunları alır: `prompt_name`, `prompt_version`, `prompt_sha256` (üçü NOT NULL), `cache_creation_tokens` ve `outcome` (`accepted` | `validation_failed` | `refusal`). Bir varyantı hangi denemenin ürettiği `outcome`'dan okunur; `proposal_variant`'a sütun eklenmez. Kullanıcı bu şema değişikliğini onayladı (kodlama kuralı 7); kesin tipler ve kısıtlar migration yazılırken.
+  - `evt.proposal.token_completed.v1`'in `data`'sına `prompt_name` ve `prompt_version` eklenir (sürüm içinde alan ekleme, D-035); Analytics `llm_usage`'a `prompt_version` sütunu eklenir. Loglarda `prompt_version` alanı, Prometheus etiketlerinde yalnız `prompt_name` (kardinalite).
+  - `prompt_snapshot` tablosu şimdilik yoktur; eski bir çağrının tam metni git commit'i ve hash ile bulunur.
+- **Alternatifler:**
+  - `text/template` — reddedildi: modele öğretilen `{{first_name}}` gibi yer tutucular her yerde kaçırılmalı, dinamik veri önbelleği bozabilir.
+  - `outcome` olmadan veya yalnız `prompt_version` — reddedildi: kabul edilen deneme ve önbellek maliyeti görünmez olur.
+  - Sürümü yalnız `llm_call`'da tutmak — reddedildi: sürüm başına maliyet ve onarım oranı Analytics'te görülsün.
+  - `prompt_snapshot`'ı baştan eklemek — reddedildi: tablo ve migration gerekir, git yeterli.
+- **Sonuçlar / bedel:** `llm_call` satırları biraz büyür. Analytics bilinmeyen alanları yok saymalıdır. Prompt metni git dışında saklanmadığı için eski bir sürümü görmek repo erişimi ister.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok (T-021, T-022, T-032).
+
+## D-061: Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Test ve kapsam
+- **Bağlam:** Prompt sürümlemesi ancak değişikliğin etkisi ölçülebilirse anlamlıdır (`docs/research/05-prompt-versioning.md` §4). Brief testlerin gerçek API anahtarı olmadan çalışmasını istiyor; D-025 `live` build tag'ini ayırdı.
+- **Karar:**
+  - `make test` (anahtarsız): kilit dosyası ve `requires_dsl` uyumu (D-059), araç/çıktı şemalarının geçerliliği, mock sunucuya giden isteklerde `system`/`tools` baytlarının gömülü paketle aynı olması, altın dosyaların kaydedildiği `prompt_sha256`'nın güncel olması.
+  - `make eval` (anahtarsız): `eval/cases/` altındaki vakalar kayıtlı yanıtlarla Go içindeki tüm doğrulama hattından geçer.
+  - `make eval-live` (`live` tag, `ANTHROPIC_API_KEY`, elle): aynı vakalar gerçek modele birden çok kez gider; kontroller kodla yapılır (DSL ayrıştırma, katalog, SQL sayımı, SMS ≤ 160, konu ≤ 80, yer tutucular, enjeksiyon reddi). Sonuç prompt sürümü artırılan PR'a eklenir.
+  - promptfoo ek olarak ton ve çok-model karşılaştırması için kullanılır; Go doğrulayıcılarının yerine geçmez.
+  - LLM hakem ilk sürümde yoktur; öznel ton insan onayında kalır.
+  - Arayüzde prompt sürümü gösterilmez; sürüm yalnız DB, olaylar ve loglardadır.
+  - Önbellek tanılama (cache diagnostics) `live` etiketli bir testte, aynı sürümün iki ardışık çağrısında önek ayrışması olmadığını doğrulamak için kullanılır; Go SDK v2.3.0'da düz `Messages` üzerinde desteklenmiyorsa kontrol `usage` token'larıyla yapılır.
+- **Alternatifler:**
+  - Yalnız Go içi 3 katman (promptfoo'suz) — reddedildi: kullanıcı ton ve model karşılaştırması için promptfoo'yu da istedi.
+  - Yalnız `make test` — reddedildi: model davranışı ölçülmez.
+  - Haiku 5.5 hakem — reddedildi: ilk sürümde gerek yok.
+  - Salt okunur "AI notları" rozeti veya yönetici sayfası — reddedildi: arayüz sade kalsın.
+  - Önbellek tanılamayı hiç kullanmamak — reddedildi.
+- **Sonuçlar / bedel:** promptfoo Node bağımlılığı ekler ve kurallar kısmen YAML'da ikinci kez yazılır; model değerlendirmeli kontrolleri sağlayıcı (API anahtarı) ister. `make eval-live` her çalıştırmada küçük bir API maliyeti doğurur (araştırmadaki tahmin tur başına yaklaşık 0,3 $, ölçülmedi). promptfoo sürümü ve vaka biçimi açıktır. İnceleme görüşmesinde sürüm izi arayüzden değil DB ve git'ten anlatılır.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+
 ---
 
 ## Açık konular
@@ -915,6 +975,7 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - Gönderim anında bir alıcının SMS metni 160 karakteri aşarsa ne yapılır (D-028)
 - HTML email biçimi (araştırma önerisi yuvalı şablon)
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
+- promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061)
 - Mock provider hata/gecikme/429 oranları
 - SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016)
 - Kimlik doğrulama (arayüz ve SSE için) (D-013)

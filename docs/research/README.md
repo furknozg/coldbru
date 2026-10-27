@@ -114,4 +114,4 @@ Diyagramdan farklar: Customer Service'te GraphQL isteğe bağlı; Proposal → C
 | LLM kataloğundaki hassas alanlar | `sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*` dahil mi? (02) | **Karar: D-042** (kişisel olmayan tüm alanlar dahil) |
 | Migration aracı | goose + sqlc + pgx (04 §1) | **Karar: D-020** |
 | Seed ölçeği | `STUB_SCALE=3` (04 §5) | Açık |
-| Prompt sürümleme altyapısı | Repoda düz dosya + `go:embed`, `ad@semver` + `sha256`, `llm_call`'a kayıt (05) | Açık |
+| Prompt sürümleme altyapısı | Repoda düz dosya + `go:embed`, `ad@semver` + `sha256`, `llm_call`'a kayıt (05) | **Karar: D-059, D-060, D-061** |
