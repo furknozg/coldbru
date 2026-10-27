@@ -49,7 +49,7 @@ func liveServer(t *testing.T) http.Handler {
 		t.Fatalf("LoadCities: %v", err)
 	}
 	svc := audience.NewService(pool, cities)
-	return graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	return withAuth(t, graph.NewHandler(graph.NewResolver(svc, slog.New(slog.NewTextHandler(io.Discard, nil)))))
 }
 
 type coverage struct {

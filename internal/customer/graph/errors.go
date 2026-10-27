@@ -13,6 +13,10 @@ import (
 // CodeNotImplemented is the extensions.code of the placeholder resolvers.
 const CodeNotImplemented = "NOT_IMPLEMENTED"
 
+// CodeForbidden is the extensions.code of a field the caller's token has no
+// scope for (D-063).
+const CodeForbidden = "FORBIDDEN"
+
 // CodeBadUserInput is the extensions.code of input errors found at execution
 // time, after the GraphQL validator has passed the document.
 const CodeBadUserInput = audience.CodeBadUserInput

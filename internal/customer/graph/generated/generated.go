@@ -34,7 +34,8 @@ type ResolverRoot interface {
 }
 
 type DirectiveRoot struct {
-	OneOf func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
+	HasScope func(ctx context.Context, obj any, next graphql.Resolver, scope string) (res any, err error)
+	OneOf    func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
 }
 
 type ComplexityRoot struct {
@@ -454,6 +455,14 @@ see gqlgen.yml (D-058).
 """
 directive @oneOf on INPUT_OBJECT
 
+"""
+The caller's token must carry ` + "`" + `scope` + "`" + `, otherwise the field fails with extensions.code FORBIDDEN
+and the other fields of the operation still run (D-063). Scopes: ` + "`" + `audience:read` + "`" + ` (Proposal),
+` + "`" + `consent:read` + "`" + ` (Notification and admin), ` + "`" + `consent:write` + "`" + ` (admin token only). Enforced at run time by
+graph.HasScope.
+"""
+directive @hasScope(scope: String!) on FIELD_DEFINITION
+
 # ---------------------------------------------------------------------------
 # Time values and filter operators (D-058)
 # ---------------------------------------------------------------------------
@@ -770,7 +779,7 @@ type ConsentStatus {
   eligible: Boolean!
 }
 
-"""Records a consent change (D-058). Requires its own scope (D-043)."""
+"""Records a consent change (D-058). Requires its own scope, ` + "`" + `consent:write` + "`" + ` (D-043, D-063)."""
 input UpdateConsentInput {
   customerId: ID!
   "email or sms."
@@ -782,29 +791,30 @@ input UpdateConsentInput {
 
 type Query {
   """
-  Size and channel reach of the audience. Scope: Proposal (D-043).
+  Size and channel reach of the audience. Scope: ` + "`" + `audience:read` + "`" + ` (Proposal token, D-043, D-063).
   """
-  audiencePreview(filter: CustomerFilter!): AudiencePreview!
+  audiencePreview(filter: CustomerFilter!): AudiencePreview! @hasScope(scope: "audience:read")
 
   """
   Recipients of the audience, ordered by customerId with keyset pagination. ` + "`" + `first` + "`" + ` is at
-  most 1000. Pass the previous page's ` + "`" + `endCursor` + "`" + ` as ` + "`" + `after` + "`" + `. Scope: Proposal (D-043).
+  most 1000. Pass the previous page's ` + "`" + `endCursor` + "`" + ` as ` + "`" + `after` + "`" + `. Scope: ` + "`" + `audience:read` + "`" + ` (Proposal
+  token, D-043, D-063).
   """
-  audienceRecipients(filter: CustomerFilter!, first: Int!, after: String): RecipientConnection!
+  audienceRecipients(filter: CustomerFilter!, first: Int!, after: String): RecipientConnection! @hasScope(scope: "audience:read")
 
   """
   Consent and eligibility of the given customers on one channel (` + "`" + `email` + "`" + ` or ` + "`" + `sms` + "`" + `). Scope:
-  Notification (D-011, D-043).
+  ` + "`" + `consent:read` + "`" + ` (Notification and admin tokens, D-011, D-043, D-063).
   """
-  consentStatus(customerIds: [ID!]!, channel: String!): [ConsentStatus!]!
+  consentStatus(customerIds: [ID!]!, channel: String!): [ConsentStatus!]! @hasScope(scope: "consent:read")
 }
 
 type Mutation {
   """
   Records opt-in or opt-out for a customer on a channel (` + "`" + `email` + "`" + ` or ` + "`" + `sms` + "`" + `) and returns the new
-  status. Scope: consent update (D-043).
+  status. Scope: ` + "`" + `consent:write` + "`" + ` (admin token only, no service holds it, D-043, D-063).
   """
-  updateConsent(input: UpdateConsentInput!): ConsentStatus!
+  updateConsent(input: UpdateConsentInput!): ConsentStatus! @hasScope(scope: "consent:write")
 }
 `, BuiltIn: false},
 }
@@ -1021,6 +1031,20 @@ func (ec *executionContext) childFields___Type(ctx context.Context, field graphq
 // endregion ************************** internal!.gotpl ***************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) dir_hasScope_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "scope",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["scope"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_updateConsent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -1537,7 +1561,25 @@ func (ec *executionContext) _Mutation_updateConsent(ctx context.Context, field g
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Mutation().UpdateConsent(ctx, fc.Args["input"].(model.UpdateConsentInput))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				scope, err := ec.unmarshalNString2string(ctx, "consent:write")
+				if err != nil {
+					var zeroVal *model.ConsentStatus
+					return zeroVal, err
+				}
+				if ec.Directives.HasScope == nil {
+					var zeroVal *model.ConsentStatus
+					return zeroVal, errors.New("directive hasScope is not implemented")
+				}
+				return ec.Directives.HasScope(ctx, nil, directive0, scope)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ConsentStatus) graphql.Marshaler {
 			return ec.marshalNConsentStatus2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐConsentStatus(ctx, selections, v)
 		},
@@ -1627,7 +1669,25 @@ func (ec *executionContext) _Query_audiencePreview(ctx context.Context, field gr
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Query().AudiencePreview(ctx, fc.Args["filter"].(model.CustomerFilter))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				scope, err := ec.unmarshalNString2string(ctx, "audience:read")
+				if err != nil {
+					var zeroVal *model.AudiencePreview
+					return zeroVal, err
+				}
+				if ec.Directives.HasScope == nil {
+					var zeroVal *model.AudiencePreview
+					return zeroVal, errors.New("directive hasScope is not implemented")
+				}
+				return ec.Directives.HasScope(ctx, nil, directive0, scope)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AudiencePreview) graphql.Marshaler {
 			return ec.marshalNAudiencePreview2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐAudiencePreview(ctx, selections, v)
 		},
@@ -1671,7 +1731,25 @@ func (ec *executionContext) _Query_audienceRecipients(ctx context.Context, field
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Query().AudienceRecipients(ctx, fc.Args["filter"].(model.CustomerFilter), fc.Args["first"].(int), fc.Args["after"].(*string))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				scope, err := ec.unmarshalNString2string(ctx, "audience:read")
+				if err != nil {
+					var zeroVal *model.RecipientConnection
+					return zeroVal, err
+				}
+				if ec.Directives.HasScope == nil {
+					var zeroVal *model.RecipientConnection
+					return zeroVal, errors.New("directive hasScope is not implemented")
+				}
+				return ec.Directives.HasScope(ctx, nil, directive0, scope)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v *model.RecipientConnection) graphql.Marshaler {
 			return ec.marshalNRecipientConnection2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐRecipientConnection(ctx, selections, v)
 		},
@@ -1715,7 +1793,25 @@ func (ec *executionContext) _Query_consentStatus(ctx context.Context, field grap
 			fc := graphql.GetFieldContext(ctx)
 			return ec.Resolvers.Query().ConsentStatus(ctx, fc.Args["customerIds"].([]string), fc.Args["channel"].(string))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				scope, err := ec.unmarshalNString2string(ctx, "consent:read")
+				if err != nil {
+					var zeroVal []*model.ConsentStatus
+					return zeroVal, err
+				}
+				if ec.Directives.HasScope == nil {
+					var zeroVal []*model.ConsentStatus
+					return zeroVal, errors.New("directive hasScope is not implemented")
+				}
+				return ec.Directives.HasScope(ctx, nil, directive0, scope)
+			}
+
+			next = directive1
+			return next
+		},
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.ConsentStatus) graphql.Marshaler {
 			return ec.marshalNConsentStatus2ᚕᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐConsentStatusᚄ(ctx, selections, v)
 		},

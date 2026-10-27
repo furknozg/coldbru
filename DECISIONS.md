@@ -66,6 +66,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi |
 | D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
 | D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
+| D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
 
 ---
 
@@ -984,6 +985,27 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Uygulama notu:** Sınır sayımı: kök filtre derinlik 1'dir; `and`/`or` elemanı, `not` işleneni veya `some`/`none`/`every` nesnesi bir seviye derindir. Her karşılaştırma işleci (`in` listesi uzunluğundan bağımsız) ve her `and`/`or`/`not` ile niceleyici bir düğümdür. Hatalar `extensions.filterPath` ile filtredeki yeri gösterir; zaman aşımı `QUERY_TIMEOUT`, iç hata `INTERNAL` döner (iç ayrıntı yalnız loglanır); bu iki kod ve `filterPath` kullanıcı tarafından ayrıca onaylandı. CHECK'i olmayan `orders.countryCode`, `shippingCity` ve `platform` alanları serbest metindir.
 - **Doğrulama:** 2026-10-27'de (T-015), testcontainers ile seed'lenen taze bir customer_db'de örnek brief: `count` 46, kapsama 20 / 13 / 13 / 3, yani 33 SMS ve 33 e-posta uygun; alıcılar 10'luk sayfalarla 46 kişiyi tekrarsız ve sıralı döndürdü; İstanbul'un beş yazımı aynı sayımı verdi; `Istnbul` → `İstanbul`, `gold` → `Gold` önerisi; `ne` null'ları kapsıyor; sınır ve biçim hataları beklenen kodları döndürdü; 27 altın derleme vakası Postgres'te çalıştı ve 14 filtre elle yazılmış SQL ile aynı sonucu verdi. Compose'daki 7 saatlik veritabanı aynı brief için 47 döndürdü: bir müşterinin son siparişi 30 günlük pencereden çıktı (D-017'deki bilinen kayma; `down -v` ile tazelenince 46).
 
+## D-063: Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Kitle ve izinler
+- **Bağlam:** D-043 Customer GraphQL'e her servisin kendi token'ı ve kapsamıyla erişmesini seçti; token'ların nasıl tanımlanacağı, `updateConsent` kapsamını kimin taşıyacağı, hata davranışı ve kapsamların nerede belirtileceği açıktı (T-016). D-011 izin geri çekmenin demoda arayüzden gösterilebileceğini öngörüyordu.
+- **Karar:**
+  - Token'lar çağıran başına ortam değişkenidir: `CUSTOMER_TOKEN_PROPOSAL`, `CUSTOMER_TOKEN_NOTIFICATION`, `CUSTOMER_TOKEN_ADMIN`. Hangi çağıranın hangi kapsamı aldığı kodda sabittir: Proposal `audience:read` (`audiencePreview`, `audienceRecipients`), Notification `consent:read` (`consentStatus`), admin `consent:write` (`updateConsent`) ve `consent:read` (sonucu doğrulamak için; kullanıcı ayrıca onayladı). İstek `Authorization: Bearer <token>` taşır; karşılaştırma sabit zamanlıdır. Token'lardan biri tanımlı değilse Customer açılmaz. Dev değerleri compose ve `.env.example`'dadır.
+  - `consent:write`'ı hiçbir servis taşımaz; `updateConsent` yalnız admin token'ıyla, geliştirici komutu veya compose ağı içinden çağrılır.
+  - Token yok veya geçersizse `/graphql` HTTP 401 döner, GraphQL'e ulaşılmaz. Token geçerli ama kapsam yoksa yalnız o alan GraphQL hatası `FORBIDDEN` ile döner. `/healthz`, `/readyz`, `/metrics` token istemez (yalnız iç ağ, D-056).
+  - Kapsamlar şemada `@hasScope(scope: "...")` directive'iyle belirtilir ve gqlgen tarafından çalışma anında zorlanır; sözleşmede görünür (D-044).
+- **Alternatifler:**
+  - Tek ortam değişkeninde JSON token → kapsam eşlemesi — reddedildi: yanlış yapılandırma kapsamı sessizce genişletebilir.
+  - HMAC imzalı token — reddedildi: D-043'te reddedilen JWT ağırlığına yaklaşır.
+  - `consent:write`'ı Notification'a veya Proposal'a vermek — reddedildi: kullanıcı izin değişikliğini servislerden ayırmayı seçti.
+  - Her durumda GraphQL hatası (HTTP 200) — reddedildi: HTTP seviyesinde izlenebilirlik.
+  - Kapsam kontrolünü yalnız resolver içinde yapmak — reddedildi: kapsamlar sözleşmede görünmez, unutulan kontrol risktir.
+- **Sonuçlar / bedel:** D-011'deki "izin geri çekme arayüzden canlı gösterilebilir" fikri arayüz üzerinden olmaz; demoda izin bir geliştirici komutuyla geri çekilir ve etkisi gönderim panosunda görülür. Statik token'lar süresizdir (D-043). Yeni bir çağıran eklemek kod değişikliği ister.
+- **Ek (kullanıcı onayı, 2026-10-27):** Kök alanlar non-null olduğu için (D-058) kapsamı olmayan bir alan, yanıtta tek bir `FORBIDDEN` hatası ve `data: null` doğurur; kısmi veri dönmez. Şema değişmez; her çağıran tek işlem istediğinden bu yeterlidir.
+- **Uygulama notu:** Customer token'ların yalnız SHA-256 özetini tutar ve gelen token'ı her kayıtla sabit zamanlı karşılaştırır. Ara katmanı olmadan çağrılan handler korunan her alanı reddeder. Token'lar loglanmaz.
+- **Doğrulama:** 2026-10-27'de (T-016): ara katman ve token seti birim testleri, gerçek GraphQL handler'ı üzerinden 9 kapsam vakası, yasak alanın resolver'ı çalıştırmadığı ve token'sız isteğin GraphQL'e ulaşmadığı testleri geçti. Çalışan customer'da compose ağı içinden: token yok ve geçersiz token 401; Proposal token'ı `audiencePreview` sayımını aldı; Notification token'ı aynı sorguda `FORBIDDEN`; admin token'ı `consentStatus` ve `updateConsent`'e ulaştı (henüz `NOT_IMPLEMENTED`, T-017); `/healthz` token'sız 200; loglarda token yok.
+
 ---
 
 ## Açık konular
@@ -992,7 +1014,6 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 
 - Retry ayrıntıları: gönderimde (`SEND`) hangi hatalar yeniden denenir, geri çekilme ve deneme sayısı, `sending` lease süresi; olay tüketicisi için D-055 (D-023, D-024)
 - DSL hata kodlarının kesin listesi; null ve sayı biçimi D-058'de (D-038, D-045)
-- `updateConsent` kapsamını hangi servisin taşıyacağı ve arayüzden nasıl çağrılacağı (D-011, D-043)
 - Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
 - `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
