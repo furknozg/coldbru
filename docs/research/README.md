@@ -10,6 +10,7 @@
 | [02-segment-query-gql-mcp-dsl.md](02-segment-query-gql-mcp-dsl.md) | GraphQL, MCP, JS benzeri filtre dili, token verimliliği |
 | [03-llm-agent-flow.md](03-llm-agent-flow.md) | Model, yapılandırılmış çıktı, doğrulama, SMS/HTML, enjeksiyon, mock LLM, teklif durumu, bütçe |
 | [04-data-platform.md](04-data-platform.md) | Migration, servisler arası iletişim, SSE, Türkçe şehir eşleşmesi, seed ölçekleme, nginx, p95 |
+| [05-prompt-versioning.md](05-prompt-versioning.md) | Prompt sürümleme: `go:embed` dosyaları, DB kayıt defteri, harici araçlar, değerlendirme kapısı, sürümün `llm_call`/olay/arayüze akışı |
 
 ## Sonradan verilen kararlar (2026-10-27)
 
@@ -113,3 +114,4 @@ Diyagramdan farklar: Customer Service'te GraphQL isteğe bağlı; Proposal → C
 | LLM kataloğundaki hassas alanlar | `sex`, `age_years`, `yearly_salary_gbp`, `vehicle_*` dahil mi? (02) | **Karar: D-042** (kişisel olmayan tüm alanlar dahil) |
 | Migration aracı | goose + sqlc + pgx (04 §1) | **Karar: D-020** |
 | Seed ölçeği | `STUB_SCALE=3` (04 §5) | Açık |
+| Prompt sürümleme altyapısı | Repoda düz dosya + `go:embed`, `ad@semver` + `sha256`, `llm_call`'a kayıt (05) | Açık |
