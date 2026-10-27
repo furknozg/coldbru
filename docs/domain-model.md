@@ -289,14 +289,16 @@ Analytics bir olayı birden çok kez alabilir. Bu yüzden `processed_event` dedu
 
 ## 6. NATS sözleşmeleri
 
-### Stream'ler (D-024)
+### Stream'ler (D-024, D-049)
 
 | Stream | Saklama | Konular | İçerik |
 |---|---|---|---|
-| `EVENTS` | limits | `evt.>` | Servisler arası olaylar; servis başına durable tüketici |
-| `RECIPIENTS` | work-queue | `recipients.<campaign_id>` (taslak) | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
-| `SCHEDULES` | limits, `AllowMsgSchedules` | `sched.<campaign_id>.<language>`, hedef `fire.<campaign_id>.<language>` (taslak) | Dil başına tek zamanlama; tetiklenince hedef konuya ileti düşer |
+| `EVENTS` | limits, 7 gün | `evt.>` | Servisler arası olaylar; servis başına durable tüketici |
+| `RECIPIENTS` | work-queue | `recipients.>`; kampanya başına alt konu `recipients.<campaign_id>` taslak | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
+| `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.>` ve `fire.>`; `sched.<campaign_id>.<language>` → `fire.<campaign_id>.<language>` biçimi taslak | Dil başına tek zamanlama; tetiklenince hedef konuya ileti düşer |
 | `SEND` | work-queue | `send.sms`, `send.email` | Teslimat başına ileti, `{delivery_id}` |
+
+Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, ileti sınırı 1 MB. Tanımlar `infra/nats/streams/*.json` dosyalarındadır; compose'daki tek seferlik `nats-init` konteyneri her `up`'ta bunları oluşturur veya günceller. Servisler stream oluşturmaz (D-049).
 
 İptal API'si olmadığı için tetiklenen `fire.*` iletisini işleyen worker, `send_campaign` ve `language_schedule` durumunu kontrol eder. İptal edilmişse iletiyi düşürür (D-006).
 

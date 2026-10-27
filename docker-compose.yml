@@ -2,6 +2,8 @@
 # Single Postgres service hosting one database per microservice (docs/database-architecture.md).
 # First `up` on an empty volume creates customer_db (seeded from ./stub) and the empty service DBs
 # proposal_db, notification_db, analytics_db, each with an owner role and a same-named schema.
+# Also runs NATS JetStream (file storage, volume natsdata). The one-shot `nats-init` service creates/updates
+# the streams from infra/nats/streams/*.json on every `up` (idempotent, D-049).
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -45,5 +47,32 @@ services:
       retries: 12
       start_period: 60s
 
+  nats:
+    image: nats:2.15-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${NATS_HOST_PORT:-4222}:4222"
+      - "${NATS_MONITOR_HOST_PORT:-8222}:8222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  nats-init:
+    image: natsio/nats-box:0.20.0
+    restart: "no"
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./infra/nats:/nats-init:ro
+    entrypoint: ["sh", "/nats-init/init-streams.sh"]
+
 volumes:
   pgdata:
+  natsdata:

@@ -52,6 +52,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-046 | DSL 0.1: yalın boolean alan yazımı yok; boş in listesi hata | LLM entegrasyonu | Kabul edildi |
 | D-047 | Claude API istemcisi resmi anthropic-sdk-go v2 | LLM entegrasyonu | Kabul edildi |
 | D-048 | Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder | Takip ve altyapı | Kabul edildi |
+| D-049 | NATS: nats:2.15-alpine, dosya depolama, stream'leri nats-box init konteyneri kurar | Gönderim | Kabul edildi |
 
 ---
 
@@ -707,6 +708,29 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Healthcheck yalnız customer_db — reddedildi: yeni DB'lerin açılışı sağlık durumuna yansımaz.
 - **Sonuçlar / bedel:** Şema adı initdb ile migration'lar arasında sabit bir sözleşmedir; değişirse ikisi birlikte değişir. Healthcheck komutu uzar.
 - **Doğrulama:** 2026-10-27'de (T-008): her DB'de servis adlı şema servis rolünün sahipliğinde, `current_schema()` servis adını döndürüyor, `uuidv7()` varsayılanlı bir deneme tablosu o şemaya yazıldı ve silindi; compose healthcheck `healthy`. Elle doğrulandı.
+
+## D-049: NATS: nats:2.15-alpine, dosya depolama, stream'leri nats-box init konteyneri kurar
+
+- **Durum:** Kabul edildi · 2026-10-27
+- **Alan:** Gönderim
+- **Bağlam:** D-006 ve D-024 NATS JetStream'i ve dört stream'i seçti; imaj, depolama, stream'leri kimin kuracağı, stream ayarları ve erişim açıktı (T-009). `RECIPIENTS` ve `SCHEDULES` konuları domain belgesinde taslaktı.
+- **Karar:**
+  - İmaj `nats:2.15-alpine` (2.15.0: 2026-09-17; kurulum anında 2.15.1). JetStream dosya depolaması ayrı bir compose volume'unda.
+  - Stream'leri compose'daki tek seferlik bir nats-box konteyneri kurar: `infra/nats/` altındaki JSON tanımlarını `nats stream add` / `edit` ile uygular. Servisler stream oluşturmaz, yalnız kullanır.
+  - Stream'ler, hepsi dosya depolamalı, tek replika, 2 dakika dedup penceresi, 1 MB ileti sınırı:
+    - `EVENTS`: `evt.>`, limits, 7 gün.
+    - `RECIPIENTS`: `recipients.>`, work-queue.
+    - `SCHEDULES`: `sched.>` ve `fire.>`, limits, `AllowMsgSchedules`, süre sınırı yok.
+    - `SEND`: `send.>`, work-queue.
+  - Kimlik doğrulama yok (compose iç ağı). 4222 (istemci) ve 8222 (izleme) host'a açılır, `NATS_HOST_PORT` / `NATS_MONITOR_HOST_PORT` ile değişir. Healthcheck `8222/healthz?js-enabled-only=true`.
+- **Alternatifler:**
+  - `nats:2.14-alpine` — reddedildi: daha yeni seri tercih edildi.
+  - Bellek depolama — reddedildi: restart'ta zamanlamalar ve kuyruktaki teslimatlar kaybolur.
+  - Stream'leri servislerin açılışta oluşturması veya ikisi birden — reddedildi: tanımlar tek yerde ve servis kodu olmadan doğrulanabilsin.
+  - `EVENTS` 24 saat veya süresiz — reddedildi.
+  - Servis başına NATS kullanıcısı veya kapalı port — reddedildi: demo ve yerel testler için gereksiz sıkılık.
+- **Sonuçlar / bedel:** İç ağdaki her istemci her konuya yayın yapabilir; erişim kontrolü yalnız Customer GraphQL'de (D-043). `SCHEDULES` süresiz olduğu için tetiklenen `fire.*` iletileri birikir; temizlik veya `fire.*` tüketim politikası Notification yazılırken ele alınmalı. Stream tanımı değişince init konteyneri yeniden çalıştırılmalı.
+- **Doğrulama:** 2026-10-27'de (T-009): `docker compose up` ile NATS `healthy`, `nats-init` dört stream'i oluşturdu ve çıkış kodu 0; ikinci çalıştırma stream'leri güncelledi. Her `docker compose up` init'i yeniden çalıştırır. nats-box ile denendi: `@at` zamanlaması 6 saniye sonra `fire.*` konusuna düştü; aynı `Nats-Msg-Id` ile iki yayın tek ileti oldu; `SEND` iletisi ack sonrası silindi; NATS restart'ından sonra iletiler kaldı. Deneme iletileri temizlendi. Elle doğrulandı.
 
 ---
 
