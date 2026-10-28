@@ -120,6 +120,8 @@ erDiagram
         jsonb content
         text rejection_reason
         timestamptz created_at
+        timestamptz approved_at
+        timestamptz rejected_at
     }
     context_note {
         uuid id PK
@@ -131,6 +133,7 @@ erDiagram
     llm_call {
         uuid id PK
         uuid campaign_id FK
+        uuid step_id "NULL olabilir"
         uuid variant_id "NULL olabilir"
         text purpose "screen|segment|content"
         text model
@@ -138,13 +141,26 @@ erDiagram
         int input_tokens
         int output_tokens
         int cache_read_tokens
+        int cache_creation_tokens
         text stop_reason
         int latency_ms
+        text prompt_name
+        text prompt_version
+        text prompt_sha256
+        text outcome "accepted|validation_failed|refusal|api_error"
+        jsonb response "modelin yapılandırılmış çıktısı"
+        text error
         timestamptz created_at
     }
 ```
 
-Kolon listeleri taslaktır. Tablo sınırları, adım türleri ve durum değerleri kesindir (D-022, D-033, D-034).
+Kolon listeleri kesindir (D-068); migration'lar `internal/proposal/store/migrations` altındadır, sqlc kodu aynı pakette üretilir. Kısıtlar:
+
+- Durum ve tür sütunları `text` + `CHECK`. `approved` satırda `approved_at` dolu, `open` adımda ve `draft` varyantta boş; `rejected` varyantta `rejected_at` ve `rejection_reason` dolu; `superseded` satır eski damgalarını korur.
+- `proposal_step_live_kind_key`: kampanyada tür başına en fazla bir `superseded` olmayan adım. `proposal_step_campaign_kind_version_key`: `(campaign_id, kind, version)` tekildir.
+- `proposal_variant_live_slot_key`: adımda (`language`, `channel`) başına en fazla bir `draft` veya `approved` varyant (`NULLS NOT DISTINCT`). `proposal_variant_step_kind_fkey`: varyantın `kind`'ı adımınkiyle aynıdır.
+- `context_note` ve `llm_call` ekleme-yalnızdır: `reject_row_change()` trigger'ı `UPDATE` ve `DELETE`'i reddeder.
+- Tüm yabancı anahtarlarda indeks vardır.
 
 ### Varyant biçimi (D-034)
 
@@ -155,7 +171,7 @@ Kolon listeleri taslaktır. Tablo sınırları, adım türleri ve durum değerle
 | `content` | kitledeki her dil × plandaki her kanal (yalnız alıcısı olan çiftler, D-010) | dolu | dolu |
 | `schedule` | kitledeki her dil (D-009) | dolu | NULL |
 
-Önerilen `CHECK` (taslak):
+`proposal_variant_shape_check`:
 
 ```sql
 CHECK (
@@ -217,7 +233,7 @@ Kurallar:
 - Ek bağlam (D-009) bir `context_note` yazar. Açık adımın onaylanmamış varyantları superseded olur ve yeniden üretilir; onaylı varyantlar korunur.
 - Red yalnız o varyantı yeniden üretir (D-009). Yeni varyant aynı adımda açılır, `version` artmaz.
 - Güncel adım: `status = 'open'` olan, yoksa son `approved` adım. Kampanyada saklanmaz (D-033).
-- Satırlar silinmez. Önerilen kısıt (taslak): bir kampanyada her tür için en fazla bir adım `superseded` dışında olabilir (kısmi unique indeks).
+- Satırlar silinmez. Bir kampanyada her tür için en fazla bir adım `superseded` dışında olabilir (`proposal_step_live_kind_key`).
 
 ## 4. notification_db
 
@@ -411,7 +427,7 @@ sequenceDiagram
 
 DECISIONS.md'nin "Açık konular" listesine ek olarak bu belgede taslak kalanlar:
 
-- Tüm tabloların kolon listeleri, kısmi unique indeks ve `CHECK` önerileri (migration yazılırken).
+- `notification_db` ve `analytics_db` tablolarının kolon listeleri ve kısıtları (migration yazılırken).
 - `proposal_variant.content` şemaları; HTML email gövde biçimi.
 - Olay `data` alanları ve `RECIPIENTS` / `SCHEDULES` konu adları.
 - Proposal'ın alıcı listesini hangi anda aldığı ve kalıcı saklayıp saklamayacağı.
