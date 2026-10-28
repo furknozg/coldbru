@@ -297,6 +297,13 @@ func TestFormatPreview(t *testing.T) {
 	if want := `{"count":46,"coverage":{"both":20,"emailOnly":13,"smsOnly":13,"unreachable":3},"byLanguage":null}`; out != want {
 		t.Errorf("FormatPreview = %s", out)
 	}
+	// The longest first names are for the content step: the segment model does not see them.
+	out = llm.FormatPreview(&customer.Preview{
+		Count: 3, MaxFirstNameLength: 9, ByLanguage: []customer.LanguageCoverage{{Language: "tr", Count: 3, MaxFirstNameLength: 9, Coverage: customer.Coverage{Both: 3}}},
+	})
+	if want := `{"count":3,"coverage":{"both":0,"emailOnly":0,"smsOnly":0,"unreachable":0},"byLanguage":[{"language":"tr","count":3,"coverage":{"both":3,"emailOnly":0,"smsOnly":0,"unreachable":0}}]}`; out != want {
+		t.Errorf("FormatPreview with languages = %s", out)
+	}
 }
 
 func TestProblems(t *testing.T) {

@@ -69,14 +69,15 @@ func (s *Service) Preview(ctx context.Context, f *model.CustomerFilter) (*model.
 		defer rows.Close()
 		for rows.Next() {
 			var lang string
-			var both, emailOnly, smsOnly, none int
-			if err := rows.Scan(&lang, &both, &emailOnly, &smsOnly, &none); err != nil {
+			var both, emailOnly, smsOnly, none, maxName int
+			if err := rows.Scan(&lang, &both, &emailOnly, &smsOnly, &none, &maxName); err != nil {
 				return fmt.Errorf("audience preview scan: %w", err)
 			}
 			cov := &model.ChannelCoverage{Both: both, EmailOnly: emailOnly, SmsOnly: smsOnly, Unreachable: none}
 			out.ByLanguage = append(out.ByLanguage, &model.LanguageCoverage{
-				Language: lang, Count: both + emailOnly + smsOnly, Coverage: cov,
+				Language: lang, Count: both + emailOnly + smsOnly, Coverage: cov, MaxFirstNameLength: maxName,
 			})
+			out.MaxFirstNameLength = max(out.MaxFirstNameLength, maxName)
 			out.Count += both + emailOnly + smsOnly
 			out.Coverage.Both += both
 			out.Coverage.EmailOnly += emailOnly

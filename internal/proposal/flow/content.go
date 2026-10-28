@@ -26,8 +26,9 @@ type ContentRequest struct {
 	RejectionReason string
 }
 
-// ContentGenerator writes and checks the texts of the content step. T-024 implements it with the
-// real SMS and email prompts and validators; the flow treats the content as opaque JSON (D-070).
+// ContentGenerator writes and checks the texts of the content step. contentgen implements it with
+// the content prompt and the validators of package content (D-071); the flow treats the content as
+// opaque JSON, except that it reads estimated_cost_gbp for the cost summary (D-070).
 // Implementations must be safe for concurrent use.
 type ContentGenerator interface {
 	// Generate returns the validated content of one slot. onDelta (may be nil) gets the text
@@ -36,9 +37,11 @@ type ContentGenerator interface {
 	// puts a recorder there and stores the records (D-060). The returned content must be a JSON
 	// object.
 	Generate(ctx context.Context, req ContentRequest, onDelta func(text string)) (json.RawMessage, error)
-	// Validate checks hand-edited content with the validators Generate applies (D-070). The
-	// error's problems (llm.Problems) are returned to the marketer.
-	Validate(language, channel string, content json.RawMessage) error
+	// Validate checks hand-edited content of the slot req describes (its language, channel,
+	// audience, plan and recipients; the other fields may be empty) with the validators Generate
+	// applies (D-070, D-071), and returns the content to store: the edit with the measurements and
+	// the cost recomputed. The error's problems (llm.Problems) are returned to the marketer.
+	Validate(req ContentRequest, content json.RawMessage) (json.RawMessage, error)
 }
 
 // Confirmer is called once when the last variant of the schedule step is approved, after the

@@ -150,9 +150,31 @@ func FormatErrors(errs []*dsl.Error) string {
 	return b
 }
 
+// previewView is what the segment model sees of a preview: sizes and channel coverage only. The
+// longest first names (D-071) are for the content step and are left out, so the segment prompt's
+// view of count_audience stays as D-069 specified it.
+type previewView struct {
+	Count      int                `json:"count"`
+	Coverage   customer.Coverage  `json:"coverage"`
+	ByLanguage []languageViewItem `json:"byLanguage"`
+}
+
+type languageViewItem struct {
+	Language string            `json:"language"`
+	Count    int               `json:"count"`
+	Coverage customer.Coverage `json:"coverage"`
+}
+
 // FormatPreview renders a preview as the JSON text of a successful count_audience result.
 func FormatPreview(p *customer.Preview) string {
-	b, err := marshalNoEscape(p)
+	v := previewView{Count: p.Count, Coverage: p.Coverage}
+	if p.ByLanguage != nil {
+		v.ByLanguage = make([]languageViewItem, len(p.ByLanguage))
+		for i, l := range p.ByLanguage {
+			v.ByLanguage[i] = languageViewItem{Language: l.Language, Count: l.Count, Coverage: l.Coverage}
+		}
+	}
+	b, err := marshalNoEscape(v)
 	if err != nil {
 		return "{}"
 	}

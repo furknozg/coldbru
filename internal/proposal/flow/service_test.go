@@ -234,10 +234,10 @@ func TestModelNotesAddTheRejectionReason(t *testing.T) {
 func TestNewAudienceContent(t *testing.T) {
 	t.Parallel()
 	p := &customer.Preview{
-		Count: 46, Coverage: customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3},
+		Count: 46, MaxFirstNameLength: 9, Coverage: customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3},
 		ByLanguage: []customer.LanguageCoverage{
-			{Language: "tr", Count: 30, Coverage: customer.Coverage{Both: 13, EmailOnly: 8, SmsOnly: 9, Unreachable: 2}},
-			{Language: "en", Count: 16, Coverage: customer.Coverage{Both: 7, EmailOnly: 5, SmsOnly: 4, Unreachable: 1}},
+			{Language: "tr", Count: 30, MaxFirstNameLength: 9, Coverage: customer.Coverage{Both: 13, EmailOnly: 8, SmsOnly: 9, Unreachable: 2}},
+			{Language: "en", Count: 16, MaxFirstNameLength: 7, Coverage: customer.Coverage{Both: 7, EmailOnly: 5, SmsOnly: 4, Unreachable: 1}},
 		},
 	}
 	c, err := NewAudienceContent(`city === "Ankara"`, nil, p)
@@ -254,7 +254,7 @@ func TestNewAudienceContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"dsl"`, `"filter"`, `"count"`, `"coverage"`, `"email_only"`, `"sms_only"`, `"unreachable"`, `"by_language"`} {
+	for _, key := range []string{`"dsl"`, `"filter"`, `"count"`, `"coverage"`, `"email_only"`, `"sms_only"`, `"unreachable"`, `"by_language"`, `"max_first_name_length":9`, `"max_first_name_length":7`} {
 		if !strings.Contains(string(b), key) {
 			t.Errorf("content lacks %s: %s", key, b)
 		}
@@ -263,6 +263,15 @@ func TestNewAudienceContent(t *testing.T) {
 	back := c.Preview()
 	if back.Count != 46 || back.Coverage != p.Coverage || len(back.ByLanguage) != 2 || back.ByLanguage[0].Language != "en" {
 		t.Errorf("Preview() = %+v", back)
+	}
+	if back.MaxFirstNameLength != 9 || back.ByLanguage[0].MaxFirstNameLength != 7 || back.ByLanguage[1].MaxFirstNameLength != 9 {
+		t.Errorf("Preview() lost the longest first names: %+v", back)
+	}
+	// Each language is measured with its own audience's longest name; an unknown language with the overall one.
+	for lang, want := range map[string]int{"en": 7, "tr": 9, "de": 9} {
+		if got := c.MaxFirstNameLengthOf(lang); got != want {
+			t.Errorf("MaxFirstNameLengthOf(%s) = %d, want %d", lang, got, want)
+		}
 	}
 	if _, err := NewAudienceContent("x", nil, nil); err == nil {
 		t.Error("a missing preview was accepted")
@@ -296,5 +305,39 @@ func TestSlotString(t *testing.T) {
 		if slot.String() != want {
 			t.Errorf("%+v = %q, want %q", slot, slot.String(), want)
 		}
+	}
+}
+
+func TestCostOf(t *testing.T) {
+	t.Parallel()
+	v := func(status, channel, content string) VariantView {
+		return VariantView{Status: status, Channel: channel, Content: json.RawMessage(content)}
+	}
+	steps := []StepView{
+		{StepInfo: StepInfo{Kind: KindAudience}, Variants: []VariantView{v(VariantStatusApproved, "", `{"estimated_cost_gbp":"500.0000"}`)}},
+		{StepInfo: StepInfo{Kind: KindContent}, Variants: []VariantView{
+			v(VariantStatusDraft, "sms", `{"text":"a","estimated_cost_gbp":"1.3200"}`),
+			v(VariantStatusApproved, "sms", `{"estimated_cost_gbp":"2.6400"}`),
+			v(VariantStatusRejected, "sms", `{"estimated_cost_gbp":"100.0000"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.0330"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.0001"}`),
+			v(VariantStatusDraft, "email", `{"text":"fake content without an estimate"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"not money"}`),
+			v(VariantStatusDraft, "email", `not json`),
+			v(VariantStatusDraft, "push", `{"estimated_cost_gbp":"7.0000"}`),
+		}},
+	}
+	want := CostSummary{SMSGBP: "3.9600", EmailGBP: "0.0331", TotalGBP: "3.9931"}
+	if got := costOf(steps); got != want {
+		t.Errorf("costOf = %+v, want %+v", got, want)
+	}
+	if got := costOf(nil); got != (CostSummary{SMSGBP: "0.0000", EmailGBP: "0.0000", TotalGBP: "0.0000"}) {
+		t.Errorf("costOf(nil) = %+v", got)
+	}
+	// 0.1 + 0.2 style sums do not drift.
+	more := []StepView{{StepInfo: StepInfo{Kind: KindContent}, Variants: []VariantView{
+		v(VariantStatusDraft, "sms", `{"estimated_cost_gbp":"0.1000"}`), v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.2000"}`)}}}
+	if got := costOf(more); got.TotalGBP != "0.3000" {
+		t.Errorf("total = %s", got.TotalGBP)
 	}
 }

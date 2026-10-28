@@ -181,15 +181,15 @@ CHECK (
 )
 ```
 
-`content` alanının şeması adım türüne göre değişir (taslak, açık konu):
+`content` alanının şeması adım türüne göre değişir:
 
 | Tür | `content` (taslak) |
 |---|---|
-| `audience` | `{dsl, graphql, count, coverage: {both, email_only, sms_only, unreachable, by_language}}`: DSL ve çevirisi (D-007), SQL'le hesaplanan sayım ve kapsama (D-010) |
-| `channel_plan` | `{mode: single \| primary_fallback \| both, primary: sms \| email, counts}` (D-010) |
-| `content` / sms | `{text, encoding: gsm7 \| ucs2, segments, max_rendered_length}` (D-028) |
-| `content` / email | `{subject, body}`; gövde biçimi HTML email kararına bağlı (açık) |
-| `schedule` | `{send_at}`; `null` hemen gönderim demek |
+| `audience` | `{dsl, filter, count, coverage: {both, email_only, sms_only, unreachable}, by_language: [{language, count, coverage, max_first_name_length}], max_first_name_length}` (D-007, D-010, D-070, D-071) |
+| `channel_plan` | `{mode: single \| primary_fallback \| both, primary: sms \| email, rationale, recipients: {email, sms, total}, by_language}` (D-010, D-070) |
+| `content` / sms | `{text, encoding: gsm7 \| ucs2, segments, rendered_length, estimated_cost_gbp}` (D-028, D-071) |
+| `content` / email | `{subject, preheader, headline, paragraphs[], cta_label, max_rendered_lengths, estimated_cost_gbp}`; HTML saklanmaz, `internal/content` yuvalı şablonla çizer (D-071) |
+| `schedule` | `{send_at, rationale}`; `send_at` `null` hemen gönderim demek (D-070) |
 
 ### Durum makineleri (D-033, D-022)
 

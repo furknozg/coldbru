@@ -38,10 +38,10 @@ func toolParams(p *prompts.Package) []sdk.ToolUnionParam {
 func outputConfig(p *prompts.Package) (sdk.OutputConfigParam, error) {
 	oc := sdk.OutputConfigParam{Effort: sdk.OutputConfigEffort(p.Effort)}
 	if p.OutputSchema != nil {
-		dec := json.NewDecoder(bytes.NewReader(p.OutputSchema))
-		dec.UseNumber()
+		// Numbers decode to float64: the SDK would send a json.Number as a JSON string, and the API
+		// rejects "minItems": "1". Schema numbers are small integers, so float64 is exact.
 		var schema map[string]any
-		if err := dec.Decode(&schema); err != nil {
+		if err := json.Unmarshal(p.OutputSchema, &schema); err != nil {
 			return oc, errorf("%s: output schema: %w", p.ID(), err)
 		}
 		oc.Format = sdk.JSONOutputFormatParam{Schema: schema}

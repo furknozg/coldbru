@@ -13,6 +13,9 @@ type AudiencePreview struct {
 	Coverage *ChannelCoverage `json:"coverage"`
 	// The same figures split by language (D-009).
 	ByLanguage []*LanguageCoverage `json:"byLanguage"`
+	// Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+	// counted in `count`; 0 when there are none (D-071, D-028).
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
 // Operators on a Boolean field. `eq`/`ne` are null-safe (D-058). Several operators in one object are ANDed.
@@ -189,6 +192,10 @@ type LanguageCoverage struct {
 	// Reachable customers with this language.
 	Count    int              `json:"count"`
 	Coverage *ChannelCoverage `json:"coverage"`
+	// Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+	// counted in `count` for this language; 0 when there are none. Used to measure message
+	// length with `{{first_name}}` expanded (D-071, D-028).
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
 type Mutation struct {

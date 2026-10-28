@@ -40,9 +40,10 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	AudiencePreview struct {
-		ByLanguage func(childComplexity int) int
-		Count      func(childComplexity int) int
-		Coverage   func(childComplexity int) int
+		ByLanguage         func(childComplexity int) int
+		Count              func(childComplexity int) int
+		Coverage           func(childComplexity int) int
+		MaxFirstNameLength func(childComplexity int) int
 	}
 
 	ChannelCoverage struct {
@@ -60,9 +61,10 @@ type ComplexityRoot struct {
 	}
 
 	LanguageCoverage struct {
-		Count    func(childComplexity int) int
-		Coverage func(childComplexity int) int
-		Language func(childComplexity int) int
+		Count              func(childComplexity int) int
+		Coverage           func(childComplexity int) int
+		Language           func(childComplexity int) int
+		MaxFirstNameLength func(childComplexity int) int
 	}
 
 	Mutation struct {
@@ -145,6 +147,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AudiencePreview.Coverage(childComplexity), true
+	case "AudiencePreview.maxFirstNameLength":
+		if e.ComplexityRoot.AudiencePreview.MaxFirstNameLength == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AudiencePreview.MaxFirstNameLength(childComplexity), true
 
 	case "ChannelCoverage.both":
 		if e.ComplexityRoot.ChannelCoverage.Both == nil {
@@ -214,6 +222,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.LanguageCoverage.Language(childComplexity), true
+	case "LanguageCoverage.maxFirstNameLength":
+		if e.ComplexityRoot.LanguageCoverage.MaxFirstNameLength == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LanguageCoverage.MaxFirstNameLength(childComplexity), true
 
 	case "Mutation.updateConsent":
 		if e.ComplexityRoot.Mutation.UpdateConsent == nil {
@@ -728,6 +742,12 @@ type LanguageCoverage {
   "Reachable customers with this language."
   count: Int!
   coverage: ChannelCoverage!
+  """
+  Longest ` + "`" + `firstName` + "`" + `, in Unicode characters (char_length), among the reachable customers
+  counted in ` + "`" + `count` + "`" + ` for this language; 0 when there are none. Used to measure message
+  length with ` + "`" + `{{first_name}}` + "`" + ` expanded (D-071, D-028).
+  """
+  maxFirstNameLength: Int!
 }
 
 """Size and channel reach of an audience (D-058, D-010)."""
@@ -737,6 +757,11 @@ type AudiencePreview {
   coverage: ChannelCoverage!
   "The same figures split by language (D-009)."
   byLanguage: [LanguageCoverage!]!
+  """
+  Longest ` + "`" + `firstName` + "`" + `, in Unicode characters (char_length), among the reachable customers
+  counted in ` + "`" + `count` + "`" + `; 0 when there are none (D-071, D-028).
+  """
+  maxFirstNameLength: Int!
 }
 
 """
@@ -833,6 +858,8 @@ func (ec *executionContext) childFields_AudiencePreview(ctx context.Context, fie
 		return ec.fieldContext_AudiencePreview_coverage(ctx, field)
 	case "byLanguage":
 		return ec.fieldContext_AudiencePreview_byLanguage(ctx, field)
+	case "maxFirstNameLength":
+		return ec.fieldContext_AudiencePreview_maxFirstNameLength(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type AudiencePreview", field.Name)
 }
@@ -873,6 +900,8 @@ func (ec *executionContext) childFields_LanguageCoverage(ctx context.Context, fi
 		return ec.fieldContext_LanguageCoverage_count(ctx, field)
 	case "coverage":
 		return ec.fieldContext_LanguageCoverage_coverage(ctx, field)
+	case "maxFirstNameLength":
+		return ec.fieldContext_LanguageCoverage_maxFirstNameLength(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type LanguageCoverage", field.Name)
 }
@@ -1288,6 +1317,29 @@ func (ec *executionContext) fieldContext_AudiencePreview_byLanguage(_ context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _AudiencePreview_maxFirstNameLength(ctx context.Context, field graphql.CollectedField, obj *model.AudiencePreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AudiencePreview_maxFirstNameLength(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MaxFirstNameLength, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AudiencePreview_maxFirstNameLength(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AudiencePreview", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
 func (ec *executionContext) _ChannelCoverage_both(ctx context.Context, field graphql.CollectedField, obj *model.ChannelCoverage) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1548,6 +1600,29 @@ func (ec *executionContext) fieldContext_LanguageCoverage_coverage(_ context.Con
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _LanguageCoverage_maxFirstNameLength(ctx context.Context, field graphql.CollectedField, obj *model.LanguageCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LanguageCoverage_maxFirstNameLength(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MaxFirstNameLength, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LanguageCoverage_maxFirstNameLength(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LanguageCoverage", field, false, false, errors.New("field of type Int does not have child fields"))
 }
 
 func (ec *executionContext) _Mutation_updateConsent(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -4442,6 +4517,11 @@ func (ec *executionContext) _AudiencePreview(ctx context.Context, sel ast.Select
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "maxFirstNameLength":
+			out.Values[i] = ec._AudiencePreview_maxFirstNameLength(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4593,6 +4673,11 @@ func (ec *executionContext) _LanguageCoverage(ctx context.Context, sel ast.Selec
 			}
 		case "coverage":
 			out.Values[i] = ec._LanguageCoverage_coverage(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "maxFirstNameLength":
+			out.Values[i] = ec._LanguageCoverage_maxFirstNameLength(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

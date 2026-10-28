@@ -15,8 +15,9 @@ const (
 	previewQuery     = `query AudiencePreview($filter: CustomerFilter!) {
   audiencePreview(filter: $filter) {
     count
+    maxFirstNameLength
     coverage { both emailOnly smsOnly unreachable }
-    byLanguage { language count coverage { both emailOnly smsOnly unreachable } }
+    byLanguage { language count maxFirstNameLength coverage { both emailOnly smsOnly unreachable } }
   }
 }`
 
@@ -45,6 +46,9 @@ type LanguageCoverage struct {
 	Language string   `json:"language"`
 	Count    int      `json:"count"`
 	Coverage Coverage `json:"coverage"`
+	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
+	// customers of this language; 0 when there are none (D-071).
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
 // Preview is the size and channel reach of an audience. Count includes only customers reachable on
@@ -53,6 +57,9 @@ type Preview struct {
 	Count      int                `json:"count"`
 	Coverage   Coverage           `json:"coverage"`
 	ByLanguage []LanguageCoverage `json:"byLanguage"`
+	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
+	// customers counted in Count; 0 when there are none (D-071).
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
 // Recipient is one reachable customer. Email is set only when EmailEligible and Phone only when

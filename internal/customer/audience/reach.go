@@ -20,13 +20,16 @@ const (
 func baseWhere(filterWhere string) string { return filterWhere + " AND " + SQLActive }
 
 // previewSQL counts the base audience per language and channel combination.
-// One row per language: both, email only, SMS only, unreachable.
+// One row per language: both, email only, SMS only, unreachable, and the longest
+// first name (characters) among the reachable customers, 0 when there is none
+// (D-071). No schema or index change: char_length runs over the matched rows.
 func previewSQL(filterWhere string) string {
 	return "SELECT c.language, " +
 		"count(*) FILTER (WHERE " + SQLEmailOK + " AND " + SQLSMSOK + "), " +
 		"count(*) FILTER (WHERE " + SQLEmailOK + " AND NOT " + SQLSMSOK + "), " +
 		"count(*) FILTER (WHERE NOT " + SQLEmailOK + " AND " + SQLSMSOK + "), " +
-		"count(*) FILTER (WHERE NOT " + SQLEmailOK + " AND NOT " + SQLSMSOK + ") " +
+		"count(*) FILTER (WHERE NOT " + SQLEmailOK + " AND NOT " + SQLSMSOK + "), " +
+		"COALESCE(max(char_length(c.first_name)) FILTER (WHERE " + SQLReachable + "), 0)::int " +
 		"FROM dwh.dim_customer c WHERE " + baseWhere(filterWhere) + " " +
 		"GROUP BY c.language ORDER BY c.language"
 }

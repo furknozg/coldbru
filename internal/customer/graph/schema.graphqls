@@ -298,6 +298,12 @@ type LanguageCoverage {
   "Reachable customers with this language."
   count: Int!
   coverage: ChannelCoverage!
+  """
+  Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+  counted in `count` for this language; 0 when there are none. Used to measure message
+  length with `{{first_name}}` expanded (D-071, D-028).
+  """
+  maxFirstNameLength: Int!
 }
 
 """Size and channel reach of an audience (D-058, D-010)."""
@@ -307,6 +313,11 @@ type AudiencePreview {
   coverage: ChannelCoverage!
   "The same figures split by language (D-009)."
   byLanguage: [LanguageCoverage!]!
+  """
+  Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+  counted in `count`; 0 when there are none (D-071, D-028).
+  """
+  maxFirstNameLength: Int!
 }
 
 """

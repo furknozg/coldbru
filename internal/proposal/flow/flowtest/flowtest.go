@@ -26,8 +26,8 @@ type Content struct {
 	// reported; return the content and an error as the real generator would.
 	GenerateFunc func(ctx context.Context, req flow.ContentRequest, onDelta func(string)) (json.RawMessage, error)
 	// ValidateFunc, when set, replaces the default Validate, which accepts any JSON object with a
-	// non-empty "text" string.
-	ValidateFunc func(language, channel string, content json.RawMessage) error
+	// non-empty "text" string and returns it unchanged.
+	ValidateFunc func(req flow.ContentRequest, content json.RawMessage) (json.RawMessage, error)
 
 	mu       sync.Mutex
 	requests []flow.ContentRequest
@@ -78,18 +78,19 @@ func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta
 	return raw, err
 }
 
-// Validate accepts a JSON object with a non-empty "text" string, or runs ValidateFunc.
-func (c *Content) Validate(language, channel string, content json.RawMessage) error {
+// Validate accepts a JSON object with a non-empty "text" string and returns it unchanged, or runs
+// ValidateFunc.
+func (c *Content) Validate(req flow.ContentRequest, content json.RawMessage) (json.RawMessage, error) {
 	if c.ValidateFunc != nil {
-		return c.ValidateFunc(language, channel, content)
+		return c.ValidateFunc(req, content)
 	}
 	var v struct {
 		Text string `json:"text"`
 	}
 	if err := json.Unmarshal(content, &v); err != nil || strings.TrimSpace(v.Text) == "" {
-		return llm.NewProblemsError([]string{`"text" must be a non-empty string`})
+		return nil, llm.NewProblemsError([]string{`"text" must be a non-empty string`})
 	}
-	return nil
+	return content, nil
 }
 
 // Requests returns the requests Generate received, in order.

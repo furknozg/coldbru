@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "properties": {
+    "sms": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "The complete SMS text. May contain {{first_name}}. Plain text only: no URL, no HTML, no other variable. At most the SMS limit of the user message, counted after {{first_name}} is replaced by the longest first name."
+            }
+          },
+          "required": ["text"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ],
+      "description": "The SMS when the requested channel is sms, otherwise null."
+    },
+    "email": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string",
+              "description": "The subject line. One line. May contain {{first_name}}. At most the subject limit of the user message."
+            },
+            "preheader": {
+              "type": "string",
+              "description": "The preview line that inboxes show after the subject. One line, complementing the subject without repeating it. At most the preheader limit of the user message."
+            },
+            "headline": {
+              "type": "string",
+              "description": "The heading at the top of the email body. One line. At most the headline limit of the user message."
+            },
+            "paragraphs": {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1,
+              "description": "The body: between 1 and the paragraph maximum of the user message paragraphs of plain text, each one line, each at most the paragraph limit of the user message."
+            },
+            "cta_label": {
+              "type": "string",
+              "description": "The label of the one call-to-action button. A few words, at most the label limit of the user message. The link of the button is added by the system."
+            }
+          },
+          "required": ["subject", "preheader", "headline", "paragraphs", "cta_label"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ],
+      "description": "The email when the requested channel is email, otherwise null."
+    }
+  },
+  "required": ["sms", "email"],
+  "additionalProperties": false
+}

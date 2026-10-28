@@ -239,7 +239,7 @@ func (s *Service) buildEdit(ctx context.Context, v store.ProposalVariant, st sto
 	if err := checkObject(content); err != nil {
 		return nil, invalid("the content must be a JSON object")
 	}
-	aud, _, err := priorContent(ctx, s.q, st.CampaignID, st.Kind)
+	aud, plan, err := priorContent(ctx, s.q, st.CampaignID, st.Kind)
 	if err != nil {
 		return nil, err
 	}
@@ -289,10 +289,18 @@ func (s *Service) buildEdit(ctx context.Context, v store.ProposalVariant, st sto
 		if s.content == nil {
 			return nil, ErrNoContentGenerator
 		}
-		if err := s.content.Validate(v.Language.String, v.Channel.String, content); err != nil {
+		slot := slotOf(v)
+		built, err := s.content.Validate(ContentRequest{
+			CampaignID: st.CampaignID, StepID: st.ID, Language: slot.Language, Channel: slot.Channel,
+			Audience: *aud, Plan: *plan, Recipients: plan.recipientsOf(slot),
+		}, content)
+		if err != nil {
 			return nil, invalid(llm.Problems(err)...)
 		}
-		return content, nil
+		if err := checkObject(built); err != nil {
+			return nil, fmt.Errorf("flow: validated edit: %w", err)
+		}
+		return built, nil
 	case KindSchedule:
 		var in struct {
 			SendAt    json.RawMessage `json:"send_at"`
