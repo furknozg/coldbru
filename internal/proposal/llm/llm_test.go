@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -295,5 +296,50 @@ func TestFormatPreview(t *testing.T) {
 	out := llm.FormatPreview(&customer.Preview{Count: 46, Coverage: customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3}})
 	if want := `{"count":46,"coverage":{"both":20,"emailOnly":13,"smsOnly":13,"unreachable":3},"byLanguage":null}`; out != want {
 		t.Errorf("FormatPreview = %s", out)
+	}
+}
+
+func TestProblems(t *testing.T) {
+	t.Parallel()
+	if llm.NewProblemsError(nil) != nil || llm.Problems(nil) != nil {
+		t.Error("no problems must be a nil error")
+	}
+	err := llm.NewProblemsError([]string{"a", "b"})
+	if err.Error() != "a; b" {
+		t.Errorf("error text = %q", err)
+	}
+	wrapped := fmt.Errorf("check: %w", err)
+	if got := llm.Problems(wrapped); len(got) != 2 || got[1] != "b" {
+		t.Errorf("Problems(wrapped) = %v", got)
+	}
+	if got := llm.Problems(errors.New("plain")); len(got) != 1 || got[0] != "plain" {
+		t.Errorf("Problems(plain) = %v", got)
+	}
+}
+
+func TestPlanTypes(t *testing.T) {
+	t.Parallel()
+	for _, m := range []llm.PlanMode{llm.ModeSingle, llm.ModePrimaryFallback, llm.ModeBoth} {
+		if !m.Valid() {
+			t.Errorf("%s is not valid", m)
+		}
+	}
+	if llm.PlanMode("all").Valid() || llm.PlanMode("").Valid() || llm.Channel("push").Valid() {
+		t.Error("an unknown mode or channel is valid")
+	}
+	if llm.ChannelEmail.Other() != llm.ChannelSMS || llm.ChannelSMS.Other() != llm.ChannelEmail {
+		t.Error("Other()")
+	}
+	if llm.TimezoneOf("tr") != "Europe/Istanbul" || llm.TimezoneOf("en") != "Europe/London" || llm.TimezoneOf("de") != "UTC" {
+		t.Error("TimezoneOf")
+	}
+}
+
+func TestRepairExhaustedErrorText(t *testing.T) {
+	t.Parallel()
+	seg := (&llm.RepairExhaustedError{Attempts: 3}).Error()
+	plan := (&llm.RepairExhaustedError{Purpose: llm.PurposeChannelPlan, Attempts: 3, Problems: []string{"x", "y"}}).Error()
+	if !strings.Contains(seg, "no valid segment after 3") || !strings.Contains(plan, "no valid channel_plan after 3 attempts; x; y") {
+		t.Errorf("texts = %q, %q", seg, plan)
 	}
 }

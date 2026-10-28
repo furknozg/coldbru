@@ -1,0 +1,254 @@
+package flow
+
+import (
+	"encoding/json"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Event is something that happened to a campaign. The flow publishes events to the Hub after the
+// state they describe is committed; T-025 maps them to SSE (D-013, D-070). Events are typed Go
+// structs; Type is the stable name a wire format uses.
+type Event interface {
+	// Type is the event's name, for example "variant_created".
+	Type() string
+	// Campaign is the campaign the event belongs to.
+	Campaign() uuid.UUID
+	// When is the time the event was created.
+	When() time.Time
+}
+
+// Meta is the part every event shares.
+type Meta struct {
+	CampaignID uuid.UUID `json:"campaign_id"`
+	At         time.Time `json:"at"`
+}
+
+// Campaign returns the campaign id.
+func (m Meta) Campaign() uuid.UUID { return m.CampaignID }
+
+// When returns the creation time.
+func (m Meta) When() time.Time { return m.At }
+
+// The events of the flow.
+type (
+	// ScreenResult: the injection pre-screen answered. Verdict is "allow", "block", or "error" when
+	// the screen call itself failed; the campaign is cancelled for the last two (D-069).
+	ScreenResult struct {
+		Meta
+		Verdict string `json:"verdict"`
+		Reason  string `json:"reason"`
+	}
+	// CampaignCancelled: the campaign was cancelled; Reason says why.
+	CampaignCancelled struct {
+		Meta
+		Reason string `json:"reason"`
+	}
+	// StepOpened: a step opened, version 1 or a new version after a reopen.
+	StepOpened struct {
+		Meta
+		StepID  uuid.UUID `json:"step_id"`
+		Kind    string    `json:"kind"`
+		Version int       `json:"version"`
+	}
+	// StepApproved: every slot of the step is approved.
+	StepApproved struct {
+		Meta
+		StepID  uuid.UUID `json:"step_id"`
+		Kind    string    `json:"kind"`
+		Version int       `json:"version"`
+	}
+	// StepSuperseded: the step was replaced by a reopen.
+	StepSuperseded struct {
+		Meta
+		StepID  uuid.UUID `json:"step_id"`
+		Kind    string    `json:"kind"`
+		Version int       `json:"version"`
+	}
+	// GenerationStarted: the model (or the content generator) started on the Slots of a step.
+	GenerationStarted struct {
+		Meta
+		StepID uuid.UUID `json:"step_id"`
+		Kind   string    `json:"kind"`
+		Slots  []Slot    `json:"slots"`
+	}
+	// GenerationFailed: generating a slot failed, for example a refusal or an exhausted repair
+	// loop. Slot is empty for steps with one slot. Deltas received earlier are to be dropped.
+	GenerationFailed struct {
+		Meta
+		StepID uuid.UUID `json:"step_id"`
+		Kind   string    `json:"kind"`
+		Slot   Slot      `json:"slot"`
+		Reason string    `json:"reason"`
+	}
+	// VariantCreated: a new draft variant exists (generated or edited).
+	VariantCreated struct {
+		Meta
+		StepID    uuid.UUID       `json:"step_id"`
+		VariantID uuid.UUID       `json:"variant_id"`
+		Kind      string          `json:"kind"`
+		Slot      Slot            `json:"slot"`
+		Content   json.RawMessage `json:"content"`
+	}
+	// VariantApproved: a variant was approved.
+	VariantApproved struct {
+		Meta
+		StepID    uuid.UUID `json:"step_id"`
+		VariantID uuid.UUID `json:"variant_id"`
+	}
+	// VariantRejected: a variant was rejected with a reason; its slot is regenerated.
+	VariantRejected struct {
+		Meta
+		StepID    uuid.UUID `json:"step_id"`
+		VariantID uuid.UUID `json:"variant_id"`
+		Reason    string    `json:"reason"`
+	}
+	// VariantSuperseded: a variant was replaced (by a new draft, a regeneration or a reopen).
+	VariantSuperseded struct {
+		Meta
+		StepID    uuid.UUID `json:"step_id"`
+		VariantID uuid.UUID `json:"variant_id"`
+	}
+	// ContentDelta: a text fragment of a content variant being generated, forwarded from the
+	// ContentGenerator. It is a preview; the variant is final only with VariantCreated.
+	ContentDelta struct {
+		Meta
+		StepID uuid.UUID `json:"step_id"`
+		Slot   Slot      `json:"slot"`
+		Text   string    `json:"text"`
+	}
+	// ContextAdded: the marketer added a context note to the open step.
+	ContextAdded struct {
+		Meta
+		StepID uuid.UUID `json:"step_id"`
+		NoteID uuid.UUID `json:"note_id"`
+		Body   string    `json:"body"`
+	}
+)
+
+// Type names.
+const (
+	TypeScreenResult      = "screen_result"
+	TypeCampaignCancelled = "campaign_cancelled"
+	TypeStepOpened        = "step_opened"
+	TypeStepApproved      = "step_approved"
+	TypeStepSuperseded    = "step_superseded"
+	TypeGenerationStarted = "generation_started"
+	TypeGenerationFailed  = "generation_failed"
+	TypeVariantCreated    = "variant_created"
+	TypeVariantApproved   = "variant_approved"
+	TypeVariantRejected   = "variant_rejected"
+	TypeVariantSuperseded = "variant_superseded"
+	TypeContentDelta      = "content_delta"
+	TypeContextAdded      = "context_added"
+)
+
+// Type implementations.
+func (ScreenResult) Type() string      { return TypeScreenResult }
+func (CampaignCancelled) Type() string { return TypeCampaignCancelled }
+func (StepOpened) Type() string        { return TypeStepOpened }
+func (StepApproved) Type() string      { return TypeStepApproved }
+func (StepSuperseded) Type() string    { return TypeStepSuperseded }
+func (GenerationStarted) Type() string { return TypeGenerationStarted }
+func (GenerationFailed) Type() string  { return TypeGenerationFailed }
+func (VariantCreated) Type() string    { return TypeVariantCreated }
+func (VariantApproved) Type() string   { return TypeVariantApproved }
+func (VariantRejected) Type() string   { return TypeVariantRejected }
+func (VariantSuperseded) Type() string { return TypeVariantSuperseded }
+func (ContentDelta) Type() string      { return TypeContentDelta }
+func (ContextAdded) Type() string      { return TypeContextAdded }
+
+// DefaultHubBuffer is the buffer of a subscription made with NewHub(0).
+const DefaultHubBuffer = 256
+
+// Hub fans events out to the subscribers of a campaign. It lives in memory: it does not survive a
+// restart and is not shared between replicas (D-070). Publish never blocks: a subscriber whose
+// buffer is full misses the event, and the hub counts the drop. A consumer that notices a gap
+// (Subscription.Dropped grew) re-reads the state with Service.Get.
+type Hub struct {
+	buffer  int
+	mu      sync.RWMutex
+	subs    map[uuid.UUID]map[*Subscription]struct{}
+	dropped atomic.Uint64
+}
+
+// NewHub returns a hub whose subscriptions buffer buffer events each; DefaultHubBuffer when
+// buffer <= 0.
+func NewHub(buffer int) *Hub {
+	if buffer <= 0 {
+		buffer = DefaultHubBuffer
+	}
+	return &Hub{buffer: buffer, subs: map[uuid.UUID]map[*Subscription]struct{}{}}
+}
+
+// Subscription receives the events of one campaign on C until Close.
+type Subscription struct {
+	// C delivers events in publishing order. It is closed by Close.
+	C <-chan Event
+
+	hub      *Hub
+	campaign uuid.UUID
+	ch       chan Event
+	dropped  atomic.Uint64
+}
+
+// Subscribe returns a subscription for the events of campaignID published from now on.
+func (h *Hub) Subscribe(campaignID uuid.UUID) *Subscription {
+	ch := make(chan Event, h.buffer)
+	s := &Subscription{C: ch, hub: h, campaign: campaignID, ch: ch}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	m := h.subs[campaignID]
+	if m == nil {
+		m = map[*Subscription]struct{}{}
+		h.subs[campaignID] = m
+	}
+	m[s] = struct{}{}
+	return s
+}
+
+// Publish delivers ev to every subscriber of its campaign without blocking.
+func (h *Hub) Publish(ev Event) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for s := range h.subs[ev.Campaign()] {
+		select {
+		case s.ch <- ev:
+		default:
+			s.dropped.Add(1)
+			h.dropped.Add(1)
+		}
+	}
+}
+
+// Dropped returns the number of deliveries dropped because a subscriber was too slow.
+func (h *Hub) Dropped() uint64 { return h.dropped.Load() }
+
+// Subscribers returns the number of open subscriptions of campaignID.
+func (h *Hub) Subscribers(campaignID uuid.UUID) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.subs[campaignID])
+}
+
+// Dropped returns the number of events this subscription missed.
+func (s *Subscription) Dropped() uint64 { return s.dropped.Load() }
+
+// Close removes the subscription and closes C. It is safe to call more than once.
+func (s *Subscription) Close() {
+	h := s.hub
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	m := h.subs[s.campaign]
+	if _, ok := m[s]; !ok {
+		return
+	}
+	delete(m, s)
+	if len(m) == 0 {
+		delete(h.subs, s.campaign)
+	}
+	close(s.ch)
+}

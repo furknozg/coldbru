@@ -71,8 +71,9 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 | D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
-| D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi |
+| D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070 |
 | D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
+| D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -203,7 +204,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Ek bağlam yalnızca sonraki adımlara — reddedildi: kullanıcı değişiklik için teklifi reddetmek zorunda kalırdı.
   - Kullanıcının bağlamın hedefini seçmesi — reddedildi: daha karmaşık arayüz ve durum makinesi.
 - **Sonuçlar / bedel:** LLM çağrısı sayısı dil × kanal × onarım denemesi kadar çoğalır; token ve maliyet artar. Teklif onay durumu dil varyantı düzeyinde tutulmalı; durum makinesinin şeması açık konu. Ek bağlam yeniden üretimi ekstra çağrı ister. Her dil varyantı ayrı bir NATS zamanlama konusu kullanır (D-006).
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): `TestSampleBriefEndToEnd` metin varyantlarını yalnız alıcısı olan dil-kanal çiftleri için (en/email, tr/email, tr/sms) ve zamanlamayı dil başına üretir; `TestRejectRegeneratesOnlyThatSlot` yalnız reddedilen dili yeniden üretir; `TestAddContextRegeneratesUnapprovedAndKeepsApproved` onaylıları korur. Gerçek metin üreticisi T-024'te.
 
 ## D-010: Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır
 
@@ -221,7 +222,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - D-008'deki gibi sorguda kanal bazında süzme — reddedildi: kanal kapsaması kullanıcıya gösterilemez, beraberlik ve yedek kanal karar dışı kalır.
   - Kanalı gönderim anında Notification'ın seçmesi — reddedildi: onaylanan plandan sapma riski; seçim insan onayında kalmalı.
 - **Sonuçlar / bedel:** Akışa bir onay adımı daha eklenir. "İki kanal birden" seçilirse aynı kişi iki kanaldan mesaj alır; bu seçenek kullanıcının açık onayına bağlıdır. Kişi başına kanal ataması snapshot'ı biraz büyütür.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok. Kapsama sayıları 2026-10-27'de `customer_db` üzerinde sorguyla ölçüldü (20 / 13 / 13 / 3).
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): `TestSampleBriefEndToEnd` örnek brief'te planı birincil e-posta + yedek SMS olarak e-posta 33 / SMS 13 alıcıyla kurar; `TestInvalidPlanIsRepairedAgainstTheCoverage`, `TestReopenSupersedesTheStepAndEveryLaterOne` (kitle yeniden açılınca plan, metin ve zamanlama `superseded`). Alıcı batch'leri T-026'da.
 
 ## D-011: Gönderim anında GraphQL ile batch izin kontrolü; circuit breaker ile fail-closed
 
@@ -541,7 +542,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kampanya durumu adımı yansıtır (`awaiting_audience` …) — reddedildi: aynı bilgi iki yerde tutulur.
   - Kampanya durumu saklanmaz, sorguyla türetilir — reddedildi: teslimat durumu başka serviste, servisler arası sorgu gerekirdi.
 - **Sonuçlar / bedel:** `scheduled → sending → completed` geçişleri Notification'dan gelen olaylarla Proposal'da güncellenir; arada eventual-consistency penceresi vardır. Bu olayların adları ve içerikleri `docs/domain-model.md`'de taslaktır.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): adım sırası ve `open → approved → superseded` geçişleri `internal/proposal/flow`'da; `TestSampleBriefEndToEnd`, `TestConcurrentApprovalsOpenTheNextStepOnce`, `TestReopenSupersedesTheStepAndEveryLaterOne`. Kampanya `drafting → cancelled` (ön eleme) burada; `scheduled`, `sending`, `completed` T-026 ve Notification olaylarıyla.
 
 ## D-034: Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK
 
@@ -1099,7 +1100,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-068: proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration
 
-- **Durum:** Kabul edildi · 2026-10-28
+- **Durum:** Kabul edildi · 2026-10-28; `llm_call.purpose` listesi yerini aldı → D-070 · 2026-10-28
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-022, D-033 ve D-034 tablo sınırlarını, adım türlerini ve durum değerlerini; D-030 UUIDv7 anahtarları; D-060 `llm_call`'ın prompt sürüm sütunlarını belirledi. Kolon listeleri, indeksler, kısıtların DB'de ne kadar zorlanacağı ve görevin kapsamı açıktı (T-021; kodlama kuralı 7). `outbox` ve `processed_event` zaten platform setindedir (D-054).
 - **Karar:**
@@ -1140,6 +1141,35 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Aynı konuşmada onarım konuşmayı uzatır. Ön elemenin yanlış pozitifleri kullanıcıyı durdurur. Segment çağrısı thinking yüzünden daha yavaş ve pahalıdır. Nadir bir yanlış red akışı durdurur. Çok keşifçi bir ajan 8 turda kesilebilir. T-022 metni uçtan uca göstermez.
 - **Doğrulama:** 2026-10-28'de (T-022, D-069): yukarıdaki D-026, D-027 ve D-059 testlerine ek olarak `TestSegmentTurnLimit`, `TestSegmentMaxTokensIsAFailedAttempt`, `TestSegmentEmptyAudienceIsAValidationError`, `TestSegmentBackendFailureStopsTheLoop`, `TestScreenFailsClosed`, `TestScreenBlockIsAnErrorToo`, `TestScreenRefusalRecordsCategory`, `TestStreamStructuredValidate`, `TestStreamStructuredDoesNotValidateAFailedStream`; integration `TestEmptyAudienceAgainstTheRealCustomerService`. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
 - **Uygulama notu:** Kayıt `llm.WithRecorder(ctx, r)` ile toplanır; `CallRecord.Attempt` segmentte model turu numarasıdır (1–8) ve kabul edilen öneriyi taşıyan tur `SegmentResult.Turn`'dür. Refusal kategorisi `error` metnine yazılır. Onarım uyarı metinleri adaptörde sabittir, prompt hash'ine girmez. Segment prompt'u "hafta = 7d, ay = 30d" kuralı ve derlenen 3 örnek içerir. `ANTHROPIC_BASE_URL` isteğe bağlıdır.
+
+## D-070: Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-009, D-010, D-022, D-033 ve D-034 adımları, varyantları ve durum makinelerini; D-069 segment ve ön eleme çağrılarını belirledi. Kanal planını ve zamanlamayı kimin önereceği, elle düzenleme, uzun LLM adımlarının nasıl çalışacağı ve metin adımının T-024 ile sınırı açıktı (T-023). Brief "pazarlamacı önizler, gerekirse düzenler ve onaylar" diyor.
+- **Karar:**
+  - Kanal planını ve dil başına gönderim zamanını LLM önerir: Haiku 5.5, thinking `disabled`, `effort: low`, structured outputs, `max_tokens` 512; yeni prompt paketleri `channel_plan@1.0.0` ve `schedule@1.0.0` (D-059).
+    - Plan prompt'u SQL'in hesapladığı kapsama tablosuna, brief'e ve bağlam notlarına bakar. Varsayılan birincil + yedek, berabere e-posta (D-010); "iki kanal birden" yalnız brief açıkça isterse.
+    - Zamanlama prompt'u brief ve notlardaki açık zamanı dil başına yorumlar (tr → Europe/Istanbul, en → Europe/London; şu anki zaman kullanıcı mesajındadır). Zaman yoksa `null` (hemen). Brief burada da güvenilmeyen veridir.
+  - Kod doğrular: plan `{mode, primary, rationale}`, seçilen kanal(lar)da alıcı > 0; zamanlama dil başına `{send_at RFC 3339 | null, rationale}`, `null` ya da şimdi + 5 dk ile şimdi + 30 gün arası. Hata aynı konuşmada geri verilir, toplam 3 deneme (1 + 2 onarım).
+  - `llm_call.purpose` CHECK'i yeni bir goose migration'ı (`00003`) ile `screen`, `segment`, `content`, `channel_plan`, `schedule` olur; Down eski listeye döner (D-068'den sapma, kodlama kuralı 7, kullanıcı onayladı).
+  - Elle düzenleme: düzenlenen içerik üretilenle aynı doğrulayıcılardan geçer, yeni `draft` varyant açılır, eskisi `superseded` olur. Kitle adımında düzenlenen DSL yeniden derlenir ve sayılır.
+  - Çalışma: istekler hemen döner. Üretim kampanya başına Postgres advisory lock ile sıralanan bir goroutine'de çalışır ve ilerlemeyi bellekteki bir olay dağıtıcısına yazar (T-025'in SSE'si dinler). Durum DB'dedir; servis yeniden başlarsa yarım kalan adım yeniden üretilebilir.
+  - Kullanıcı ayrıca onayladı: ön eleme brief'i engellerse kampanya `cancelled` olur, düzenlenen brief yeni bir kampanya açar. Onaylanmış bir önceki adım `Reopen` ile revize edilir: o adım ve sonraki tüm adımlar hemen `superseded` olur, yeni sürüm (`version + 1`) açılıp yeniden üretilir. Başarısız veya yarım kalan üretim adımın son `llm_call` satırlarından türetilir ve kullanıcı `Regenerate` ile sürdürür; açılışta otomatik devam yoktur. Kanal planının alıcı sayıları kodda kapsamadan hesaplanır: tek kanal = o kanala uygun olanlar; birincil + yedek = birincil `both + birincil_only`, diğeri `diğer_only`; iki kanal = her kanal `both + o_only`.
+  - Sınırlar (kullanıcı ayrıca onayladı): zamanlama adımını kapatan `Approve`, commit'ten sonra `Confirmer.Confirm`'i senkron ve bir kez çağırır; hata kullanıcıya döner, onay kalır, T-026 kendi outbox transaction'ını açar ve yeniden deneme yolu sunar. `ContentGenerator` `Generate` ile birlikte `Validate(language, channel, content)` sağlar; elle düzenleme ve üretim aynı doğrulayıcıdan geçer. Red gerekçesi modele kullanıcı mesajındaki bağlam notlarına eklenen bir metin olarak gider, `context_note`'a yazılmaz; prompt'lar değişmez. Süreç ön eleme sırasında düşerse adımsız `drafting` kampanya `RegenerateCampaign` ile yeniden başlatılır.
+  - Metin adımı `ContentGenerator` arayüzüyle dil × kanal varyantlarını yönetir; T-023'te testler için sahte üretici vardır, gerçek üretici T-024'te takılır.
+- **Alternatifler:**
+  - Plan ve zamanlama kod kuralıyla, LLM'siz — reddedildi: kullanıcı brief'teki zaman ifadelerinin ve kanal isteğinin ajan tarafından okunmasını istedi. Yalnız zamanlamada LLM — reddedildi.
+  - Sonnet 5.5 — reddedildi: girdiler küçük, seçim dar; yaklaşık 20 kat pahalı.
+  - Geçersiz çıktıda kod kuralına sessizce düşmek — reddedildi: LLM hatası görünmez olurdu.
+  - Uygulanmış `00002`'yi düzenlemek — reddedildi: compose'daki DB'de `down -v` gerekirdi.
+  - "İki kanal"ı ajana serbest bırakmak — reddedildi: kişiye istemeden iki mesaj önerilebilirdi.
+  - Düzenleme yalnız metin ve zamanlamada veya hiç yok — reddedildi: kullanıcı DSL'i elle düzeltemezdi / brief'in "düzenler" adımı karşılanmazdı.
+  - Senkron istek — reddedildi: 10–30 sn süren istekler, ilerleme gösterilemez. NATS iş kuyruğu — reddedildi: yeni stream ve tüketici, daha fazla kod.
+  - T-024'ü öne almak — reddedildi: görev sırası değişirdi.
+- **Sonuçlar / bedel:** İki prompt paketi, iki doğrulayıcı ve onarım yolu eklenir; her kampanyaya iki Haiku çağrısı. Bir migration daha. Olay dağıtıcısı süreç içidir, çoklu replikada paylaşılmaz. T-024'e kadar canlı akışta metin adımı çalışmaz.
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): `internal/proposal/flow` integration testleri (24 test, gerçek Customer handler'ı + seed'li Postgres, senaryolu LLM, sahte metin üreticisi): `TestSampleBriefEndToEnd` (46, 20/13/13/3; plan e-posta 33 / SMS 13; 3 metin varyantı; Confirmer bir kez; `llm_call` satırları amaçlarıyla), `TestScreenBlockCancelsTheCampaign`, `TestEditAudienceRecompilesAndRecounts`, `TestEditScheduleValidatesTheWindow`, `TestReopenSupersedesTheStepAndEveryLaterOne`, `TestSegmentRepairExhaustedIsReportedAndRegenerateRecovers`, `TestRefusalFailsThePlanStepAndRegenerateRecovers`, `TestGenerationWaitsForTheAdvisoryLock`, `TestConfirmerFailureIsReportedAndTheApprovalStands`, `TestRegenerateCampaign*`; store `TestMigration00003_PurposeList`, `_DownRestoresTheOldList`; adaptörde plan ve zamanlama istek gövdesi ve onarım testleri. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti (ilk çalıştırmada Customer `audience` paketi bir kez düştü, sonraki üç çalıştırmada geçti; neden kaydedilmedi).
+- **Uygulama notu:** Üretim sonucu, beklerken kampanya `drafting` dışına çıktıysa, adım kapandıysa, yeni bir not eklendiyse veya yuva dolduysa atılır (çağrılar kaydedilir, varyant açılmaz). `llm_call.variant_id` yalnız tek varyant üreten kabul edilmiş son kayda yazılır; kayıtlar varyantla aynı transaction'da yazılır. Worker sayısı havuzun yarısıyla sınırlıdır (kilit için bir, transaction için bir bağlantı). Bir metin yuvası düşerse diğerleri üretilmeye devam eder; `Regenerate` yalnız eksik yuvaları doldurur. Plan doğrulayıcısı yalnız mod, kanal ve alıcı > 0'ı denetler; beraberlik ve "iki kanal yalnız açık istenirse" kuralları prompt'tadır. Çalışan bir başlangıç varken `RegenerateCampaign` hiçbir şey yapmadan döner; adımlar açıldıktan sonra `ErrHasSteps` döner.
 
 ---
 

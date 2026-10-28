@@ -1,0 +1,8 @@
+# Prompt package schedule (D-059, D-070): the send time of every language of an audience.
+name: schedule
+version: 1.0.0
+model: claude-haiku-5-5
+effort: low
+system:
+  - system.txt
+output_schema: output.schema.json

@@ -24,10 +24,14 @@ type Scripted struct {
 	screens    []screenStep
 	segments   []segmentStep
 	structured []structuredStep
+	plans      []planStep
+	schedules  []scheduleStep
 
 	screenBriefs  []string
 	segmentInputs []llm.SegmentInput
 	streamCalls   []StreamCall
+	planInputs    []llm.ChannelPlanInput
+	schedInputs   []llm.ScheduleInput
 }
 
 var _ llm.LLM = (*Scripted)(nil)
@@ -51,6 +55,18 @@ type structuredStep struct {
 	usage   llm.Usage
 	err     error
 	records []llm.CallRecord
+}
+
+type planStep struct {
+	proposals []llm.ChannelPlan
+	err       error
+	records   []llm.CallRecord
+}
+
+type scheduleStep struct {
+	proposals [][]llm.ScheduleEntry
+	err       error
+	records   []llm.CallRecord
 }
 
 // StreamCall is one recorded StreamStructured call.
@@ -143,8 +159,65 @@ func (s *Scripted) WithRecords(p llm.Purpose, recs ...llm.CallRecord) *Scripted 
 		s.segments[len(s.segments)-1].records = recs
 	case llm.PurposeContent:
 		s.structured[len(s.structured)-1].records = recs
+	case llm.PurposeChannelPlan:
+		s.plans[len(s.plans)-1].records = recs
+	case llm.PurposeSchedule:
+		s.schedules[len(s.schedules)-1].records = recs
 	}
 	return s
+}
+
+// ProposePlans queues a plan call that plays the model: it proposes the plans in order through
+// the validate callback it is given, one attempt each, and returns the first one validate accepts.
+// After llm.MaxProposeAttempts rejections it returns *llm.RepairExhaustedError with the last
+// problems, as the real loop does. Unless WithRecords replaces them, it reports one CallRecord per
+// attempt (validation_failed, then accepted). "Invalid then valid" is ProposePlans(bad, good).
+func (s *Scripted) ProposePlans(plans ...llm.ChannelPlan) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.plans = append(s.plans, planStep{proposals: plans})
+	return s
+}
+
+// FailChannelPlan queues an error, for example &llm.RefusalError{}.
+func (s *Scripted) FailChannelPlan(err error) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.plans = append(s.plans, planStep{err: err})
+	return s
+}
+
+// ProposeSchedules is ProposePlans for the schedule call: each element is one attempt's entries.
+func (s *Scripted) ProposeSchedules(attempts ...[]llm.ScheduleEntry) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schedules = append(s.schedules, scheduleStep{proposals: attempts})
+	return s
+}
+
+// FailSchedule queues an error, for example &llm.RefusalError{}.
+func (s *Scripted) FailSchedule(err error) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schedules = append(s.schedules, scheduleStep{err: err})
+	return s
+}
+
+// attemptRecord is the record the fake reports for one attempt of the plan and schedule loops.
+func attemptRecord(purpose llm.Purpose, pkg *prompts.Package, attempt int, problems []string, response any) llm.CallRecord {
+	rec := llm.CallRecord{
+		Purpose: purpose, Model: pkg.Model, Attempt: attempt, StopReason: "end_turn",
+		Prompt:  llm.PromptRef{Name: pkg.Name, Version: pkg.Version, SHA256: pkg.SHA256},
+		Outcome: llm.OutcomeAccepted,
+	}
+	if b, err := json.Marshal(response); err == nil {
+		rec.Response = b
+	}
+	if len(problems) > 0 {
+		rec.Outcome = llm.OutcomeValidationFailed
+		rec.Error = fmt.Sprint(problems)
+	}
+	return rec
 }
 
 func report(ctx context.Context, recs []llm.CallRecord) {
@@ -228,6 +301,111 @@ func (s *Scripted) StreamStructured(ctx context.Context, pkg *prompts.Package, u
 		}
 	}
 	return st.raw, st.usage, nil
+}
+
+// ProposeChannelPlan pops the next plan step.
+func (s *Scripted) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInput, validate func(llm.ChannelPlan) error) (llm.ChannelPlanResult, error) {
+	s.mu.Lock()
+	s.planInputs = append(s.planInputs, in)
+	if len(s.plans) == 0 {
+		s.mu.Unlock()
+		return llm.ChannelPlanResult{}, fmt.Errorf("channel plan: %w", ErrScriptExhausted)
+	}
+	st := s.plans[0]
+	s.plans = s.plans[1:]
+	s.mu.Unlock()
+	if st.err != nil {
+		report(ctx, st.records)
+		return llm.ChannelPlanResult{}, st.err
+	}
+	var (
+		recs  []llm.CallRecord
+		last  []string
+		tried int
+	)
+	for _, plan := range st.proposals {
+		if tried == llm.MaxProposeAttempts {
+			break
+		}
+		tried++
+		var problems []string
+		if validate != nil {
+			problems = llm.Problems(validate(plan))
+		}
+		recs = append(recs, attemptRecord(llm.PurposeChannelPlan, prompts.ChannelPlan(), tried, problems, map[string]string{
+			"mode": string(plan.Mode), "primary": string(plan.Primary), "rationale": plan.Rationale,
+		}))
+		if len(problems) == 0 {
+			s.reportOr(ctx, st.records, recs)
+			return llm.ChannelPlanResult{Plan: plan, Attempts: tried}, nil
+		}
+		last = problems
+	}
+	s.reportOr(ctx, st.records, recs)
+	return llm.ChannelPlanResult{}, &llm.RepairExhaustedError{Purpose: llm.PurposeChannelPlan, Attempts: tried, Problems: last}
+}
+
+// ProposeSchedule pops the next schedule step.
+func (s *Scripted) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, validate func([]llm.ScheduleEntry) error) (llm.ScheduleResult, error) {
+	s.mu.Lock()
+	s.schedInputs = append(s.schedInputs, in)
+	if len(s.schedules) == 0 {
+		s.mu.Unlock()
+		return llm.ScheduleResult{}, fmt.Errorf("schedule: %w", ErrScriptExhausted)
+	}
+	st := s.schedules[0]
+	s.schedules = s.schedules[1:]
+	s.mu.Unlock()
+	if st.err != nil {
+		report(ctx, st.records)
+		return llm.ScheduleResult{}, st.err
+	}
+	var (
+		recs  []llm.CallRecord
+		last  []string
+		tried int
+	)
+	for _, entries := range st.proposals {
+		if tried == llm.MaxProposeAttempts {
+			break
+		}
+		tried++
+		var problems []string
+		if validate != nil {
+			problems = llm.Problems(validate(entries))
+		}
+		recs = append(recs, attemptRecord(llm.PurposeSchedule, prompts.Schedule(), tried, problems, map[string]any{"entries": entries}))
+		if len(problems) == 0 {
+			s.reportOr(ctx, st.records, recs)
+			return llm.ScheduleResult{Entries: entries, Attempts: tried}, nil
+		}
+		last = problems
+	}
+	s.reportOr(ctx, st.records, recs)
+	return llm.ScheduleResult{}, &llm.RepairExhaustedError{Purpose: llm.PurposeSchedule, Attempts: tried, Problems: last}
+}
+
+// reportOr reports explicit when WithRecords gave some, otherwise the records the fake made up.
+func (s *Scripted) reportOr(ctx context.Context, explicit, made []llm.CallRecord) {
+	if explicit != nil {
+		report(ctx, explicit)
+		return
+	}
+	report(ctx, made)
+}
+
+// ChannelPlanInputs returns the inputs ProposeChannelPlan received.
+func (s *Scripted) ChannelPlanInputs() []llm.ChannelPlanInput {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]llm.ChannelPlanInput(nil), s.planInputs...)
+}
+
+// ScheduleInputs returns the inputs ProposeSchedule received.
+func (s *Scripted) ScheduleInputs() []llm.ScheduleInput {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]llm.ScheduleInput(nil), s.schedInputs...)
 }
 
 // ScreenBriefs returns the briefs Screen received.

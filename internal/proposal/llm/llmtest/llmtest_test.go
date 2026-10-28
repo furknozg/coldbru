@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/furknozg/coldbru/internal/proposal/compile"
 	"github.com/furknozg/coldbru/internal/proposal/customer"
@@ -417,5 +418,98 @@ func TestToolsDefaultsAndOverrides(t *testing.T) {
 	}
 	if v, c := tools.Validated(), tools.Counted(); len(v) != 1 || v[0] != "x" || len(c) != 1 || c[0] != "y" {
 		t.Errorf("recorded %v %v", v, c)
+	}
+}
+
+func TestPlanQueue(t *testing.T) {
+	t.Parallel()
+	bad := llm.ChannelPlan{Mode: llm.ModeBoth, Primary: llm.ChannelEmail, Rationale: "bad"}
+	good := llm.ChannelPlan{Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail, Rationale: "good"}
+	validate := func(p llm.ChannelPlan) error {
+		if p.Mode == llm.ModeBoth {
+			return llm.NewProblemsError([]string{"both is not asked for"})
+		}
+		return nil
+	}
+	s := llmtest.NewScripted().ProposePlans(bad, good)
+	col := &llm.Collector{}
+	ctx := llm.WithRecorder(t.Context(), col)
+	in := llm.ChannelPlanInput{Brief: "b", ContextNotes: []string{"n"}}
+	res, err := s.ProposeChannelPlan(ctx, in, validate)
+	if err != nil || res.Plan != good || res.Attempts != 2 {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if got := s.ChannelPlanInputs(); len(got) != 1 || got[0].Brief != "b" || got[0].ContextNotes[0] != "n" {
+		t.Errorf("inputs = %+v", got)
+	}
+	// One record per attempt, for the real prompt package.
+	recs := col.Records()
+	if len(recs) != 2 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[0].Error == "" || recs[1].Outcome != llm.OutcomeAccepted ||
+		recs[0].Purpose != llm.PurposeChannelPlan || recs[1].Attempt != 2 || recs[0].Prompt != (llm.PromptRef{Name: "channel_plan", Version: "1.0.0", SHA256: prompts.ChannelPlan().SHA256}) {
+		t.Errorf("records = %+v", recs)
+	}
+
+	// Exhaustion after three attempts, as in the real loop; the error carries the last problems.
+	s.ProposePlans(bad, bad, bad, good)
+	_, err = s.ProposeChannelPlan(t.Context(), in, validate)
+	var ex *llm.RepairExhaustedError
+	if !errors.As(err, &ex) || ex.Attempts != 3 || ex.Purpose != llm.PurposeChannelPlan || len(ex.Problems) != 1 || ex.Problems[0] != "both is not asked for" {
+		t.Errorf("err = %#v", err)
+	}
+
+	// A nil validate accepts; WithRecords replaces the made-up records; failures and exhaustion.
+	custom := llm.CallRecord{Purpose: llm.PurposeChannelPlan, Outcome: llm.OutcomeAccepted, Attempt: 1}
+	s.ProposePlans(good).WithRecords(llm.PurposeChannelPlan, custom).FailChannelPlan(&llm.RefusalError{Purpose: llm.PurposeChannelPlan})
+	col2 := &llm.Collector{}
+	if _, err := s.ProposeChannelPlan(llm.WithRecorder(t.Context(), col2), in, nil); err != nil || len(col2.Records()) != 1 || col2.Records()[0].Model != "" {
+		t.Errorf("err = %v, records = %+v: WithRecords must replace the made-up ones", err, col2.Records())
+	}
+	if _, err := s.ProposeChannelPlan(t.Context(), in, nil); !errors.Is(err, llm.ErrRefusal) {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := s.ProposeChannelPlan(t.Context(), in, nil); !errors.Is(err, llmtest.ErrScriptExhausted) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestScheduleQueue(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	bad := []llm.ScheduleEntry{{Language: "tr", Rationale: "x"}}
+	good := []llm.ScheduleEntry{{Language: "tr", SendAt: &at, Rationale: "x"}, {Language: "en", Rationale: "y"}}
+	validate := func(e []llm.ScheduleEntry) error {
+		if len(e) != 2 {
+			return llm.NewProblemsError([]string{"en is missing"})
+		}
+		return nil
+	}
+	s := llmtest.NewScripted().ProposeSchedules(bad, good)
+	col := &llm.Collector{}
+	in := llm.ScheduleInput{Brief: "b", Languages: []string{"tr", "en"}, Now: at}
+	res, err := s.ProposeSchedule(llm.WithRecorder(t.Context(), col), in, validate)
+	if err != nil || res.Attempts != 2 || len(res.Entries) != 2 {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if got := s.ScheduleInputs(); len(got) != 1 || len(got[0].Languages) != 2 {
+		t.Errorf("inputs = %+v", got)
+	}
+	recs := col.Records()
+	if len(recs) != 2 || recs[0].Purpose != llm.PurposeSchedule || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Outcome != llm.OutcomeAccepted ||
+		!strings.Contains(string(recs[1].Response), "2026-11-02T10:00:00Z") {
+		t.Errorf("records = %+v", recs)
+	}
+
+	s.ProposeSchedules(bad, bad, bad)
+	_, err = s.ProposeSchedule(t.Context(), in, validate)
+	var ex *llm.RepairExhaustedError
+	if !errors.As(err, &ex) || ex.Attempts != 3 || ex.Purpose != llm.PurposeSchedule || ex.Problems[0] != "en is missing" {
+		t.Errorf("err = %#v", err)
+	}
+	s.FailSchedule(&llm.APIError{Purpose: llm.PurposeSchedule, Status: 529})
+	if _, err := s.ProposeSchedule(t.Context(), in, nil); !errors.Is(err, llm.ErrAPI) {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := s.ProposeSchedule(t.Context(), in, nil); !errors.Is(err, llmtest.ErrScriptExhausted) {
+		t.Errorf("err = %v", err)
 	}
 }

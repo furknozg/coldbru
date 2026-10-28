@@ -11,6 +11,25 @@ import (
 	"github.com/google/uuid"
 )
 
+const approveStep = `-- name: ApproveStep :one
+UPDATE proposal_step SET status = 'approved', approved_at = now() WHERE id = $1 RETURNING id, campaign_id, kind, version, status, created_at, approved_at
+`
+
+func (q *Queries) ApproveStep(ctx context.Context, id uuid.UUID) (ProposalStep, error) {
+	row := q.db.QueryRow(ctx, approveStep, id)
+	var i ProposalStep
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.Kind,
+		&i.Version,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
 const createStep = `-- name: CreateStep :one
 INSERT INTO proposal_step (campaign_id, kind, version) VALUES ($1, $2, $3) RETURNING id, campaign_id, kind, version, status, created_at, approved_at
 `
@@ -34,6 +53,58 @@ func (q *Queries) CreateStep(ctx context.Context, arg CreateStepParams) (Proposa
 		&i.ApprovedAt,
 	)
 	return i, err
+}
+
+const getStep = `-- name: GetStep :one
+SELECT id, campaign_id, kind, version, status, created_at, approved_at FROM proposal_step WHERE id = $1
+`
+
+func (q *Queries) GetStep(ctx context.Context, id uuid.UUID) (ProposalStep, error) {
+	row := q.db.QueryRow(ctx, getStep, id)
+	var i ProposalStep
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.Kind,
+		&i.Version,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+	)
+	return i, err
+}
+
+const listLiveSteps = `-- name: ListLiveSteps :many
+SELECT id, campaign_id, kind, version, status, created_at, approved_at FROM proposal_step WHERE campaign_id = $1 AND status <> 'superseded' ORDER BY id
+`
+
+// The current steps of a campaign: everything that is not superseded (D-033).
+func (q *Queries) ListLiveSteps(ctx context.Context, campaignID uuid.UUID) ([]ProposalStep, error) {
+	rows, err := q.db.Query(ctx, listLiveSteps, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProposalStep
+	for rows.Next() {
+		var i ProposalStep
+		if err := rows.Scan(
+			&i.ID,
+			&i.CampaignID,
+			&i.Kind,
+			&i.Version,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ApprovedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSteps = `-- name: ListSteps :many
@@ -67,4 +138,39 @@ func (q *Queries) ListSteps(ctx context.Context, campaignID uuid.UUID) ([]Propos
 		return nil, err
 	}
 	return items, nil
+}
+
+const maxStepVersion = `-- name: MaxStepVersion :one
+SELECT COALESCE(max(version), 0)::int AS version FROM proposal_step WHERE campaign_id = $1 AND kind = $2
+`
+
+type MaxStepVersionParams struct {
+	CampaignID uuid.UUID
+	Kind       string
+}
+
+func (q *Queries) MaxStepVersion(ctx context.Context, arg MaxStepVersionParams) (int32, error) {
+	row := q.db.QueryRow(ctx, maxStepVersion, arg.CampaignID, arg.Kind)
+	var version int32
+	err := row.Scan(&version)
+	return version, err
+}
+
+const supersedeStep = `-- name: SupersedeStep :one
+UPDATE proposal_step SET status = 'superseded' WHERE id = $1 RETURNING id, campaign_id, kind, version, status, created_at, approved_at
+`
+
+func (q *Queries) SupersedeStep(ctx context.Context, id uuid.UUID) (ProposalStep, error) {
+	row := q.db.QueryRow(ctx, supersedeStep, id)
+	var i ProposalStep
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.Kind,
+		&i.Version,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+	)
+	return i, err
 }

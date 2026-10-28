@@ -14,7 +14,7 @@ var (
 	ErrScreenBlocked = errors.New("llm: brief blocked by the pre-screen")
 	// ErrRefusal: the model stopped with stop_reason refusal. No repair, no fallback (D-069).
 	ErrRefusal = errors.New("llm: model refused the request")
-	// ErrRepairExhausted: three propose attempts failed (D-069).
+	// ErrRepairExhausted: three attempts of a repair loop failed (D-069, D-070).
 	ErrRepairExhausted = errors.New("llm: no valid segment after the allowed attempts")
 	// ErrTurnLimit: the segment loop used all its model turns (D-069).
 	ErrTurnLimit = errors.New("llm: segment loop ran out of model turns")
@@ -57,23 +57,35 @@ func (e *RefusalError) Error() string {
 // Is makes errors.Is(err, ErrRefusal) true.
 func (e *RefusalError) Is(target error) bool { return target == ErrRefusal }
 
-// RepairExhaustedError ends the segment loop after MaxProposeAttempts failed attempts. Errors is
-// what the last failed propose_segment reported; it is empty when the last attempt failed without
-// a DSL (the model did not call the tool, or was cut off), and Reason then says so.
+// RepairExhaustedError ends a repair loop after MaxProposeAttempts failed attempts. For the
+// segment loop Errors is what the last failed propose_segment reported; it is empty when the last
+// attempt failed without a DSL (the model did not call the tool, or was cut off), and Reason then
+// says so. For the plan and schedule loops (Purpose set) Problems is what the last validation
+// found, or the decoding problem when the answer was unusable.
 type RepairExhaustedError struct {
+	// Purpose names the loop; empty means the segment loop.
+	Purpose  Purpose
 	Attempts int
 	Errors   []*dsl.Error
+	Problems []string
 	Reason   string
 }
 
 func (e *RepairExhaustedError) Error() string {
+	what := "segment"
+	if e.Purpose != "" && e.Purpose != PurposeSegment {
+		what = string(e.Purpose)
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "llm: no valid segment after %d attempts", e.Attempts)
+	fmt.Fprintf(&b, "llm: no valid %s after %d attempts", what, e.Attempts)
 	if e.Reason != "" {
 		b.WriteString(": " + e.Reason)
 	}
 	for _, de := range e.Errors {
 		b.WriteString("; " + de.Error())
+	}
+	for _, p := range e.Problems {
+		b.WriteString("; " + p)
 	}
 	return b.String()
 }

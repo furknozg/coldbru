@@ -12,6 +12,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const approveVariant = `-- name: ApproveVariant :one
+UPDATE proposal_variant SET status = 'approved', approved_at = now() WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+`
+
+func (q *Queries) ApproveVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
+	row := q.db.QueryRow(ctx, approveVariant, id)
+	var i ProposalVariant
+	err := row.Scan(
+		&i.ID,
+		&i.StepID,
+		&i.Kind,
+		&i.Language,
+		&i.Channel,
+		&i.Status,
+		&i.Content,
+		&i.RejectionReason,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+		&i.RejectedAt,
+	)
+	return i, err
+}
+
 const createVariant = `-- name: CreateVariant :one
 INSERT INTO proposal_variant (step_id, kind, language, channel, content)
 VALUES ($1, $2, $3, $4, $5)
@@ -51,6 +74,66 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (P
 	return i, err
 }
 
+const getVariant = `-- name: GetVariant :one
+SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE id = $1
+`
+
+func (q *Queries) GetVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
+	row := q.db.QueryRow(ctx, getVariant, id)
+	var i ProposalVariant
+	err := row.Scan(
+		&i.ID,
+		&i.StepID,
+		&i.Kind,
+		&i.Language,
+		&i.Channel,
+		&i.Status,
+		&i.Content,
+		&i.RejectionReason,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+		&i.RejectedAt,
+	)
+	return i, err
+}
+
+const listLiveVariants = `-- name: ListLiveVariants :many
+SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE step_id = $1 AND status <> 'superseded' ORDER BY id
+`
+
+// The variants a marketer still sees in a step: everything except superseded (D-022).
+func (q *Queries) ListLiveVariants(ctx context.Context, stepID uuid.UUID) ([]ProposalVariant, error) {
+	rows, err := q.db.Query(ctx, listLiveVariants, stepID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProposalVariant
+	for rows.Next() {
+		var i ProposalVariant
+		if err := rows.Scan(
+			&i.ID,
+			&i.StepID,
+			&i.Kind,
+			&i.Language,
+			&i.Channel,
+			&i.Status,
+			&i.Content,
+			&i.RejectionReason,
+			&i.CreatedAt,
+			&i.ApprovedAt,
+			&i.RejectedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVariants = `-- name: ListVariants :many
 SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE step_id = $1 ORDER BY id
 `
@@ -85,4 +168,55 @@ func (q *Queries) ListVariants(ctx context.Context, stepID uuid.UUID) ([]Proposa
 		return nil, err
 	}
 	return items, nil
+}
+
+const rejectVariant = `-- name: RejectVariant :one
+UPDATE proposal_variant SET status = 'rejected', rejected_at = now(), rejection_reason = $2 WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+`
+
+type RejectVariantParams struct {
+	ID              uuid.UUID
+	RejectionReason pgtype.Text
+}
+
+func (q *Queries) RejectVariant(ctx context.Context, arg RejectVariantParams) (ProposalVariant, error) {
+	row := q.db.QueryRow(ctx, rejectVariant, arg.ID, arg.RejectionReason)
+	var i ProposalVariant
+	err := row.Scan(
+		&i.ID,
+		&i.StepID,
+		&i.Kind,
+		&i.Language,
+		&i.Channel,
+		&i.Status,
+		&i.Content,
+		&i.RejectionReason,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+		&i.RejectedAt,
+	)
+	return i, err
+}
+
+const supersedeVariant = `-- name: SupersedeVariant :one
+UPDATE proposal_variant SET status = 'superseded' WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+`
+
+func (q *Queries) SupersedeVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
+	row := q.db.QueryRow(ctx, supersedeVariant, id)
+	var i ProposalVariant
+	err := row.Scan(
+		&i.ID,
+		&i.StepID,
+		&i.Kind,
+		&i.Language,
+		&i.Channel,
+		&i.Status,
+		&i.Content,
+		&i.RejectionReason,
+		&i.CreatedAt,
+		&i.ApprovedAt,
+		&i.RejectedAt,
+	)
+	return i, err
 }

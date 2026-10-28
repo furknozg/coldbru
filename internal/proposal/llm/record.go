@@ -16,9 +16,11 @@ type Purpose string
 
 // Purposes.
 const (
-	PurposeScreen  Purpose = "screen"
-	PurposeSegment Purpose = "segment"
-	PurposeContent Purpose = "content"
+	PurposeScreen      Purpose = "screen"
+	PurposeSegment     Purpose = "segment"
+	PurposeContent     Purpose = "content"
+	PurposeChannelPlan Purpose = "channel_plan"
+	PurposeSchedule    Purpose = "schedule"
 )
 
 // Outcome is llm_call.outcome (D-068): what became of the call's output.
@@ -51,8 +53,8 @@ type PromptRef struct {
 type CallRecord struct {
 	Purpose Purpose
 	Model   string
-	// Attempt is 1-based within one port method call: the model turn of the segment loop, always 1
-	// for Screen and StreamStructured. A caller that repeats StreamStructured to repair its content
+	// Attempt is 1-based within one port method call: the model turn of the segment loop, the
+	// attempt of the plan and schedule repair loops, always 1 for Screen and StreamStructured. A caller that repeats StreamStructured to repair its content
 	// renumbers the records itself.
 	Attempt    int
 	Usage      Usage

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["single", "primary_fallback", "both"],
+      "description": "single: one channel only. primary_fallback: one message per person, on the primary channel or else on the other. both: a message on every channel a person can be reached on."
+    },
+    "primary": {
+      "type": "string",
+      "enum": ["sms", "email"],
+      "description": "The channel of mode single and the primary channel of mode primary_fallback. For mode both, the channel that reaches more people (email on a tie)."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "One or two short sentences, in the language of the brief, naming the numbers or the request that decided the plan."
+    }
+  },
+  "required": ["mode", "primary", "rationale"],
+  "additionalProperties": false
+}
