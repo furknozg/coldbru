@@ -1,0 +1,172 @@
+# Prompt metadata of the Proposal filter catalog (D-044, D-066).
+#
+# Holds ONLY what the Customer schema cannot say: an English description per entity, relation and
+# field (these go into the segment prompt) and the closed value lists of CHECK-constrained text
+# fields. Types, operators and relations come from internal/customer/graph/schema.graphqls and are
+# never written here. The generator (internal/proposal/catalog/gen, `make generate-catalog`) fails
+# when this file and the schema drift: a schema field without a description, a description without a
+# schema field, or a closed list on a field that is not a String.
+#
+# Closed lists must equal audience.ClosedLists() (a test compares them). `city` has no list here:
+# the Customer service validates it against its city dictionary (D-062). Order `platform` and
+# `countryCode` are free text in Customer, so they are not closed here either.
+#
+# Entity keys: `customer` is the root (CustomerFilter); every other key is the name of a relation of
+# the root (orders, cartItems, events). Amounts are GBP, distances are kilometres, "90d" fields cover
+# the last 90 days, timestamps are UTC.
+entities:
+  customer:
+    description: >-
+      A customer. Fields are matched directly. Reachability and consent are added by the server and
+      cannot be filtered on.
+    relations:
+      orders:
+        description: The customer's orders. Match with orders.some(o => ...), orders.none(o => ...) or orders.every(o => ...).
+      cartItems:
+        description: The items the customer added to a cart. Match with cartItems.some(c => ...), cartItems.none(c => ...) or cartItems.every(c => ...).
+      events:
+        description: The customer's behaviour events (app opens, views, purchases). Match with events.some(e => ...), events.none(e => ...) or events.every(e => ...).
+    fields:
+      countryCode:
+        description: "Two-letter country of the customer: TR (Turkey) or GB (United Kingdom)."
+        closed: [TR, GB]
+      city:
+        description: >-
+          Segmentation city, a Turkish or UK city name such as "İstanbul" or "Manchester". The server
+          matches it case- and diacritic-insensitively; an unknown city is rejected with suggestions.
+      language:
+        description: "Language of the customer: tr (Turkish) or en (English)."
+        closed: [tr, en]
+      timezone:
+        description: IANA time zone name, for example Europe/Istanbul or Europe/London.
+      signupDate:
+        description: Date the customer signed up.
+      lastActiveDate:
+        description: Date of the customer's last activity.
+      preferredPlatform:
+        description: "Platform the customer uses most: ios, android or web."
+        closed: [ios, android, web]
+      sessions90d:
+        description: Number of sessions in the last 90 days.
+      totalOrders:
+        description: Lifetime number of orders.
+      totalSpendGbp:
+        description: Lifetime spend in GBP.
+      avgOrderValueGbp:
+        description: Average order value in GBP.
+      firstOrderDate:
+        description: Date of the first order. Empty when the customer never ordered.
+      lastOrderDate:
+        description: Date of the most recent order. Empty when the customer never ordered.
+      favouriteCategory:
+        description: "Product category the customer buys most, compared exactly: Electronics, Fashion, Home & Living, Sports & Outdoors, Automotive, Beauty, Toys & Kids, Books & Media or Grocery. Empty when unknown."
+      lastCartAddDate:
+        description: Date an item was last added to a cart. Empty when never.
+      hasOpenCart:
+        description: True when the customer currently has items in an open cart.
+      openCartValueGbp:
+        description: Value of the open cart in GBP. 0 when there is no open cart.
+      loyaltyTier:
+        description: "Loyalty tier, from lowest to highest: Bronze, Silver, Gold, Platinum."
+        closed: [Bronze, Silver, Gold, Platinum]
+      loyaltyPoints:
+        description: Current loyalty points balance.
+      campaignsReceived90d:
+        description: Number of campaigns sent to the customer in the last 90 days.
+      emailsOpened90d:
+        description: Number of campaign emails the customer opened in the last 90 days.
+      lastCampaignSentAt:
+        description: Time the last campaign was sent to the customer. Empty when none was sent.
+      ageYears:
+        description: Age in whole years.
+      sex:
+        description: "Sex as recorded: Male or Female."
+        closed: [Male, Female]
+      maritalStatus:
+        description: "Marital status, compared exactly: married or civil partner, single, divorced or widowed. Empty when unknown."
+      dependants:
+        description: Number of dependants. Empty when unknown.
+      yearlySalaryGbp:
+        description: Yearly salary in whole GBP. Empty when unknown.
+      yearlyPensionGbp:
+        description: Yearly pension in whole GBP. Empty when unknown.
+      retired:
+        description: True when the customer is retired.
+      commuteDistanceKm:
+        description: Commute distance in kilometres, up to 2 decimals. Empty when unknown.
+      vehicleMake:
+        description: "Make of the customer's vehicle, compared exactly, for example Ford, Toyota or Mercedes-Benz. Empty when unknown."
+      vehicleModel:
+        description: Model of the customer's vehicle, free text. Empty when unknown.
+      vehicleYear:
+        description: Model year of the customer's vehicle. Empty when unknown.
+      vehicleType:
+        description: "Body type of the customer's vehicle, compared exactly, for example SUV, Sedan, Pickup or Hatchback; some values list two types such as \"Sedan, Wagon\". Empty when unknown."
+
+  orders:
+    description: One order the customer placed.
+    fields:
+      orderDate:
+        description: Time the order was placed.
+      orderStatus:
+        description: "Order status: shipped, delivered, cancelled, returned or refunded."
+        closed: [shipped, delivered, cancelled, returned, refunded]
+      itemsCount:
+        description: Number of items in the order.
+      subtotalGbp:
+        description: Order amount in GBP before discount and shipping.
+      discountCode:
+        description: "Discount code used on the order, for example WELCOME10 or SUMMER30. Empty when none."
+      discountGbp:
+        description: Discount applied in GBP.
+      shippingGbp:
+        description: Shipping cost in GBP.
+      totalGbp:
+        description: Total paid in GBP.
+      paymentMethod:
+        description: "Payment method, compared exactly: card, wallet, cash_on_delivery or bank_transfer."
+      platform:
+        description: "Platform the order was placed on: ios, android or web."
+      shippingCity:
+        description: City the order was shipped to, free text.
+      countryCode:
+        description: Two-letter country code of the order, free text.
+
+  cartItems:
+    description: One item the customer added to a cart.
+    fields:
+      addedAt:
+        description: Time the item was added to the cart.
+      cartStatus:
+        description: "Cart item status: open, abandoned, converted or removed."
+        closed: [open, abandoned, converted, removed]
+      quantity:
+        description: Number of units.
+      unitPriceGbp:
+        description: Price of one unit in GBP.
+      convertedAt:
+        description: Time the item became an order. Empty unless the item was converted.
+
+  events:
+    description: One behaviour event of the customer.
+    fields:
+      eventType:
+        description: "Event type: app_open, page_view, search, product_view, wishlist_add, add_to_cart, remove_from_cart, checkout_started or purchase."
+        closed:
+          - app_open
+          - page_view
+          - search
+          - product_view
+          - wishlist_add
+          - add_to_cart
+          - remove_from_cart
+          - checkout_started
+          - purchase
+      eventTime:
+        description: Time the event happened.
+      platform:
+        description: "Platform the event came from: ios, android or web."
+      category:
+        description: "Product category related to the event, compared exactly, same values as favouriteCategory. Empty when none."
+      valueGbp:
+        description: Monetary value of the event in GBP. Empty when the event has no value.

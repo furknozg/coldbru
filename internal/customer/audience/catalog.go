@@ -10,6 +10,7 @@ package audience
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/furknozg/coldbru/internal/customer/graph/model"
@@ -219,6 +220,31 @@ func jsonIndex(t reflect.Type) map[string]int {
 		if name, _, _ := strings.Cut(tag, ","); name != "" {
 			out[name] = i
 		}
+	}
+	return out
+}
+
+// ClosedLists returns the CHECK-constrained value lists of the catalog, keyed by
+// entity name ("customer", "orders", "cartItems", "events") and then by field
+// name. Only fields with a closed list appear. The slices are copies, so callers
+// cannot change the catalog. Proposal's metadata is compared with it by a test
+// (D-066).
+func ClosedLists() map[string]map[string][]string {
+	out := make(map[string]map[string][]string)
+	add := func(name string, e *Entity) {
+		for _, f := range e.Fields {
+			if f.Closed == nil {
+				continue
+			}
+			if out[name] == nil {
+				out[name] = make(map[string][]string)
+			}
+			out[name][f.Name] = slices.Clone(f.Closed)
+		}
+	}
+	add("customer", customerEntity)
+	for _, r := range customerEntity.Relations {
+		add(r.Name, r.Entity)
 	}
 	return out
 }

@@ -123,3 +123,27 @@ func TestClosedFieldsAreTheCheckedOnes(t *testing.T) {
 		}
 	}
 }
+
+// TestClosedLists checks the accessor against the catalog and that it hands out
+// copies (D-066).
+func TestClosedLists(t *testing.T) {
+	t.Parallel()
+	got := ClosedLists()
+	want := map[string]map[string][]string{
+		"customer": {
+			"countryCode": countryValues, "language": languageValues, "preferredPlatform": platformValues,
+			"loyaltyTier": loyaltyValues, "sex": sexValues,
+		},
+		"orders":    {"orderStatus": orderStatusValues},
+		"cartItems": {"cartStatus": cartStatusValues},
+		"events":    {"eventType": eventTypeValues},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ClosedLists() = %v, want %v", got, want)
+	}
+	got["customer"]["sex"][0] = "changed"
+	delete(got, "orders")
+	if again := ClosedLists(); again["customer"]["sex"][0] != "Male" || again["orders"] == nil {
+		t.Errorf("ClosedLists leaks the catalog: %v", again)
+	}
+}

@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql consent
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql generate-catalog consent
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -36,8 +36,9 @@ API_SPEC_SERVICES := proposal notification analytics mockprovider
 
 # Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051), then regenerates the
 # OpenAPI 3.1 spec of each service in API_SPEC_SERVICES into cmd/<svc>/apidocs/swagger.json (D-057),
-# and gqlgen the Customer GraphQL server code from its schema (D-058).
-generate: generate-sqlc generate-openapi generate-graphql
+# gqlgen the Customer GraphQL server code from its schema (D-058), and the Proposal filter catalog
+# from that schema plus its metadata (D-044, D-066).
+generate: generate-sqlc generate-openapi generate-graphql generate-catalog
 
 generate-sqlc:
 	@dirs=$$(find internal -name sqlc.yaml -exec dirname {} \;); \
@@ -59,6 +60,14 @@ generate-openapi:
 generate-graphql:
 	@echo "gqlgen generate: internal/customer/graph"
 	@cd internal/customer/graph && go tool gqlgen generate --config gqlgen.yml
+
+# Writes internal/proposal/catalog/catalog_gen.go from the Customer schema and
+# internal/proposal/catalog/metadata.yaml (D-044, D-066). Fails when the two disagree (a field
+# without a description, a description without a field, a closed list on a non-String field).
+# A freshness test fails when the committed file is stale.
+generate-catalog:
+	@echo "catalog gen: internal/proposal/catalog"
+	@go run ./internal/proposal/catalog/gen
 
 # Developer command: records an opt-in or opt-out through Customer's updateConsent, as the admin
 # caller, from inside the compose network (D-063, D-064). Docker must be on PATH and the stack up

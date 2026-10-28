@@ -69,6 +69,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
 | D-064 | İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent | Kitle ve izinler | Kabul edildi |
 | D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
+| D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -675,7 +676,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Elle yazılmış katalog — reddedildi: şema değişince iki yer elle güncellenir.
   - snake_case alan adları — reddedildi: GraphQL ve JS benzeri DSL için alışılmadık.
 - **Sonuçlar / bedel:** Bir kod üretim adımı daha (gqlgen ve sqlc'nin yanında). Metadata dosyası şemayla elle senkron tutulur; sapma build'de yakalanmalı.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** `internal/proposal/catalog` (T-019, D-066): `TestGeneratedCatalogIsFresh` üretilen kataloğun şemayla güncel olduğunu, `TestGenerateDrift` şema ile metadata sapmasının üretimi durdurduğunu doğrular.
 
 ## D-045: DSL 0.1 kapsamı: çekirdek işleçler, ilişki niceleyicileri, ago/date, in, boolean
 
@@ -1050,6 +1051,29 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** LLM'in JS alışkanlıkları (yorum, `1e3`, ters karşılaştırma) onarım turu harcatabilir; sistem prompt'u bunları örneklemeli. Sınırlar iki yerde (Proposal ve Customer) tutulur ve senkron kalmalıdır.
 - **Uygulama notu:** `!` karşılaştırmadan sıkı bağlar (§3.9); `!a === 1` `SYNTAX_ERROR` döner ve `!(a === 1)` yazılmasını söyler. Aynı işleç zincirleri parantez içinden de düzleştirilir (`(a && b) && c` tek `And`), böylece yazıcının parantez atması round-trip'i bozmaz. `null`/`undefined`/`NaN` `SYNTAX_ERROR` ('null değeri yok') döner. Derinlik ve düğüm sınırları ayrıştırma bittikten sonra, `in` sınırı ayrıştırırken denetlenir. Kod sabitleri Go adlarıyla (`CodeSyntaxError` …), değerleri §12.1'deki kodlardır. `!` bağlanması ve bu yorumlar kullanıcı tarafından ayrıca onaylandı.
 - **Doğrulama:** 2026-10-28'de (T-018): `internal/proposal/dsl` birim testleri `-race` ile geçti, kapsama %98,1; her hata kodu kesin satır:sütun ile, çok satırlı kaynak ve Türkçe metinle sınandı; §8.2 ve §13 örnekleri ayrıştırılıp round-trip yapıyor; sınır testleri 4096/4097 bayt, derinlik 8/9, 100/101 düğüm, `in` 100/101. `FuzzParse` 60 saniyede 3.066.670 çalıştırma, sonra 20 saniyede 1.311.644 çalıştırma yaptı; çökme yok.
+
+## D-066: Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-044 Proposal'ın kataloğunu build sırasında Customer şemasından ve bir metadata dosyasından üretmeyi seçti; üretim yöntemi, değer denetiminin kapsamı ve prompt'a girecek açıklamaların dili açıktı (T-019). `go:embed` paket dışındaki dosyayı gömemediği için şema doğrudan gömülemez. D-065 anlamsal geçişin `UNKNOWN_FIELD`, `UNKNOWN_RELATION`, `UNKNOWN_VALUE`, `TYPE_MISMATCH` üretmesini belirledi.
+- **Karar:**
+  - Küçük bir Go üretici (`github.com/vektah/gqlparser/v2`, zaten bağımlılık) Customer'ın `schema.graphqls`'ini ve Proposal'daki metadata dosyasını okuyup `internal/proposal/catalog` altında bir Go dosyası üretir. `make generate`'e eklenir, üretilen kod commit edilir (D-051 deseni). Bir test üreticiyi yeniden çalıştırır ve fark varsa başarısız olur.
+  - Alanlar, tipler, işleçler ve ilişkiler şemadan türetilir. Metadata dosyası prompt açıklamalarını ve CHECK kısıtlı alanların sabit değer listelerini (`sex`, `language`, `countryCode`, `preferredPlatform`, `loyaltyTier`, `orderStatus`, `cartStatus`, `eventType`) tutar. Proposal bu listelerde `UNKNOWN_VALUE` ve öneri döner; şehir listesi veritabanında olduğu için yalnız Customer denetler (D-062). Bir test metadata listelerini Customer'ın kodundaki listelerle karşılaştırır.
+  - Katalog açıklamaları İngilizcedir; segment prompt'u da İngilizce olur, brief Türkçe gelir.
+  - Tip kuralları: String alanlarda `===`, `!==`, `in` ve string literal; Boolean alanlarda `===`, `!==` ve `true`/`false`; Int alanlarda kesirsiz ve int32 aralığında sayı, Decimal alanlarda en fazla 2 ondalık (Customer'ın `Decimal` deseni); Date/DateTime alanlarda `date()` ile tüm işleçler, `ago()` ile yalnız `>`, `>=`, `<`, `<=`. Diğer her eşleşme `TYPE_MISMATCH` olur.
+  - Anlamsal geçiş, ayrıştırıcıdan farklı olarak ilk hatada durmaz: tüm hataları kaynak sırasıyla, en fazla 10 tane döner.
+  - Metadata dosyası YAML'dır ve `go.yaml.in/yaml/v3` ile okunur (viper üzerinden zaten dolaylı bağımlılıktı, doğrudana döner).
+- **Alternatifler:**
+  - Şemayı Proposal paketine kopyalayıp gömmek ve açılışta ayrıştırmak — reddedildi: kopyanın tazeliği yine test ister, açılışta iş artar.
+  - Hiç değer denetimi yapmamak — reddedildi: LLM değer hatalarını bir ağ çağrısı sonra görürdü.
+  - Şehir listesini Proposal'a çekmek için yeni bir GraphQL sorgusu — reddedildi: sözleşme (D-058) ve kapsamlar (D-063) değişirdi.
+  - Türkçe açıklamalar — reddedildi: alan adları İngilizce kaldığı için karışık metin.
+  - Tarih alanlarında şemadaki her işleç — reddedildi: `eventTime === ago("12h")` gibi hiç eşleşmeyecek ifadeler geçerdi. Yalnız sıralama — reddedildi: belirli bir günü seçmek iki sınır gerektirirdi.
+  - Yalnız ilk anlamsal hata — reddedildi: birden çok hatalı ifade 3 onarım hakkından birkaçını harcardı.
+  - JSON metadata — reddedildi: uzun açıklamalar okunaksız olurdu.
+- **Sonuçlar / bedel:** Customer şeması değişince `make generate` çalıştırılmalı; tazelik testi bunu yakalar. Sabit değer listeleri metadata'da ve Customer kodunda iki yerdedir, bir test eşitliklerini korur. Yanlış yazılmış şehir yalnız Customer çağrısından sonra fark edilir.
+- **Doğrulama:** `go run ./internal/proposal/catalog/gen` (`make generate-catalog`); `TestGeneratedCatalogIsFresh`, `TestGenerateDrift`, `TestGenerateReportsAllProblems` (üretici); `TestClosedListsMatchCustomer` ve Customer tarafında `TestClosedLists` (sabit listeler); `TestCheckValid` (örnek brief dahil), `TestCheckErrors`, `TestCheckMultipleErrorsInSourceOrder`, `TestCheckCapsErrors`, `TestCheckPositions` (tip kuralları ve hata sınırı); `FuzzCheck` 30 sn, 2,28M çalıştırma, panik yok. `make test` geçti.
 
 ---
 
