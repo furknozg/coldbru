@@ -6,6 +6,11 @@
       "sha256": "7cc700b2cb9e9d3a15a1f91ac4d83db33edd01bcfdd07b87a2912a11343e61b7"
     },
     {
+      "name": "content",
+      "version": "1.0.0",
+      "sha256": "84ba65be7245cfefc7f52b7a29d3e4a7c91e4c030aae444bc707ebd962a51daf"
+    },
+    {
       "name": "schedule",
       "version": "1.0.0",
       "sha256": "fe64acb7a1acaedb0c0cffb778e28a21756ad78b28842781687b4bd4749f9e65"

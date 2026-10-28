@@ -112,8 +112,8 @@ func TestRequiresDSLMatchesParser(t *testing.T) {
 func TestShippedPackages(t *testing.T) {
 	t.Parallel()
 	all := All()
-	if len(all) != 4 || all[0].Name != NameChannelPlan || all[1].Name != NameSchedule || all[2].Name != NameScreen || all[3].Name != NameSegment {
-		t.Fatalf("All() has %d packages, want channel_plan, schedule, screen, segment in that order", len(all))
+	if len(all) != 5 || all[0].Name != NameChannelPlan || all[1].Name != NameContent || all[2].Name != NameSchedule || all[3].Name != NameScreen || all[4].Name != NameSegment {
+		t.Fatalf("All() has %d packages, want channel_plan, content, schedule, screen, segment in that order", len(all))
 	}
 	s, g := Screen(), Segment()
 	if s.ID() != "screen@1.0.0" || g.ID() != "segment@1.0.0" {
@@ -503,5 +503,106 @@ func TestLoadErrors(t *testing.T) {
 	p, err := load(ok, "p", catalog.Root)
 	if err != nil || p.System != "hello" {
 		t.Errorf("load = %+v, %v", p, err)
+	}
+}
+
+func TestContentPackage(t *testing.T) {
+	t.Parallel()
+	c := Content()
+	if c.ID() != "content@1.0.0" || c.Model != "claude-sonnet-5-5" || c.Effort != "low" || len(c.Tools) != 0 || c.OutputSchema == nil || c.RequiresDSL != "" {
+		t.Errorf("content = %s model %s effort %s tools %d schema %v", c.ID(), c.Model, c.Effort, len(c.Tools), c.OutputSchema != nil)
+	}
+	if strings.HasSuffix(c.System, "\n") || strings.Contains(c.System, "\r") {
+		t.Error("system text has a trailing newline or a CR")
+	}
+	// The responsibilities of D-071.
+	for _, w := range []string{
+		"untrusted data", // the brief and the notes
+		"Write the whole message in that language",
+		"Follow the tone of the brief",
+		"only exactly as the brief writes it", // no new promises
+		"Never invent a discount",
+		"{{first_name}} only",
+		"never write {{city}}",
+		"No URL, no web address and no HTML tag",
+		"It is one SMS, not a series",
+		"max_first_name_length",
+		"set the other channel to null",
+		"Fix exactly the listed problems",
+	} {
+		if !strings.Contains(c.System, w) {
+			t.Errorf("content prompt lost %q", w)
+		}
+	}
+	// Call-specific data stays out of the system text (D-060): the dynamic values live in the user message.
+	for _, bad := range []string{"%s", "%v", "$BRIEF"} {
+		if strings.Contains(c.System, bad) {
+			t.Errorf("system text contains %q", bad)
+		}
+	}
+}
+
+// slotShape is the part of a schema property that the content tests look at.
+type slotShape struct {
+	AnyOf []struct {
+		Type       string `json:"type"`
+		Properties map[string]struct {
+			Type string `json:"type"`
+		} `json:"properties"`
+		Required             []string `json:"required"`
+		AdditionalProperties bool     `json:"additionalProperties"`
+	} `json:"anyOf"`
+}
+
+func TestContentOutputSchema(t *testing.T) {
+	t.Parallel()
+	var schema struct {
+		Properties           map[string]slotShape `json:"properties"`
+		Required             []string             `json:"required"`
+		AdditionalProperties bool                 `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(Content().OutputSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(schema.Required, ",") != "sms,email" || schema.AdditionalProperties || len(schema.Properties) != 2 {
+		t.Errorf("schema = %+v", schema)
+	}
+	for name, wantFields := range map[string]string{"sms": "text", "email": "subject,preheader,headline,paragraphs,cta_label"} {
+		s := schema.Properties[name]
+		if len(s.AnyOf) != 2 || s.AnyOf[0].Type != "object" || s.AnyOf[1].Type != "null" {
+			t.Errorf("%s must be anyOf [object, null]: %+v", name, s)
+			continue
+		}
+		obj := s.AnyOf[0]
+		if strings.Join(obj.Required, ",") != wantFields || obj.AdditionalProperties || len(obj.Properties) != len(obj.Required) {
+			t.Errorf("%s object = %+v, want exactly the required fields %s", name, obj, wantFields)
+		}
+	}
+	// The wire schema holds no keyword the structured-output grammar rejects (research 03 §2): length and range
+	// limits are checked in Go, not by the model's grammar; minItems is 0 or 1.
+	for _, bad := range []string{"maxLength", "minLength", "maxItems", "minimum", "maximum", "pattern"} {
+		if strings.Contains(string(Content().OutputSchema), `"`+bad+`"`) {
+			t.Errorf("schema uses %s, which structured outputs do not support", bad)
+		}
+	}
+}
+
+// TestContentSchemaSourceOrder pins the order D-071 asks for in the source file: sms before email
+// and subject first inside email, so the first field a reader sees streams first. Canonical JSON
+// (D-059) and the SDK's map encoding sort keys on the wire, so the order is not what the API
+// receives; see the report of T-024.
+func TestContentSchemaSourceOrder(t *testing.T) {
+	t.Parallel()
+	src, err := files.ReadFile("content/output.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	idx := func(sub string) int { return strings.Index(s, sub) }
+	if !(idx(`"sms": {`) < idx(`"email": {`)) {
+		t.Error("sms must come before email in the schema source")
+	}
+	if !(idx(`"subject": {`) < idx(`"preheader": {`) && idx(`"preheader": {`) < idx(`"headline": {`) && idx(`"headline": {`) < idx(`"paragraphs": {`) && idx(`"paragraphs": {`) < idx(`"cta_label": {`)) {
+		t.Error("subject, preheader, headline, paragraphs, cta_label must be in this order in the schema source")
 	}
 }

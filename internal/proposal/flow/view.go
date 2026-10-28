@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/furknozg/coldbru/internal/content"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
@@ -148,7 +149,42 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 		}
 	}
 	out.Steps = orderSteps(views)
+	out.Cost = costOf(out.Steps)
 	return out, nil
+}
+
+// costOf sums the estimated_cost_gbp of the draft and approved variants of the content step per
+// channel (D-071). Amounts are added as integers in micro-pounds (content.Money), so no rounding
+// error builds up; a variant whose content has no estimate, or a malformed one, counts as zero.
+func costOf(steps []StepView) CostSummary {
+	var sms, email content.Money
+	for _, sv := range steps {
+		if sv.Kind != KindContent {
+			continue
+		}
+		for _, v := range sv.Variants {
+			if v.Status != VariantStatusDraft && v.Status != VariantStatusApproved {
+				continue
+			}
+			var c struct {
+				Cost string `json:"estimated_cost_gbp"`
+			}
+			if json.Unmarshal(v.Content, &c) != nil {
+				continue
+			}
+			m, err := content.ParseMoney(c.Cost)
+			if err != nil {
+				continue
+			}
+			switch v.Channel {
+			case string(llm.ChannelSMS):
+				sms += m
+			case string(llm.ChannelEmail):
+				email += m
+			}
+		}
+	}
+	return CostSummary{SMSGBP: sms.String(), EmailGBP: email.String(), TotalGBP: (sms + email).String()}
 }
 
 // orderSteps sorts steps by kind order; at most one live step per kind exists (D-068).

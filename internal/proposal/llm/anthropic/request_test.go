@@ -3,6 +3,7 @@ package anthropic_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/furknozg/coldbru/internal/proposal/llm"
@@ -185,4 +186,26 @@ func countOccurrences(s, sub string) int {
 		}
 	}
 	return n
+}
+
+// TestOutputSchemaNumbersStayNumbers: a number in a package's schema (minItems of the content
+// package) must reach the API as a JSON number, not as the string "1" that json.Number becomes.
+func TestOutputSchemaNumbersStayNumbers(t *testing.T) {
+	t.Parallel()
+	pkg, err := prompts.Build(
+		prompts.Manifest{Name: "numeric", Version: "0.0.1", Model: "claude-sonnet-5-5", Effort: "low"},
+		"You write lists.", nil,
+		[]byte(`{"type":"object","properties":{"items":{"type":"array","items":{"type":"string"},"minItems":1}},"required":["items"],"additionalProperties":false}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := llmtest.NewMessagesServer(t, llmtest.SSE(msg(llmtest.Text(`{"items":["a"]}`))))
+	if _, _, err := newClient(t, srv).StreamStructured(t.Context(), pkg, []byte(`{}`), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	body := string(srv.Requests()[0].Body)
+	if !strings.Contains(body, `"minItems":1`) || strings.Contains(body, `"minItems":"1"`) {
+		t.Errorf("minItems is not sent as a number: %s", body)
+	}
 }

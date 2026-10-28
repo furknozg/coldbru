@@ -74,6 +74,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070 |
 | D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
 | D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi |
+| D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -478,7 +479,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Tek segment sınırı (GSM-7'de 160, UCS-2'de 70) — reddedildi: Türkçe metin çok kısa kalır.
   - ASCII katlama ile GSM-7 — reddedildi: metin bozulur.
 - **Sonuçlar / bedel:** Türkçe SMS çoğunlukla 3 UCS-2 segmentidir, maliyet buna göre artar. Segment sayısı UCS-2'de UTF-16 kod birimiyle hesaplanmalıdır. Gönderim anında bir alıcının metni 160'ı aşarsa ne yapılacağı açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-024, D-071): `internal/content`: `TestMeasureSMSEncodings` (ö ü Ö Ü Ç GSM-7; ç ş Ş ğ Ğ ı İ UCS-2; uzantı karakterleri 2 septet; emoji 2 UTF-16 birimi), `TestMeasureSMSSegmentBoundaries` (160/153, 70/67), `TestCheckSMSExpandedLengthDecidesNotTemplateLength`; maliyet `TestEstimatesAreExactWhereFloatsDrift`. Gönderim anında yeniden ölçüm Notification'da (T-029).
 
 ## D-029: Proje iskeleti bu adımda yalnız klasörler ve domain belgesi; Go kodu yok
 
@@ -1168,8 +1169,37 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Senkron istek — reddedildi: 10–30 sn süren istekler, ilerleme gösterilemez. NATS iş kuyruğu — reddedildi: yeni stream ve tüketici, daha fazla kod.
   - T-024'ü öne almak — reddedildi: görev sırası değişirdi.
 - **Sonuçlar / bedel:** İki prompt paketi, iki doğrulayıcı ve onarım yolu eklenir; her kampanyaya iki Haiku çağrısı. Bir migration daha. Olay dağıtıcısı süreç içidir, çoklu replikada paylaşılmaz. T-024'e kadar canlı akışta metin adımı çalışmaz.
+- **Ek (kullanıcı onayı, 2026-10-28, T-024):** `ContentGenerator.Validate` imzası `Validate(req ContentRequest, content) (json.RawMessage, error)` olur; düzenlenen içeriğin ölçümleri (en uzun ad, alıcı, maliyet) yuvanın bağlamıyla yeniden hesaplanır ve saklanacak içerik döner.
 - **Doğrulama:** 2026-10-28'de (T-023, D-070): `internal/proposal/flow` integration testleri (24 test, gerçek Customer handler'ı + seed'li Postgres, senaryolu LLM, sahte metin üreticisi): `TestSampleBriefEndToEnd` (46, 20/13/13/3; plan e-posta 33 / SMS 13; 3 metin varyantı; Confirmer bir kez; `llm_call` satırları amaçlarıyla), `TestScreenBlockCancelsTheCampaign`, `TestEditAudienceRecompilesAndRecounts`, `TestEditScheduleValidatesTheWindow`, `TestReopenSupersedesTheStepAndEveryLaterOne`, `TestSegmentRepairExhaustedIsReportedAndRegenerateRecovers`, `TestRefusalFailsThePlanStepAndRegenerateRecovers`, `TestGenerationWaitsForTheAdvisoryLock`, `TestConfirmerFailureIsReportedAndTheApprovalStands`, `TestRegenerateCampaign*`; store `TestMigration00003_PurposeList`, `_DownRestoresTheOldList`; adaptörde plan ve zamanlama istek gövdesi ve onarım testleri. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti (ilk çalıştırmada Customer `audience` paketi bir kez düştü, sonraki üç çalıştırmada geçti; neden kaydedilmedi).
 - **Uygulama notu:** Üretim sonucu, beklerken kampanya `drafting` dışına çıktıysa, adım kapandıysa, yeni bir not eklendiyse veya yuva dolduysa atılır (çağrılar kaydedilir, varyant açılmaz). `llm_call.variant_id` yalnız tek varyant üreten kabul edilmiş son kayda yazılır; kayıtlar varyantla aynı transaction'da yazılır. Worker sayısı havuzun yarısıyla sınırlıdır (kilit için bir, transaction için bir bağlantı). Bir metin yuvası düşerse diğerleri üretilmeye devam eder; `Regenerate` yalnız eksik yuvaları doldurur. Plan doğrulayıcısı yalnız mod, kanal ve alıcı > 0'ı denetler; beraberlik ve "iki kanal yalnız açık istenirse" kuralları prompt'tadır. Çalışan bir başlangıç varken `RegenerateCampaign` hiçbir şey yapmadan döner; adımlar açıldıktan sonra `ErrHasSteps` döner.
+
+## D-071: Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Brief SMS'i 160, e-posta konusunu 80 karakterle sınırlıyor ve `{{first_name}}` gibi değişkenler istiyor. D-028 ölçümün en uzun adla yapılmasını, kodlama, segment ve maliyetin gösterilmesini; D-069 metin çağrısının parametrelerini ve doğrulama fonksiyonunu; D-070 `ContentGenerator` arayüzünü belirledi. HTML e-posta biçimi, değişken listesi, en uzun adın kaynağı, onarım, fiyat, e-posta blok sınırları ve `content` prompt'unun sorumlulukları açıktı (T-024).
+- **Karar:**
+  - E-posta yuvalı şablondur: Claude `subject`, `preheader`, `headline`, `paragraphs[]`, `cta_label` döner; Go bunları sabit, tablo tabanlı, inline-CSS bir şablona `html/template` kaçışıyla yerleştirir, düz metin alternatifi aynı bloklardan üretilir. SMS çıktısı `{text}`'tir. Şema kaynağında `sms` ve `subject` önce gelir; API'ye giden kanonik JSON (D-059) anahtarları alfabetik sıralar, bu sıra korunmaz (kullanıcı onayladı: her çağrıda tek kanal dolu, e-postada konunun sonda akması yalnız görünüş).
+  - Sınırlar (karakter = Unicode karakter, `{{first_name}}` en uzun adla genişletilerek): SMS ≤ 160; `subject` ≤ 80, `preheader` ≤ 100, `headline` ≤ 80, 1–4 paragraf her biri ≤ 600, `cta_label` ≤ 30. SMS için GSM-7 / UCS-2 kodlaması ve segment sayısı (UCS-2'de UTF-16 kod birimi) hesaplanır ve varyantta saklanır.
+  - CTA URL'si LLM'den değil `CAMPAIGN_CTA_URL` yapılandırmasından gelir (demo varsayılanı `https://shop.example.com`) ve `utm_campaign=<kampanya id>` alır. Abonelikten çıkma alt bilgisi kodda eklenir.
+  - Değişken beyaz listesi yalnız `{{first_name}}`'dir; başka `{{…}}`, URL veya HTML içeren metin reddedilir. Değişken yerleştirmesi kendi kodumuzla yapılır, LLM metni şablon motorundan geçmez.
+  - En uzun ad Customer'dan gelir: `AudiencePreview.maxFirstNameLength` ve `LanguageCoverage.maxFirstNameLength` eklenir (D-058 sözleşmesine ekleme). Her dil varyantı kendi kitlesinin en uzun adıyla ölçülür.
+  - Doğrulamayı geçmeyen metin için 1 + 2 onarım: hata listesi ve önceki çıktı yeni, stream'li bir çağrıya verilir; toplam 3 deneme, her deneme `llm_call`'a yazılır.
+  - Kullanıcı ayrıca onayladı: `content@1.0.0` tek şemadır; `sms` ve `email` ikisi de nullable, kullanıcı mesajı hangisinin doldurulacağını söyler, doğrulayıcı yalnız istenenin dolu olmasını ister. Varyant e-posta bloklarını ve ölçümlerini saklar, HTML saklanmaz; önizleme ve gönderim ortak `internal/content` paketiyle alıcı adıyla çizilir.
+  - Kullanıcı ayrıca onayladı: segment ve maliyet tahmini `{{first_name}}` yerine ASCII dolgu (`x`) ile ölçülür; kodlama yalnız şablon metnine bağlıdır, Türkçe karakterli bir ad gönderimde mesajı UCS-2'ye çevirebilir ve Notification gerçek adla yeniden ölçmelidir. Abonelikten çıkma alt bilgisi yalnız metindir; link ve `List-Unsubscribe` header'ı yoktur (mock sağlayıcı, README'de belirtilecek).
+  - Maliyet: `SMS_SEGMENT_PRICE_GBP` (demo varsayılanı 0.04) ve `EMAIL_PRICE_GBP` (0.001); varyant tahmini segment × alıcı × fiyat, kanal planı toplamı gösterilir.
+  - `content@1.0.0` prompt'u: yuvanın dilinde (tr/en) ve kanalında yazar, brief'teki tonu izler; indirim ve teklif yalnız brief'te yazıldığı kadardır, yeni vaat yoktur; yalnız `{{first_name}}` kullanılabilir, URL ve başka değişken yoktur; SMS kısa ve tek mesajdır; sınırlar ve en uzun ad uzunluğu kullanıcı mesajındadır; brief ve notlar güvenilmeyen veridir.
+- **Alternatifler:**
+  - Serbest HTML + bluemonday — reddedildi: CSS temizlenmez, stil silmek düzeni bozar. Yalnız düz metin — reddedildi: HTML önizleme olmazdı.
+  - `{{city}}` de — reddedildi: Customer'ın alıcı sorgusu ve uzunluk ölçümü genişlerdi.
+  - Sabit 20 karakter varsayımı — reddedildi: gerçek kitlede daha uzun ad limiti aşabilirdi. Yalnız genel en uzun ad — reddedildi: bir dildeki uzun ad diğerini kısıtlardı.
+  - Onarımsız — reddedildi: Türkçe SMS'te sık limit aşımı kullanıcıyı yorardı.
+  - Yalnız segment sayısı — reddedildi: D-028 maliyetin gösterilmesini istiyor.
+  - Geniş sınırlar ve CTA'sız e-posta — reddedildi: düzen garantisi zayıf.
+  - Serbest yaratıcılık — reddedildi: brief'te olmayan indirim veya vaat üretilebilirdi.
+- **Sonuçlar / bedel:** Tasarım esnekliği şablonla sınırlıdır. Customer şeması ve sorgusu değişir. Başarısızlıkta 3 kat maliyet. Fiyatlar gerçek sağlayıcı fiyatı değil demo değerleridir. Uzun e-posta yazılamaz. Gönderim anında bir alıcının metni sınırı aşarsa ne yapılacağı açık kalır (D-028, Notification).
+- **Doğrulama:** 2026-10-28'de (T-024, D-071): `internal/content` (%96,9): `TestPlaceholderWhitelist`, `TestURLAndHTMLRejection`, `TestCheckEmailLimits`, `TestRenderEmailEscapesEverything`, `TestCTAURL`, `TestFooterPerLanguage`; `internal/proposal/contentgen` (%95,7): `TestGenerateRepairsAnOverLongAnswer`, `TestGenerateRepairExhausted`, `TestGenerateWrongChannelIsRepaired`, `TestGenerateRepairsACutOffAnswer`, `TestGenerateThreeCutOffsExhaustTheRepairs`, `TestGenerateCutOffAndNonJSONRecordsPerAttempt`, `TestGenerateRecordsOneCallPerAttempt`, `TestGenerateRequestUsesTheContentPackage`, `TestValidateRecomputesMeasurements`; Customer `TestSampleBriefMaxFirstNameLength` (doğrudan SQL `max` ile aynı, genel ve dil başına); flow `TestSampleBriefContentWithTheRealGenerator`. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
+- **Uygulama notu:** `ContentGenerator.Validate` imzası `Validate(req ContentRequest, content) (json.RawMessage, error)` oldu (D-070 eki). Konu, önbaşlık, başlık, paragraf ve CTA tek satırdır; SMS satır sonu içerebilir. URL reddi şema, `www.`, bilinen şemalar ve sabit bir TLD listesiyle çıplak alan adlarını kapsar. Maliyet tam sayı mikro-GBP ile hesaplanır, 4 ondalıkla gösterilir. Kesik (`max_tokens`) veya JSON olmayan çıktı segmentteki gibi başarısız bir deneme sayılır ve onarılır (kullanıcı ayrıca onayladı); refusal ve API hatası onarılmaz. Segment modeli `count_audience` sonucunda en uzun ad alanlarını görmez (D-069 davranışı korunur). Ayrıca `outputConfig` şemadaki sayıları string olarak gönderiyordu; düzeltildi (`TestOutputSchemaNumbersStayNumbers`).
 
 ---
 
@@ -1179,15 +1209,13 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 
 - Retry ayrıntıları: gönderimde (`SEND`) hangi hatalar yeniden denenir, geri çekilme ve deneme sayısı, `sending` lease süresi; olay tüketicisi için D-055 (D-023, D-024)
 - Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
-- `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
 - Olay listesi ve `data` alanlarının kesinleşmesi (taslak: `docs/domain-model.md`) (D-035)
 - Üç onarım denemesi başarısız olunca kullanıcıya ne gösterilir (D-027); ön eleme işaretlerse akış durur ve gerekçe gösterilir (D-069), arayüzü T-035'te
 - Gönderim anında bir alıcının SMS metni 160 karakteri aşarsa ne yapılır (D-028)
-- HTML email biçimi (araştırma önerisi yuvalı şablon)
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
 - promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061)
 - Mock provider hata/gecikme/429 oranları
-- SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016)
+- SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016); metin onarımında akış baştan başlar, arayüze bir "deneme yeniden başladı" olayı gerekir (D-071)
 - Kimlik doğrulama (arayüz ve SSE için) (D-013)
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği

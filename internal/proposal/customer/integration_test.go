@@ -14,6 +14,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -108,6 +109,27 @@ func TestSampleBriefPreview(t *testing.T) {
 	}
 	if sum != p.Count {
 		t.Errorf("byLanguage counts add up to %d, want %d", sum, p.Count)
+	}
+
+	// maxFirstNameLength is the longest first name among the recipients, overall and per language (D-071).
+	all, err := c.AllRecipients(t.Context(), compileOK(t, sampleBrief))
+	if err != nil {
+		t.Fatalf("AllRecipients: %v", err)
+	}
+	perLang := map[string]int{}
+	overall := 0
+	for _, r := range all {
+		n := utf8.RuneCountInString(r.FirstName)
+		perLang[r.Language] = max(perLang[r.Language], n)
+		overall = max(overall, n)
+	}
+	if p.MaxFirstNameLength != overall || overall == 0 {
+		t.Errorf("maxFirstNameLength = %d, longest recipient name = %d", p.MaxFirstNameLength, overall)
+	}
+	for _, l := range p.ByLanguage {
+		if l.MaxFirstNameLength != perLang[l.Language] {
+			t.Errorf("language %s: maxFirstNameLength = %d, longest recipient name = %d", l.Language, l.MaxFirstNameLength, perLang[l.Language])
+		}
 	}
 }
 

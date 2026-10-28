@@ -27,7 +27,7 @@ import (
 	"github.com/furknozg/coldbru/internal/proposal/catalog"
 )
 
-//go:embed screen segment channel_plan schedule
+//go:embed screen segment channel_plan schedule content
 var files embed.FS
 
 // Names of the packages shipped here.
@@ -36,6 +36,7 @@ const (
 	NameSegment     = "segment"
 	NameChannelPlan = "channel_plan"
 	NameSchedule    = "schedule"
+	NameContent     = "content"
 )
 
 // CatalogPart is the manifest entry that stands for the rendered filter catalog.
@@ -250,7 +251,7 @@ func load(fsys fs.FS, dir string, root *catalog.Entity) (*Package, error) {
 // that the tests catch, so a failure panics.
 var loaded = func() map[string]*Package {
 	out := map[string]*Package{}
-	for _, name := range []string{NameScreen, NameSegment, NameChannelPlan, NameSchedule} {
+	for _, name := range []string{NameScreen, NameSegment, NameChannelPlan, NameSchedule, NameContent} {
 		p, err := load(files, name, catalog.Root)
 		if err != nil {
 			panic(err)
@@ -271,6 +272,9 @@ func ChannelPlan() *Package { return loaded[NameChannelPlan] }
 
 // Schedule returns the schedule package (Haiku 5.5, D-070).
 func Schedule() *Package { return loaded[NameSchedule] }
+
+// Content returns the SMS and email text package (Sonnet 5.5, D-071).
+func Content() *Package { return loaded[NameContent] }
 
 // All returns every shipped package ordered by name.
 func All() []*Package {

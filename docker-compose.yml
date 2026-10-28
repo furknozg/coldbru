@@ -116,6 +116,9 @@ services:
       NATS_URL: nats://nats:4222
       CUSTOMER_GRAPHQL_URL: http://customer:8080/graphql
       CUSTOMER_TOKEN: ${CUSTOMER_TOKEN_PROPOSAL:-proposal-dev-token}
+      CAMPAIGN_CTA_URL: ${CAMPAIGN_CTA_URL:-https://shop.example.com}
+      SMS_SEGMENT_PRICE_GBP: ${SMS_SEGMENT_PRICE_GBP:-0.04}
+      EMAIL_PRICE_GBP: ${EMAIL_PRICE_GBP:-0.001}
     ports:
       - "${PROPOSAL_HOST_PORT:-8081}:8080"
     depends_on:

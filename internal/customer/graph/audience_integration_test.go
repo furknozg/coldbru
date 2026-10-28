@@ -64,6 +64,8 @@ type langCoverage struct {
 	Language string   `json:"language"`
 	Count    int      `json:"count"`
 	Coverage coverage `json:"coverage"`
+
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
 type previewData struct {
@@ -71,11 +73,13 @@ type previewData struct {
 		Count      int            `json:"count"`
 		Coverage   coverage       `json:"coverage"`
 		ByLanguage []langCoverage `json:"byLanguage"`
+
+		MaxFirstNameLength int `json:"maxFirstNameLength"`
 	} `json:"audiencePreview"`
 }
 
 const fullPreviewQuery = `query($f: CustomerFilter!) {
-  audiencePreview(filter: $f) { count coverage { both emailOnly smsOnly unreachable } byLanguage { language count coverage { both emailOnly smsOnly unreachable } } }
+  audiencePreview(filter: $f) { count maxFirstNameLength coverage { both emailOnly smsOnly unreachable } byLanguage { language count maxFirstNameLength coverage { both emailOnly smsOnly unreachable } } }
 }`
 
 func preview(t *testing.T, h http.Handler, filter map[string]any) previewData {
@@ -142,6 +146,34 @@ func TestSampleBriefAudience(t *testing.T) {
 	}
 	if !slices.IsSortedFunc(d.ByLanguage, func(a, b langCoverage) int { return cmp.Compare(a.Language, b.Language) }) {
 		t.Errorf("byLanguage is not ordered by language: %+v", d.ByLanguage)
+	}
+}
+
+// TestSampleBriefMaxFirstNameLength compares maxFirstNameLength, overall and per language, with a
+// direct SQL max over the same reachable audience (D-071).
+func TestSampleBriefMaxFirstNameLength(t *testing.T) {
+	h := liveServer(t)
+	d := preview(t, h, sampleFilter()).AudiencePreview
+
+	const sampleSQL = `FROM dwh.dim_customer c
+		WHERE c.city = 'İstanbul' AND ` + reachableSQL + `
+		  AND EXISTS (SELECT 1 FROM dwh.fact_cart_item ci WHERE ci.customer_id = c.customer_id AND ci.added_at >= now() - interval '30 days')
+		  AND NOT EXISTS (SELECT 1 FROM dwh.fact_order o WHERE o.customer_id = c.customer_id AND o.order_date >= now() - interval '30 days')`
+
+	wantAll := sqlCount(t, `SELECT coalesce(max(char_length(c.first_name)), 0) `+sampleSQL)
+	if wantAll == 0 || d.MaxFirstNameLength != wantAll {
+		t.Errorf("maxFirstNameLength = %d, direct SQL max = %d (want > 0)", d.MaxFirstNameLength, wantAll)
+	}
+	perLang := 0
+	for _, l := range d.ByLanguage {
+		want := sqlCount(t, `SELECT coalesce(max(char_length(c.first_name)), 0) `+sampleSQL+` AND c.language = $1`, l.Language)
+		if l.MaxFirstNameLength != want {
+			t.Errorf("language %s: maxFirstNameLength = %d, direct SQL max = %d", l.Language, l.MaxFirstNameLength, want)
+		}
+		perLang = max(perLang, l.MaxFirstNameLength)
+	}
+	if perLang != d.MaxFirstNameLength {
+		t.Errorf("overall %d is not the max of the per-language values (%d)", d.MaxFirstNameLength, perLang)
 	}
 }
 
@@ -354,7 +386,7 @@ func TestRecipientsLastPageAndEmptyAudience(t *testing.T) {
 			t.Errorf("page = %+v, want empty, no next page, null cursor", p)
 		}
 		pv := preview(t, h, f).AudiencePreview
-		if pv.Count != 0 || pv.Coverage != (coverage{}) || len(pv.ByLanguage) != 0 {
+		if pv.Count != 0 || pv.Coverage != (coverage{}) || len(pv.ByLanguage) != 0 || pv.MaxFirstNameLength != 0 {
 			t.Errorf("preview = %+v, want all zero", pv)
 		}
 	})

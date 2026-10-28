@@ -80,6 +80,10 @@ type LanguageAudience struct {
 	Language string   `json:"language"`
 	Count    int      `json:"count"`
 	Coverage Coverage `json:"coverage"`
+	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
+	// customers of this language; 0 when there are none (D-071). The texts of this language are
+	// measured with it.
+	MaxFirstNameLength int `json:"max_first_name_length"`
 }
 
 // AudienceContent is the content of the audience variant (D-034, D-070): the DSL the model wrote,
@@ -90,6 +94,9 @@ type AudienceContent struct {
 	Count      int                `json:"count"`
 	Coverage   Coverage           `json:"coverage"`
 	ByLanguage []LanguageAudience `json:"by_language"`
+	// MaxFirstNameLength is the longest first name among all reachable customers (D-071); it
+	// serves languages that have no entry of their own.
+	MaxFirstNameLength int `json:"max_first_name_length"`
 }
 
 func coverageFrom(c customer.Coverage) Coverage {
@@ -112,10 +119,12 @@ func NewAudienceContent(dslSrc string, f *compile.Filter, p *customer.Preview) (
 	}
 	out := AudienceContent{
 		DSL: dslSrc, Filter: filter, Count: p.Count, Coverage: coverageFrom(p.Coverage),
-		ByLanguage: make([]LanguageAudience, 0, len(p.ByLanguage)),
+		ByLanguage: make([]LanguageAudience, 0, len(p.ByLanguage)), MaxFirstNameLength: p.MaxFirstNameLength,
 	}
 	for _, l := range p.ByLanguage {
-		out.ByLanguage = append(out.ByLanguage, LanguageAudience{Language: l.Language, Count: l.Count, Coverage: coverageFrom(l.Coverage)})
+		out.ByLanguage = append(out.ByLanguage, LanguageAudience{
+			Language: l.Language, Count: l.Count, Coverage: coverageFrom(l.Coverage), MaxFirstNameLength: l.MaxFirstNameLength,
+		})
 	}
 	sort.Slice(out.ByLanguage, func(i, j int) bool { return out.ByLanguage[i].Language < out.ByLanguage[j].Language })
 	return out, nil
@@ -123,11 +132,25 @@ func NewAudienceContent(dslSrc string, f *compile.Filter, p *customer.Preview) (
 
 // Preview returns the audience as the coverage table the plan prompt receives.
 func (a AudienceContent) Preview() *customer.Preview {
-	p := &customer.Preview{Count: a.Count, Coverage: a.Coverage.toCustomer()}
+	p := &customer.Preview{Count: a.Count, Coverage: a.Coverage.toCustomer(), MaxFirstNameLength: a.MaxFirstNameLength}
 	for _, l := range a.ByLanguage {
-		p.ByLanguage = append(p.ByLanguage, customer.LanguageCoverage{Language: l.Language, Count: l.Count, Coverage: l.Coverage.toCustomer()})
+		p.ByLanguage = append(p.ByLanguage, customer.LanguageCoverage{
+			Language: l.Language, Count: l.Count, Coverage: l.Coverage.toCustomer(), MaxFirstNameLength: l.MaxFirstNameLength,
+		})
 	}
 	return p
+}
+
+// MaxFirstNameLengthOf returns the longest first name of the audience of language, the figure the
+// texts of that language are measured with (D-071). A language without an entry gets the overall
+// figure.
+func (a AudienceContent) MaxFirstNameLengthOf(language string) int {
+	for _, l := range a.ByLanguage {
+		if l.Language == language {
+			return l.MaxFirstNameLength
+		}
+	}
+	return a.MaxFirstNameLength
 }
 
 // Recipients counts the messages a plan sends: per channel, and in total. For mode both a person
@@ -227,4 +250,16 @@ type CampaignView struct {
 	Steps []StepView `json:"steps"`
 	// Notes are all context notes, oldest first.
 	Notes []NoteView `json:"notes"`
+	// Cost is the estimated cost of the live content variants (D-071).
+	Cost CostSummary `json:"cost"`
+}
+
+// CostSummary adds up the estimated_cost_gbp of the draft and approved variants of the current
+// content step (D-071): per channel and in total, as decimal strings with four decimals. Rejected
+// and superseded variants are not counted. A variant without an estimate counts as zero. The figures
+// are estimates at the configured demo prices.
+type CostSummary struct {
+	SMSGBP   string `json:"sms_gbp"`
+	EmailGBP string `json:"email_gbp"`
+	TotalGBP string `json:"total_gbp"`
 }

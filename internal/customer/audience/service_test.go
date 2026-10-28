@@ -86,7 +86,8 @@ func TestPreviewRunsInReadOnlyTxWithTimeout(t *testing.T) {
 		"count(*) FILTER (WHERE (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"count(*) FILTER (WHERE (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND NOT (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"count(*) FILTER (WHERE NOT (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
-		"count(*) FILTER (WHERE NOT (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND NOT (c.phone_e164 IS NOT NULL AND c.sms_opt_in)) " +
+		"count(*) FILTER (WHERE NOT (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND NOT (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
+		"COALESCE(max(char_length(c.first_name)) FILTER (WHERE ((c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) OR (c.phone_e164 IS NOT NULL AND c.sms_opt_in))), 0)::int " +
 		"FROM dwh.dim_customer c WHERE c.city IS NOT DISTINCT FROM $1 AND c.account_status = 'active' " +
 		"GROUP BY c.language ORDER BY c.language"
 	if db.tx.querySQL != want {

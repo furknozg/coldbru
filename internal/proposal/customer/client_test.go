@@ -76,9 +76,9 @@ func writeJSON(w http.ResponseWriter, status int, body string) {
 	_, _ = io.WriteString(w, body)
 }
 
-const previewBody = `{"data":{"audiencePreview":{"count":46,"coverage":{"both":20,"emailOnly":13,"smsOnly":13,"unreachable":3},
-"byLanguage":[{"language":"en","count":10,"coverage":{"both":4,"emailOnly":3,"smsOnly":3,"unreachable":1}},
-{"language":"tr","count":36,"coverage":{"both":16,"emailOnly":10,"smsOnly":10,"unreachable":2}}]}}}`
+const previewBody = `{"data":{"audiencePreview":{"count":46,"maxFirstNameLength":9,"coverage":{"both":20,"emailOnly":13,"smsOnly":13,"unreachable":3},
+"byLanguage":[{"language":"en","count":10,"maxFirstNameLength":9,"coverage":{"both":4,"emailOnly":3,"smsOnly":3,"unreachable":1}},
+{"language":"tr","count":36,"maxFirstNameLength":7,"coverage":{"both":16,"emailOnly":10,"smsOnly":10,"unreachable":2}}]}}}`
 
 func TestQueriesMatchSchema(t *testing.T) {
 	validateQuery(t, previewQuery)
@@ -101,11 +101,12 @@ func TestPreviewDecodesAndSendsRequest(t *testing.T) {
 		t.Fatalf("Preview: %v", err)
 	}
 	want := &Preview{
-		Count:    46,
-		Coverage: Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3},
+		Count:              46,
+		MaxFirstNameLength: 9,
+		Coverage:           Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3},
 		ByLanguage: []LanguageCoverage{
-			{Language: "en", Count: 10, Coverage: Coverage{Both: 4, EmailOnly: 3, SmsOnly: 3, Unreachable: 1}},
-			{Language: "tr", Count: 36, Coverage: Coverage{Both: 16, EmailOnly: 10, SmsOnly: 10, Unreachable: 2}},
+			{Language: "en", Count: 10, MaxFirstNameLength: 9, Coverage: Coverage{Both: 4, EmailOnly: 3, SmsOnly: 3, Unreachable: 1}},
+			{Language: "tr", Count: 36, MaxFirstNameLength: 7, Coverage: Coverage{Both: 16, EmailOnly: 10, SmsOnly: 10, Unreachable: 2}},
 		},
 	}
 	if !reflect.DeepEqual(p, want) {
