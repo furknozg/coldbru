@@ -10,3 +10,8 @@ SELECT * FROM campaign WHERE id = $1 FOR UPDATE;
 
 -- name: SetCampaignStatus :one
 UPDATE campaign SET status = $2, updated_at = now() WHERE id = $1 RETURNING *;
+
+-- name: ListCampaigns :many
+-- Newest first, for the campaign list of the UI (D-072). Not indexed on purpose: the list is small
+-- and a campaign table of this service stays small.
+SELECT * FROM campaign ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2;

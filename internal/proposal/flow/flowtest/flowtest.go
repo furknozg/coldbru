@@ -24,7 +24,7 @@ import (
 type Content struct {
 	// GenerateFunc, when set, replaces the default behaviour. It runs before the record is
 	// reported; return the content and an error as the real generator would.
-	GenerateFunc func(ctx context.Context, req flow.ContentRequest, onDelta func(string)) (json.RawMessage, error)
+	GenerateFunc func(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error)
 	// ValidateFunc, when set, replaces the default Validate, which accepts any JSON object with a
 	// non-empty "text" string and returns it unchanged.
 	ValidateFunc func(req flow.ContentRequest, content json.RawMessage) (json.RawMessage, error)
@@ -40,7 +40,7 @@ var _ flow.ContentGenerator = (*Content)(nil)
 var fakeSHA = strings.Repeat("0", 64)
 
 // Generate records req and returns the scripted or default content.
-func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(string)) (json.RawMessage, error) {
+func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error) {
 	c.mu.Lock()
 	c.requests = append(c.requests, req)
 	if c.counts == nil {
@@ -61,8 +61,8 @@ func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta
 	} else {
 		body := fmt.Sprintf("%s #%d", key, n)
 		if onDelta != nil {
-			onDelta(`{"text":"` + key)
-			onDelta(fmt.Sprintf(` #%d"}`, n))
+			onDelta(1, `{"text":"`+key)
+			onDelta(1, fmt.Sprintf(` #%d"}`, n))
 		}
 		raw = json.RawMessage(fmt.Sprintf(`{"text":%q}`, body))
 	}

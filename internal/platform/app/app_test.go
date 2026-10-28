@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/viper"
@@ -149,5 +152,68 @@ func TestMountAPIDocs(t *testing.T) {
 				t.Errorf("log %q does not contain %q", logs.String(), tt.wantLog)
 			}
 		})
+	}
+}
+
+func TestRun_ShutdownHooksRunAfterTheServerStopsInReverseOrder(t *testing.T) {
+	t.Parallel()
+	v := viper.New()
+	v.Set(config.KeyHTTPAddr, "127.0.0.1:0")
+	v.Set(config.KeyShutdownTimeout, "5s")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var (
+		order    []string
+		deadline bool
+	)
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Options{Name: "svc", Setup: func(ctx context.Context, d *Deps) error {
+			d.OnShutdown(func(context.Context) error { order = append(order, "first"); return nil })
+			d.OnShutdown(func(ctx context.Context) error {
+				_, deadline = ctx.Deadline()
+				order = append(order, "second")
+				return errors.New("boom")
+			})
+			go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+			return nil
+		}}, v, logger)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return")
+	}
+	if got := strings.Join(order, ","); got != "second,first" {
+		t.Errorf("hooks ran %q, want second,first", got)
+	}
+	if !deadline {
+		t.Error("a hook got no deadline")
+	}
+	if !strings.Contains(logs.String(), "shutdown hook failed") {
+		t.Errorf("the failure of a hook is not logged: %s", logs.String())
+	}
+}
+
+func TestRun_ShutdownHooksRunWhenSetupFails(t *testing.T) {
+	t.Parallel()
+	v := viper.New()
+	v.Set(config.KeyShutdownTimeout, "5s")
+	ran := false
+	err := Run(t.Context(), Options{Name: "svc", Setup: func(_ context.Context, d *Deps) error {
+		d.OnShutdown(func(context.Context) error { ran = true; return nil })
+		return errors.New("bad config")
+	}}, v, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil || !strings.Contains(err.Error(), "bad config") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !ran {
+		t.Error("the hook of a half-built service did not run")
 	}
 }

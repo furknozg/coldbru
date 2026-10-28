@@ -381,9 +381,7 @@ func (s *Service) genContent(ctx context.Context, fc *fillCtx) {
 			req.RejectionReason = v.RejectionReason.String
 		}
 		cctx, col := collect(ctx)
-		raw, err := s.content.Generate(cctx, req, func(text string) {
-			s.hub.Publish(ContentDelta{Meta: s.meta(fc.campaign.ID), StepID: fc.step.ID, Slot: slot, Text: text})
-		})
+		raw, err := s.content.Generate(cctx, req, s.deltaSink(fc.campaign.ID, fc.step.ID, slot))
 		if err == nil {
 			err = checkObject(raw)
 		}
@@ -396,6 +394,26 @@ func (s *Service) genContent(ctx context.Context, fc *fillCtx) {
 		if err != nil {
 			s.failed(ctx, fc, slot, err, col.Records())
 		}
+	}
+}
+
+// deltaSink returns the onDelta callback of a content generation: it publishes every non-empty
+// fragment as ContentDelta with its attempt, and ContentReset before the first sign of an attempt
+// after the first (D-072). An empty fragment only announces the start of its attempt. The
+// generator calls it from one goroutine at a time.
+func (s *Service) deltaSink(campaign, step uuid.UUID, slot Slot) func(attempt int, text string) {
+	last := 0
+	return func(attempt int, text string) {
+		if attempt > 1 && attempt > last {
+			s.hub.Publish(ContentReset{Meta: s.meta(campaign), StepID: step, Slot: slot, Attempt: attempt})
+		}
+		if attempt > last {
+			last = attempt
+		}
+		if text == "" {
+			return
+		}
+		s.hub.Publish(ContentDelta{Meta: s.meta(campaign), StepID: step, Slot: slot, Text: text, Attempt: attempt})
 	}
 }
 

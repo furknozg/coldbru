@@ -45,13 +45,16 @@ generate-sqlc:
 	if [ -z "$$dirs" ]; then echo "generate: no sqlc.yaml found, nothing to do"; exit 0; fi; \
 	for d in $$dirs; do echo "sqlc generate: $$d"; (cd "$$d" && go tool sqlc generate) || exit 1; done
 
-# swag parses the service main package plus internal/platform/health (the shared platform endpoints).
-# Add a service-specific handler package to --dir when it has annotations.
+# swag parses the service main package plus internal/platform/health (the shared platform endpoints)
+# and, for proposal, its handler package and the flow package whose types the handlers return (D-072).
+# Add a service-specific handler package to the case below when it has annotations.
 generate-openapi:
 	@for s in $(API_SPEC_SERVICES); do \
 	  echo "swag init: cmd/$$s"; \
 	  mkdir -p cmd/$$s/apidocs; \
-	  go tool swag init --quiet -g main.go -d cmd/$$s,internal/platform/health --parseInternal --v3.1 \
+	  dirs="cmd/$$s,internal/platform/health"; \
+	  case "$$s" in proposal) dirs="$$dirs,internal/proposal/api,internal/proposal/flow";; esac; \
+	  go tool swag init --quiet -g main.go -d "$$dirs" --parseInternal --v3.1 \
 	    --outputTypes json -o cmd/$$s/apidocs || exit 1; \
 	done
 

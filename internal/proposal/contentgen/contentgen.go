@@ -65,13 +65,15 @@ func slotOf(req flow.ContentRequest) (slot, error) {
 }
 
 // Generate writes the content of the slot of req (flow.ContentGenerator). The attempts are made in
-// turn; onDelta (may be nil) gets the text fragments of every attempt as they arrive, so after a
-// repair the preview restarts. It returns the stored content of the first valid answer, or:
+// turn; onDelta (may be nil) gets the text fragments of every attempt as they arrive, with the
+// 1-based attempt number, so after a repair the preview restarts. Every attempt starts with a call
+// with an empty text, which tells the flow about the attempt before its first fragment (D-072).
+// It returns the stored content of the first valid answer, or:
 //
 //   - *llm.RefusalError or *llm.APIError as the adapter returned them (no repair);
 //   - *llm.RepairExhaustedError (Purpose content, Problems = the messages of the last attempt) when
 //     MaxAttempts answers broke the rules or were unusable.
-func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(text string)) (json.RawMessage, error) {
+func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error) {
 	sl, err := slotOf(req)
 	if err != nil {
 		return nil, err
@@ -90,7 +92,12 @@ func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDel
 			failure []content.Problem
 		)
 		acall := &llm.Collector{}
-		raw, _, err := g.llm.StreamStructured(llm.WithRecorder(ctx, acall), g.pkg, user, onDelta, func(raw json.RawMessage) error {
+		var delta func(text string)
+		if onDelta != nil {
+			onDelta(attempt, "")
+			delta = func(text string) { onDelta(attempt, text) }
+		}
+		raw, _, err := g.llm.StreamStructured(llm.WithRecorder(ctx, acall), g.pkg, user, delta, func(raw json.RawMessage) error {
 			stored, ps := g.fromModel(raw, sl)
 			if len(ps) > 0 {
 				failure = ps

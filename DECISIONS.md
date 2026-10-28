@@ -75,6 +75,8 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
 | D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi |
 | D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi |
+| D-072 | Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock | Takip ve altyapı | Kabul edildi |
+| D-073 | DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -272,7 +274,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - WebSocket — reddedildi: sürdürme ve ping'ler elle kurulur, nginx'te Upgrade ayarı gerekir; istemciden sunucuya yön zaten REST ile karşılanıyor.
   - Polling — reddedildi: 1–2 sn gecikme, metin akışı canlı görünmez.
 - **Sonuçlar / bedel:** `EventSource` yalnızca GET destekler ve özel header gönderemez; POST ile başlayan metin akışı için `fetch` + `ReadableStream` gerekir, kimlik doğrulama eklenirse cookie veya kısa ömürlü token gerekir (kimlik doğrulama henüz kararlaştırılmadı). SSE'nin `Last-Event-ID` ile sürdürülmesi ve nginx'te tamponlamanın kapatılması uygulamada kurulacak.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-025, D-072): Proposal REST uçları ve `GET /campaigns/{id}/events` SSE; `TestSampleBriefOverRESTAndSSE` (integration, gerçek HTTP) örnek brief'i SSE'den izleyip REST ile zamanlamaya kadar onaylar; `TestEventsStartWithASnapshotAndForwardEvents`, `TestEventsPing`, `TestEventsResnapshotAfterDroppedEvents`. Compose'da `X-Accel-Buffering: no` başlığı gönderiliyor; nginx tamponlaması T-034'te.
 
 ## D-014: Frontend testleri Vitest + Vue Test Utils; uçtan uca tarayıcı testi yok
 
@@ -1201,6 +1203,53 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Doğrulama:** 2026-10-28'de (T-024, D-071): `internal/content` (%96,9): `TestPlaceholderWhitelist`, `TestURLAndHTMLRejection`, `TestCheckEmailLimits`, `TestRenderEmailEscapesEverything`, `TestCTAURL`, `TestFooterPerLanguage`; `internal/proposal/contentgen` (%95,7): `TestGenerateRepairsAnOverLongAnswer`, `TestGenerateRepairExhausted`, `TestGenerateWrongChannelIsRepaired`, `TestGenerateRepairsACutOffAnswer`, `TestGenerateThreeCutOffsExhaustTheRepairs`, `TestGenerateCutOffAndNonJSONRecordsPerAttempt`, `TestGenerateRecordsOneCallPerAttempt`, `TestGenerateRequestUsesTheContentPackage`, `TestValidateRecomputesMeasurements`; Customer `TestSampleBriefMaxFirstNameLength` (doğrudan SQL `max` ile aynı, genel ve dil başına); flow `TestSampleBriefContentWithTheRealGenerator`. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
 - **Uygulama notu:** `ContentGenerator.Validate` imzası `Validate(req ContentRequest, content) (json.RawMessage, error)` oldu (D-070 eki). Konu, önbaşlık, başlık, paragraf ve CTA tek satırdır; SMS satır sonu içerebilir. URL reddi şema, `www.`, bilinen şemalar ve sabit bir TLD listesiyle çıplak alan adlarını kapsar. Maliyet tam sayı mikro-GBP ile hesaplanır, 4 ondalıkla gösterilir. Kesik (`max_tokens`) veya JSON olmayan çıktı segmentteki gibi başarısız bir deneme sayılır ve onarılır (kullanıcı ayrıca onayladı); refusal ve API hatası onarılmaz. Segment modeli `count_audience` sonucunda en uzun ad alanlarını görmez (D-069 davranışı korunur). Ayrıca `outputConfig` şemadaki sayıları string olarak gönderiyordu; düzeltildi (`TestOutputSchemaNumbersStayNumbers`).
 
+## D-072: Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-013 tarayıcı ile backend arasında REST ve SSE'yi, D-016 sözleşmenin swag v2 ile üretilmesini, D-070 akış servisini ve süreç içi olay dağıtıcısını belirledi. Uç noktaların biçimi, SSE olay sözleşmesi (açık konu), arayüz için kimlik doğrulama (açık konu) ve anahtar olmadan servisin nasıl çalışacağı açıktı (T-025). D-071 metin onarımında akışın baştan başladığını arayüze bildiren bir olay gerektiğini not etti.
+- **Karar:**
+  - REST kaynak + eylem uçlarıdır: `POST /campaigns`, `GET /campaigns`, `GET /campaigns/{id}`; `POST /variants/{id}/approve | reject | edit`; `POST /campaigns/{id}/context | reopen | regenerate`; `POST /steps/{id}/regenerate`. Üretim başlatan istekler 202 döner. Hatalar RFC 9457 `application/problem+json`; flow hataları 404, 409 ve 422'ye eşlenir. Uçlar swag v2 annotation'larıyla belgelenir (D-016).
+  - SSE: `GET /campaigns/{id}/events`. İlk olay tam kampanya görünümüdür (`snapshot`), ardından flow olayları aynı adlarla gelir; 15 sn'de bir `ping`. Tekrar oynatma tamponu yoktur; yeniden bağlanan istemci yeni bir snapshot alır. Metin onarımında `content_delta` olayları `attempt` taşır ve yeni denemenin başında `content_reset` gönderilir. Olay şemaları OpenAPI'de components olarak belgelenir.
+  - Arayüz ve SSE için kimlik doğrulama yoktur (demo); Proposal yalnız nginx arkasındadır (T-034). README'de kapsam dışı olarak belirtilir.
+  - `LLM_MODE` = `auto` | `anthropic` | `mock`, varsayılan `auto`: `ANTHROPIC_API_KEY` doluysa gerçek model, boşsa senaryolu mock kullanılır; seçilen mod log'da ve `/readyz` kontrolünde görünür. Mock, örnek brief ve stub'daki geçmiş kampanya brief'leri için elle yazılmış yanıtlar verir; eşleşmeyen brief'te basit bir varsayılan filtre (`totalOrders >= 1`) kullanır, metne `[mock]` işareti ve gerekçeye "mock yanıt" notu koyar.
+  - Kullanıcı ayrıca onayladı: platform `health.CheckResult` isteğe bağlı bir `detail` alanı alır (`{"llm":{"status":"ok","detail":"mode=mock"}}`); dört servisin spec'i bu alanla genişler. Girdi sınırları: gövde 64 KiB (aşımda 413), brief 2000, not 2000, red gerekçesi 1000 karakter (aşımda 422). Mock deterministiktir; bir çağrı yeniden üretimse (red gerekçesi veya bağlam notu varsa) plan ve zamanlama gerekçesine "[mock] yeniden üretim" notu, metne `[mock]` işareti eklenir. `Location` başlığı mutlak `/campaigns/{id}` yoludur; nginx önekiyle uyumu T-034'te çözülür, arayüz gövdedeki id'yi kullanır.
+- **Alternatifler:**
+  - Saf kaynak + `PATCH` — reddedildi: durum makinesi kuralları PATCH gövdesine gizlenir, hata kodları belirsizleşir.
+  - `Last-Event-ID` ile tekrar oynatma — reddedildi: bellekte tampon ve sıra numarası yönetimi; snapshot durumu zaten düzeltir.
+  - Tek paylaşılan token — reddedildi: EventSource header gönderemediği için ek iş, demo için gereksiz.
+  - Anahtar zorunlu veya anahtar yokken 503 — reddedildi: anahtarsız `docker compose up` demosu olmazdı.
+  - Mock'ta eşleşmeyen brief'e hata — reddedildi: anahtarsız demo yalnız birkaç brief'le çalışırdı.
+- **Sonuçlar / bedel:** Eylem uçları REST purizmine tam uymaz. Kopmada aradaki olaylar kaybolur, snapshot durumu düzeltir. Kimlik doğrulama olmadığı için üretimde kullanılamaz. Mock'un varsayılan yanıtı brief'le ilgisiz olabilir; bu arayüzde işaretlidir.
+- **Doğrulama:** 2026-10-28'de (T-025, D-072): `internal/proposal/api` (%90,9): `TestErrorMapping`, `TestRequestValidation`, `TestInvalidPathIDs`, `TestEvents*`; `internal/proposal/boot`: `TestSelectLLM`, `TestSetupInMockMode`; `internal/proposal/llm/mock`: `TestEveryCannedFilterIsValid`, `TestEveryCannedTextPassesTheContentValidators`, `TestRegeneratedContentCarriesTheMarkerAndStaysValid`; integration `TestSampleBriefOverRESTAndSSE`, `TestRejectAndEditOverREST`, `TestConflictsArriveAsProblemJSON`, `TestAnUnknownBriefGetsTheMarkedMockAnswers`, `TestEveryMockFilterHasAnAudienceInTheSeed`, `TestRegenerationAfterARejectionIsMarkedByTheMock`. Canlı yığında (`LLM_MODE=mock`): `/readyz` `llm: mode=mock`, `POST /campaigns` 202 + `Location`, SSE önce `snapshot`, kitle 46 ve kapsama 20/13/13/3; subagent'ın çalıştırmasında REST ile tüm adımlar onaylandı (plan e-posta 33 / SMS 13, 3 metin yuvası, toplam maliyet 0.5530), `/docs` ve `/openapi.json` 11 ucu listeledi. Son mock değişikliğinden sonra imaj yeniden derlenemedi (Docker'dan `gcr.io`'ya DNS erişimi yoktu); o değişiklik yalnız testlerle doğrulandı. `make test` geçti.
+- **Uygulama notu:** Bağlama `internal/proposal/boot`'tadır; `app.Deps.OnShutdown` flow'u HTTP sunucusundan sonra, havuzdan önce kapatır. Onay ve düzenleme 200, red, bağlam, yeniden açma ve yeniden üretim 202 döner. Problem `type` alanı `urn:coldbru:proposal:problem:<code>` URN'üdür. Liste yanıtı `{items, limit, offset}`'tir (toplam yok, varsayılan 20, en fazla 100). `content_reset` her deneme başında boş bir delta ile tetiklenir. Mock stub'daki 12 geçmiş kampanya brief'ini ve örnek brief'i normalize metinle eşler.
+
+## D-073: DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** Test ve kapsam
+- **Bağlam:** Kullanıcı DSL yaklaşımının, modelin GraphQL filtresini doğrudan yazmasına karşı token maliyeti, gecikme/CPU (flamegraph), yük ve kalite açısından nasıl ölçüleceğini sordu. Araştırma `docs/research/06-dsl-benchmarking.md`'de. Örnek brief'te DSL 115 bayt, derlendiği GraphQL JSON'u 150 bayttır (yaklaşık 1,3 kat); D-007 ve araştırma 02'deki "yaklaşık 3 kat çıktı token'ı" bir tahmindi, ölçülmemişti. Claude için resmi çevrimdışı tokenizer yoktur; `count_tokens` ücretsizdir ama API anahtarı ister.
+- **Karar:**
+  - Token sayımı canlı deneylere bırakılır; şimdilik çevrimdışı token karşılaştırması yapılmaz. Canlı deneyde karşılaştırılan biçimler yalnız tool içindeki DSL ile sıkıştırılmış GraphQL JSON'udur; fiyat Sonnet 5.5'e göre hesaplanır.
+  - Korpus `bench/corpus/*.dsl` dosyalarına taşınır (prompt ve doküman örnekleri, altın vakalar); testler ve benchmark'lar aynı kaynağı okur; dilbilgisine dayalı bir üretici ek çeşitlilik verir.
+  - Go benchmark'ları (`dsl.Parse`, `catalog.Check`, `compile.Compile`, JSON doğrulama alternatifi, Customer SQL derleyicisi) ayrı `make bench` hedefindedir (`-count 10`, benchstat, `-cpuprofile`/`-memprofile`, `go tool pprof -http` flamegraph); `make bench-smoke` (`-benchtime 1x`) benchmark kodunun derlendiğini sınar. `make test`'e girmez.
+  - Canlı karşılaştırmanın GraphQL kolunda model filtreyi strict bir tool'un string alanı içinde JSON olarak yazar (DSL koluyla simetrik). Bu kolun prompt'u `eval/prompts/` altındadır, üretim kilidine (D-059) girmez. Önce yaklaşık 2–3 $'lık pilot, sonra tam koşu (yaklaşık 40 brief × 5 tekrar × 2 kol, tahmini 10–40 $); her koşuyu kullanıcı elle başlatır (D-061 `live`).
+  - Altyapı (kodlama kuralı 7, kullanıcı onayladı): compose'a yalnız `--profile bench` ile açılan bir profil: vegeta konteyneri, Customer için port override ve isteğe bağlı `pg_stat_statements`. Prometheus/Grafana yoktur; ölçüm `/metrics` farklarıyla yapılır. Varsayılan yığın değişmez.
+  - Kampanya ve adım başına LLM maliyeti `llm_call`'dan hesaplanır (yeni sütun yok), fiyatlar yapılandırmadadır. Önce Sonnet 5.5 cache-read fiyatı çelişkisi (fiyat sayfası 0,10 $, yerel model belgesi 0,20 $) doğrulanır.
+  - Yeni Prometheus metrikleri: `llm_call_duration_seconds` (0,5–60 sn kovalar), `llm_tokens_total`, `dsl_errors_total{code}`, `sse_clients`.
+  - Profil: benchmark profilleri ve flamegraph; ayrıca `PPROF_ADDR` verilirse yalnız 127.0.0.1'de dinleyen `net/http/pprof` (chi router'a bağlanmaz, varsayılan kapalı). Sürekli profilleme yoktur.
+- **Alternatifler:**
+  - Çevrimdışı vekil + tek seferlik `count_tokens` önbelleği veya yalnız çevrimdışı vekil — reddedildi: kullanıcı token sayımını canlı deneylere bıraktı.
+  - Tüm DSL ve JSON biçimleri — reddedildi: rapor uzar. Haiku veya Opus fiyatları — reddedildi.
+  - Korpusu kopyalamak veya yalnız üretici — reddedildi: kopyalar kayar / gerçekçi olmayan ifadeler ağırlıkta.
+  - Yalnız `make bench` veya smoke'u `make test`'e koymak — reddedildi.
+  - Serbest `object` alanı veya iki kol — reddedildi: kollar eşit koşulda olmaz / maliyet yaklaşık %50 artar.
+  - Prompt'u `internal/proposal/prompts/` altına koymak veya geçici dal — reddedildi: üretim kilidi kirlenir / deney tekrar üretilemez.
+  - Doğrudan tam koşu veya canlı deney yok — reddedildi.
+  - Compose'u değiştirmemek veya Prometheus + Grafana — reddedildi. Yalnız rapor script'i veya Analytics fiyat sütunu — reddedildi. Yalnız `llm_*` veya hiç metrik — reddedildi. Pyroscope/Parca — reddedildi.
+- **Sonuçlar / bedel:** DSL ile JSON'un token farkı canlı deneyden önce yalnız bayt düzeyinde bilinir. Canlı deney para harcar ve elle başlatılır. Compose dosyası bir profil kadar büyür. Fiyat değişince yapılandırma güncellenir. Metriklerde etiket kardinalitesine dikkat edilmelidir. Seed'in 1000 kullanıcıyla SQL zamanlaması için anlamsız olduğu, seed ölçeği açık konusuna bağlıdır.
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (araştırma: `docs/research/06-dsl-benchmarking.md`).
+
 ---
 
 ## Açık konular
@@ -1216,6 +1265,4 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
 - promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061)
 - Mock provider hata/gecikme/429 oranları
-- SSE olay tiplerinin sözleşmesi ve belgelenmesi (OpenAPI dışında) (D-013, D-016); metin onarımında akış baştan başlar, arayüze bir "deneme yeniden başladı" olayı gerekir (D-071)
-- Kimlik doğrulama (arayüz ve SSE için) (D-013)
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği

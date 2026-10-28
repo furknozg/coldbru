@@ -170,7 +170,7 @@ func TestEventTypes(t *testing.T) {
 		{StepApproved{Meta: m}, TypeStepApproved}, {StepSuperseded{Meta: m}, TypeStepSuperseded}, {GenerationStarted{Meta: m}, TypeGenerationStarted},
 		{GenerationFailed{Meta: m}, TypeGenerationFailed}, {VariantCreated{Meta: m}, TypeVariantCreated}, {VariantApproved{Meta: m}, TypeVariantApproved},
 		{VariantRejected{Meta: m}, TypeVariantRejected}, {VariantSuperseded{Meta: m}, TypeVariantSuperseded}, {ContentDelta{Meta: m}, TypeContentDelta},
-		{ContextAdded{Meta: m}, TypeContextAdded},
+		{ContextAdded{Meta: m}, TypeContextAdded}, {ContentReset{Meta: m}, TypeContentReset},
 	}
 	seen := map[string]bool{}
 	for _, w := range want {
@@ -178,5 +178,58 @@ func TestEventTypes(t *testing.T) {
 			t.Errorf("%T type = %q (want %q, unique)", w.e, w.e.Type(), w.name)
 		}
 		seen[w.name] = true
+	}
+}
+
+func TestDeltaSinkMarksRepairAttempts(t *testing.T) {
+	t.Parallel()
+	camp, step := uuid.New(), uuid.New()
+	s := &Service{hub: NewHub(0), clock: ClockFunc(func() time.Time { return time.Unix(0, 0) })}
+	sub := s.hub.Subscribe(camp)
+	defer sub.Close()
+	slot := Slot{Language: "tr", Channel: "sms"}
+	sink := s.deltaSink(camp, step, slot)
+
+	// Attempt 1 streams, attempt 2 is announced by an empty fragment before its first one, attempt 3
+	// starts straight with text. A repeated call of an attempt resets nothing.
+	sink(1, "")
+	sink(1, "a")
+	sink(1, "b")
+	sink(2, "")
+	sink(2, "c")
+	sink(2, "d")
+	sink(3, "e")
+
+	var got []string
+	for {
+		select {
+		case e := <-sub.C:
+			switch v := e.(type) {
+			case ContentDelta:
+				if v.StepID != step || v.Slot != slot {
+					t.Errorf("delta %+v: wrong step or slot", v)
+				}
+				got = append(got, v.Text+string(rune('0'+v.Attempt)))
+			case ContentReset:
+				if v.StepID != step || v.Slot != slot {
+					t.Errorf("reset %+v: wrong step or slot", v)
+				}
+				got = append(got, "reset"+string(rune('0'+v.Attempt)))
+			default:
+				t.Fatalf("unexpected event %T", e)
+			}
+			continue
+		default:
+		}
+		break
+	}
+	want := []string{"a1", "b1", "reset2", "c2", "d2", "reset3", "e3"}
+	if len(got) != len(want) {
+		t.Fatalf("events = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("event %d = %q, want %q", i, got[i], want[i])
+		}
 	}
 }

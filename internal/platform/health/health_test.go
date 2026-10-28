@@ -126,3 +126,33 @@ func TestReadinessHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestReadinessReportsTheDetailOfACheck(t *testing.T) {
+	t.Parallel()
+	reg := health.NewRegistry()
+	reg.AddDetail("llm", func(context.Context) (string, error) { return "mode=mock", nil })
+	reg.Add("plain", func(context.Context) error { return nil })
+	reg.AddDetail("broken", func(context.Context) (string, error) { return "mode=anthropic", errors.New("no key") })
+
+	rec := httptest.NewRecorder()
+	reg.ReadinessHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	var resp struct {
+		Status string
+		Checks map[string]struct{ Status, Error, Detail string }
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusServiceUnavailable || resp.Checks["llm"].Detail != "mode=mock" || resp.Checks["llm"].Status != "ok" {
+		t.Errorf("llm = %+v, code %d", resp.Checks["llm"], rec.Code)
+	}
+	if got := resp.Checks["plain"]; got.Detail != "" || got.Status != "ok" {
+		t.Errorf("plain = %+v", got)
+	}
+	if got := resp.Checks["broken"]; got.Detail != "mode=anthropic" || got.Error != "no key" || got.Status != "fail" {
+		t.Errorf("broken = %+v", got)
+	}
+	if strings.Contains(rec.Body.String(), `"plain":{"status":"ok","detail"`) {
+		t.Errorf("an empty detail must be omitted: %s", rec.Body.String())
+	}
+}

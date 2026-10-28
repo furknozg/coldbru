@@ -3,6 +3,11 @@
         "schemas": {
             "health.CheckResult": {
                 "properties": {
+                    "detail": {
+                        "description": "Detail is what the check found out besides pass or fail, for example \"mode=mock\"; empty for\nchecks that report none.",
+                        "example": "mode=mock",
+                        "type": "string"
+                    },
                     "error": {
                         "description": "Error is the failure reason; empty when the check passed.",
                         "example": "context deadline exceeded",

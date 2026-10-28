@@ -207,7 +207,11 @@ func TestGenerateRepairExhausted(t *testing.T) {
 		StreamJSON(smsDoc("see https://x.example")).
 		StreamJSON(smsDoc("Hi {{city}}"))
 	var deltas []string
-	_, err := newGenerator(s).Generate(t.Context(), request("en", "sms", 10), func(d string) { deltas = append(deltas, d) })
+	_, err := newGenerator(s).Generate(t.Context(), request("en", "sms", 10), func(_ int, d string) {
+		if d != "" {
+			deltas = append(deltas, d)
+		}
+	})
 	var ex *llm.RepairExhaustedError
 	if !errors.As(err, &ex) || !errors.Is(err, llm.ErrRepairExhausted) {
 		t.Fatalf("err = %v, want *RepairExhaustedError", err)
@@ -367,12 +371,23 @@ func TestGenerateForwardsDeltasOfEveryAttempt(t *testing.T) {
 	t.Parallel()
 	bad, good := smsDoc(rep("a", 170)), smsDoc("Hello {{first_name}}")
 	s := llmtest.NewScripted().StreamJSON(bad[:10], bad[10:]).StreamJSON(good[:7], good[7:])
-	var got []string
-	if _, err := newGenerator(s).Generate(t.Context(), request("en", "sms", 1), func(d string) { got = append(got, d) }); err != nil {
+	type delta struct {
+		attempt int
+		text    string
+	}
+	var got []delta
+	if _, err := newGenerator(s).Generate(t.Context(), request("en", "sms", 1), func(a int, d string) { got = append(got, delta{a, d}) }); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got, "") != bad+good || len(got) != 4 {
-		t.Errorf("deltas = %q", got)
+	// Every attempt is announced by an empty fragment, then its text follows (D-072).
+	want := []delta{{1, ""}, {1, bad[:10]}, {1, bad[10:]}, {2, ""}, {2, good[:7]}, {2, good[7:]}}
+	if len(got) != len(want) {
+		t.Fatalf("deltas = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("delta %d = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 

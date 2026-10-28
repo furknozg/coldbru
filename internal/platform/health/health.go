@@ -21,22 +21,32 @@ const (
 // Check reports whether one dependency is ready. A nil error means ready.
 type Check func(ctx context.Context) error
 
+// DetailCheck is a Check that also reports a short, non-secret description of what it found, for
+// example the mode a dependency runs in. The detail is returned together with an error too.
+type DetailCheck func(ctx context.Context) (detail string, err error)
+
 // Registry holds named readiness checks. Create it with NewRegistry.
 type Registry struct {
 	// Timeout bounds every check; NewRegistry sets it to DefaultTimeout.
 	Timeout time.Duration
 
 	mu     sync.RWMutex
-	checks map[string]Check
+	checks map[string]DetailCheck
 }
 
 // NewRegistry returns an empty registry with the default check timeout.
 func NewRegistry() *Registry {
-	return &Registry{Timeout: DefaultTimeout, checks: make(map[string]Check)}
+	return &Registry{Timeout: DefaultTimeout, checks: make(map[string]DetailCheck)}
 }
 
 // Add registers a check under name, replacing any earlier check with that name.
 func (r *Registry) Add(name string, c Check) {
+	r.AddDetail(name, func(ctx context.Context) (string, error) { return "", c(ctx) })
+}
+
+// AddDetail registers a check that reports a detail under name, replacing any earlier check with
+// that name. The detail appears in the readiness report as CheckResult.Detail.
+func (r *Registry) AddDetail(name string, c DetailCheck) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.checks[name] = c
@@ -48,6 +58,9 @@ type CheckResult struct {
 	Status string `json:"status" example:"ok" enums:"ok,fail"`
 	// Error is the failure reason; empty when the check passed.
 	Error string `json:"error,omitempty" example:"context deadline exceeded"`
+	// Detail is what the check found out besides pass or fail, for example "mode=mock"; empty for
+	// checks that report none.
+	Detail string `json:"detail,omitempty" example:"mode=mock"`
 }
 
 // Report is the JSON body of /healthz and /readyz.
@@ -102,7 +115,7 @@ func (r *Registry) readiness(w http.ResponseWriter, req *http.Request) {
 
 func (r *Registry) run(ctx context.Context) Report {
 	r.mu.RLock()
-	checks := make(map[string]Check, len(r.checks))
+	checks := make(map[string]DetailCheck, len(r.checks))
 	maps.Copy(checks, r.checks)
 	r.mu.RUnlock()
 
@@ -137,19 +150,26 @@ func (r *Registry) run(ctx context.Context) Report {
 
 // runCheck runs c in its own goroutine so a check that ignores its context
 // cannot hold the probe past the timeout.
-func runCheck(ctx context.Context, timeout time.Duration, c Check) CheckResult {
+func runCheck(ctx context.Context, timeout time.Duration, c DetailCheck) CheckResult {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	done := make(chan error, 1)
-	go func() { done <- c(ctx) }()
+	type outcome struct {
+		detail string
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		detail, err := c(ctx)
+		done <- outcome{detail, err}
+	}()
 
 	select {
-	case err := <-done:
-		if err != nil {
-			return CheckResult{Status: statusFail, Error: err.Error()}
+	case o := <-done:
+		if o.err != nil {
+			return CheckResult{Status: statusFail, Error: o.err.Error(), Detail: o.detail}
 		}
-		return CheckResult{Status: statusOK}
+		return CheckResult{Status: statusOK, Detail: o.detail}
 	case <-ctx.Done():
 		return CheckResult{Status: statusFail, Error: ctx.Err().Error()}
 	}

@@ -896,7 +896,7 @@ func TestContentFailureOfOneSlotLeavesTheOthers(t *testing.T) {
 	h := newHarness(t)
 	var once sync.Once
 	var failedSlot string
-	h.content.GenerateFunc = func(_ context.Context, req flow.ContentRequest, onDelta func(string)) (json.RawMessage, error) {
+	h.content.GenerateFunc = func(_ context.Context, req flow.ContentRequest, onDelta func(int, string)) (json.RawMessage, error) {
 		fail := false
 		once.Do(func() { fail, failedSlot = true, req.Language+"/"+req.Channel })
 		if fail {
