@@ -114,6 +114,8 @@ services:
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       DATABASE_URL: postgres://proposal_svc:${PROPOSAL_DB_PASSWORD:-proposal_svc_dev}@postgres:5432/proposal_db?sslmode=disable
       NATS_URL: nats://nats:4222
+      CUSTOMER_GRAPHQL_URL: http://customer:8080/graphql
+      CUSTOMER_TOKEN: ${CUSTOMER_TOKEN_PROPOSAL:-proposal-dev-token}
     ports:
       - "${PROPOSAL_HOST_PORT:-8081}:8080"
     depends_on:

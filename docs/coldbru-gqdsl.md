@@ -527,6 +527,8 @@ Filtered nested selections are not used in 0.1.
 
 **Stage 6: Execution.** Send the operation to the Customer service with Proposal's service token (D-043).
 
+Stages 4 and 5 are one-to-one with the AST (D-067): `&&`, `||` and `!` become `and`, `or` and `not`, every comparison is a single-field object, and nothing is merged or simplified. The compiler (`internal/proposal/compile`) keeps a map from each GraphQL filter path to the DSL source range. When Customer rejects a value, for example an unknown city, the error's `extensions.filterPath` is mapped back to a DSL error with line, column, `near` excerpt and suggestions, so the agent repairs it like a parser error. The Customer client (`internal/proposal/customer`) is plain `net/http` with the two fixed operations of D-041. Each attempt has a 10 s timeout. Only network errors and HTTP 502, 503 and 504 are retried, up to 3 attempts in total with exponential backoff from 200 ms.
+
 ### 8.2 Example transformation
 
 The sample brief "users in İstanbul who added to cart in the last 30 days and did not buy":

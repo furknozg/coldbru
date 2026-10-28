@@ -70,6 +70,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-064 | İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent | Kitle ve izinler | Kabul edildi |
 | D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
+| D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -635,7 +636,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - LLM varlık ve filtre yazar — reddedildi: kampanyada kök hep müşteri, kazanç yok.
   - LLM tüm zarfı yazar — reddedildi: tool şeması büyür, kişisel veri istenebilir.
 - **Sonuçlar / bedel:** DSL belgesindeki seçim (§7) bu projede LLM'e açılmaz; yalnız Proposal kodu kullanır. Yeni bir görünüm gerekirse kod değişikliği ister.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** `internal/proposal/customer` (T-020, D-067): seçimler `operations.go`'da sabit iki sorgudur; `TestQueriesMatchSchema` onları Customer şemasına karşı doğrular, `TestSampleBriefPreview` (integration) sorgunun gerçek Customer'da çalıştığını gösterir.
 
 ## D-042: Filtre kataloğu kişisel olmayan tüm alanları içerir; izin ve hesap alanları dışarıda
 
@@ -1074,6 +1075,25 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - JSON metadata — reddedildi: uzun açıklamalar okunaksız olurdu.
 - **Sonuçlar / bedel:** Customer şeması değişince `make generate` çalıştırılmalı; tazelik testi bunu yakalar. Sabit değer listeleri metadata'da ve Customer kodunda iki yerdedir, bir test eşitliklerini korur. Yanlış yazılmış şehir yalnız Customer çağrısından sonra fark edilir.
 - **Doğrulama:** `go run ./internal/proposal/catalog/gen` (`make generate-catalog`); `TestGeneratedCatalogIsFresh`, `TestGenerateDrift`, `TestGenerateReportsAllProblems` (üretici); `TestClosedListsMatchCustomer` ve Customer tarafında `TestClosedLists` (sabit listeler); `TestCheckValid` (örnek brief dahil), `TestCheckErrors`, `TestCheckMultipleErrorsInSourceOrder`, `TestCheckCapsErrors`, `TestCheckPositions` (tip kuralları ve hata sınırı); `FuzzCheck` 30 sn, 2,28M çalıştırma, panik yok. `make test` geçti.
+
+## D-067: DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-041 seçimi Proposal kodunda sabitledi, D-058 Customer'ın filtre sözleşmesini, D-062 hata kodlarını ve `extensions.filterPath`'i, D-066 anlamsal geçişi belirledi. Denetlenmiş AST'nin GraphQL değişkenine hangi biçimde çevrileceği, Customer istemcisinin nasıl yazılacağı, zaman aşımı ve yeniden deneme davranışı ve Customer hatalarının ajana nasıl döneceği açıktı (T-020).
+- **Karar:**
+  - Derleme AST'ye bire birdir: `&&` → `and: [...]`, `||` → `or: [...]`, `!` → `not`; her karşılaştırma ve `in` tek alanlı bir nesnedir (`{ "city": { "eq": "İstanbul" } }`); ilişki `{ "orders": { "none": {...} } }` olur; kök tek bir koşulsa `and` sarılmaz. Aynı alanlar birleştirilmez, mantıksal sadeleştirme yapılmaz. Değerler D-058'e göre: Int JSON sayısı, Decimal JSON string'i, Boolean `true`/`false`, `date()` → `{ "date": "…" }`, `ago()` → `{ "ago": "…" }`. Derleme önce `catalog.Check`'i çalıştırır.
+  - Customer istemcisi `net/http` ile elle yazılır; seçimler amaç başına sabit iki sorgudur (`audiencePreview` ve `audienceRecipients`, D-041). Bir test sorgu metinlerini `gqlparser` ile Customer şemasına karşı doğrular. Yeni bağımlılık yoktur.
+  - İstek başına 10 sn zaman aşımı. Yalnız ağ hatası, 502, 503 ve 504'te yeniden denenir: toplam en fazla 3 deneme, üstel backoff (200 ms taban, jitter). GraphQL hataları, 401 ve diğer 4xx tekrarlanmaz.
+  - Derleyici her GraphQL filtre yolu için DSL kaynak aralığını tutar. Customer'ın `extensions.filterPath`'li hatası (ör. bilinmeyen şehir) aynı kod, satır, sütun, `near` ve önerilerle bir `dsl.Error`'a çevrilir; ajan onu parser hatası gibi onarır.
+- **Alternatifler:**
+  - Aynı alanları birleştirmek — reddedildi: birleştirme kuralları ve `filterPath` eşlemesi karmaşıklaşırdı. Mantıksal sadeleştirme — reddedildi: önizlemedeki filtre LLM'in yazdığından farklı görünürdü.
+  - genqlient — reddedildi: iki sorgu için yeni bir codegen aracı. Genel GraphQL kütüphanesi — reddedildi: şemaya karşı doğrulama yok.
+  - Yeniden deneme yok — reddedildi: anlık bir aksaklık bir onarım turu harcardı. Platform outbox politikası (D-054, D-055) — reddedildi: 15 dk ve 20 deneme senkron istek için fazla uzun.
+  - Customer mesajını olduğu gibi iletmek — reddedildi: ajan hatanın yerini yalnız mesajdan çıkarırdı.
+- **Sonuçlar / bedel:** Derlenmiş JSON birleştirilmiş biçimden uzundur. Yanıt tipleri elle yazılır; şema değişirse sorgu doğrulama testi kırılır. En kötü durumda bir çağrı yaklaşık 31 sn sürer. Yol-aralık eşlemesi derleyiciye kod ekler.
+- **Doğrulama:** `TestCompileSampleBriefGolden` örnek brief'in §8.2'deki JSON'a birebir derlendiğini, `TestCompileValueEncodings` ve `TestCompileDecimalIsNeverAJSONNumber` değer biçimlerini doğrular. `TestQueriesMatchSchema` sorguları şemaya karşı denetler. `TestRetryStatusesAndAttemptCap`, `TestRetryOnTransportError`, `TestNoRetry`, `TestPerAttemptTimeout`, `TestContextCancelStopsRetrying` yeniden deneme ve zaman aşımı kurallarını; `TestUnknownValueBecomesDSLError`, `TestUnknownValueInListPointsAtTheElement` ve `TestSpan*` hata eşlemesini doğrular. Integration (gerçek Customer handler'ı + seed'li Postgres): `TestSampleBriefPreview` count 46, kapsama 20 / 13 / 13 / 3; `TestSampleBriefRecipientsOverAllPages` 46 tekil ve sıralı alıcı; `TestUnknownCityComesBackAtTheLiteral` `Istnbul` için literal konumunda `UNKNOWN_VALUE` ve `İstanbul` önerisi; `TestWrongTokenIsUnauthorized`. `make test` geçti.
+- **Uygulama notu:** Int, literal metninden `int64` olarak kodlanır (`007` → `7`); Decimal yazıldığı gibi string kalır. gqlgen bazı GraphQL hatalarını 4xx ile döndüğü için `errors` taşıyan bir gövde durum kodundan önce gelir ve tekrarlanmaz. Bir denemenin kendi zaman aşımı ağ hatası sayılır ve tekrarlanır; üst bağlam iptal olursa hemen döner. Yanıt en fazla 8 MiB'tır. Ortam değişkenleri: `CUSTOMER_GRAPHQL_URL`, `CUSTOMER_TOKEN` (compose'da `CUSTOMER_TOKEN_PROPOSAL`'dan); compose başlangıç sırası (D-056) değişmedi.
 
 ---
 
