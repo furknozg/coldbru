@@ -186,6 +186,8 @@ ageYears === "25"
 
 Must produce `TYPE_MISMATCH`, because `ageYears` is numeric.
 
+Numbers are checked against the field type (D-066): an `Int` field takes an integer within the 32-bit range, a `Decimal` field at most two fraction digits. `ageYears > 25.5` and `totalSpendGbp > 10.005` produce `TYPE_MISMATCH`. Closed lists (`loyaltyTier`, `sex`, `orderStatus`, ...) are checked in Proposal with suggestions; `city` is checked only by the Customer service.
+
 **City values (D-040).** `city` is a closed list. Both sides are compared through a canonical key: `ı`, `İ` and `I` become `i`, then NFD and lower case. So `"İstanbul"`, `"istanbul"` and `"ISTANBUL"` match the same customers. A value not in the known city list fails with `UNKNOWN_VALUE` and a list of suggestions. The rule is applied in the Customer service and does not depend on database collation.
 
 Other enum-like string fields compare exactly, using the values in the catalog.
@@ -209,6 +211,8 @@ signupDate < date("2026-01-01")
 - `ago("<n><unit>")` is a relative point in time (D-039). The compiler sends it to GraphQL in relative form. The Customer service resolves it against `now()` when the query runs. The agent never does date arithmetic.
 - `date("YYYY-MM-DD")` is an absolute date.
 - Units are `d` (days) and `h` (hours): a positive integer plus the unit, e.g. `"30d"`, `"12h"` (D-058).
+
+`date()` works with every operator of a Date or DateTime field, including `===` and `in`. `ago()` works only with `>`, `>=`, `<` and `<=`; `lastOrderDate === ago("30d")` produces `TYPE_MISMATCH` (D-066).
 
 Because `ago()` is resolved at query time, the same rule can return a different audience at a later time. This is expected between the preview and the recipient list.
 
@@ -460,7 +464,7 @@ The compiler must preserve this distinction.
 
 ### 5.7 Relationship discovery
 
-There is no runtime introspection (D-044). The Customer service's gqlgen schema (`.graphqls`) is the single source of truth. Proposal's catalog is generated at build time from that schema plus a small metadata file. The metadata file holds prompt descriptions, allowed operators per field and the quantifiers each relationship supports. Drift between the schema and the metadata must fail the build.
+There is no runtime introspection (D-044). The Customer service's gqlgen schema (`.graphqls`) is the single source of truth. Proposal's catalog is generated at build time from that schema plus a small metadata file. Fields, types, operators and relationships with their quantifiers are derived from the schema; the metadata file (`internal/proposal/catalog/metadata.yaml`) holds only the English prompt descriptions and the closed value lists of CHECK-constrained fields (D-066). The generator (`make generate-catalog`) fails on any drift between the two, and a test fails when the committed catalog is stale.
 
 Arbitrary joins between unrelated fields or tables are outside the DSL.
 
@@ -584,7 +588,7 @@ The DSL uses a schema-derived, statically validated type system. Each identifier
 | String       | `city`, `loyaltyTier`          | `===`, `!==`, `in`                   |
 | Numeric      | `ageYears`, `totalSpendGbp`    | `===`, `!==`, ordering, `in`         |
 | Boolean      | `hasOpenCart`, `retired`       | `===`, `!==` with `true` / `false`   |
-| Temporal     | `signupDate`, `lastOrderDate`  | Ordering with `ago()` / `date()`     |
+| Temporal     | `signupDate`, `lastOrderDate`  | Every operator with `date()`; ordering only with `ago()` (D-066) |
 | Relationship | `orders`, `cartItems`          | `some`, `none`, `every`              |
 
 ### 9.2 Catalog (D-042)
@@ -779,7 +783,7 @@ The GraphQL server enforces the same limits again, plus access control (§11). C
 | `COMPLEXITY_LIMIT`       | Query exceeds configured limits: nesting depth > 8, more than 100 condition nodes, or an `in` list over 100 values (D-062) |
 | `UNSUPPORTED_EXPRESSION` | JavaScript construct outside the DSL                        |
 
-The list is final (D-065). The parser (Proposal) emits `SYNTAX_ERROR`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_EXPRESSION`, `INVALID_RELATION_SCOPE` and `COMPLEXITY_LIMIT` (source of at most 4096 bytes, depth 8, 100 nodes, 100 `in` values); the semantic pass emits `UNKNOWN_FIELD`, `UNKNOWN_RELATION`, `UNKNOWN_VALUE` and `TYPE_MISMATCH`. Parsing stops at the first error. Errors include the 1-based line, rune column, start-end range and a `near "…"` excerpt so that the agent can repair an invalid expression. The Customer service returns its own codes in GraphQL `extensions.code`; `UNKNOWN_VALUE` carries up to three `suggestions` (Levenshtein ≤ 2 or prefix on the canonical key), and `extensions.filterPath` points at the offending filter field. Empty `and`/`or` lists, a field without an operator and a relationship without a quantifier are rejected with `BAD_USER_INPUT` (D-062). The final list of error codes is open (D-045).
+The list is final (D-065). The parser (Proposal) emits `SYNTAX_ERROR`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_EXPRESSION`, `INVALID_RELATION_SCOPE` and `COMPLEXITY_LIMIT` (source of at most 4096 bytes, depth 8, 100 nodes, 100 `in` values); the semantic pass emits `UNKNOWN_FIELD`, `UNKNOWN_RELATION`, `UNKNOWN_VALUE` and `TYPE_MISMATCH`. Parsing stops at the first error; the semantic pass reports every error in source order, at most 10 (D-066). Errors include the 1-based line, rune column, start-end range and a `near "…"` excerpt so that the agent can repair an invalid expression. The Customer service returns its own codes in GraphQL `extensions.code`; `UNKNOWN_VALUE` carries up to three `suggestions` (Levenshtein ≤ 2 or prefix on the canonical key), and `extensions.filterPath` points at the offending filter field. Empty `and`/`or` lists, a field without an operator and a relationship without a quantifier are rejected with `BAD_USER_INPUT` (D-062). The final list of error codes is open (D-045).
 
 ---
 

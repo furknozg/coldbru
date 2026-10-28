@@ -90,3 +90,20 @@ func TestNearExcerptEdges(t *testing.T) {
 		t.Errorf("tail = %q", got)
 	}
 }
+
+// TestNewErrorAndSuggestions: the semantic pass builds errors like the parser does, and
+// Suggestions stay out of the formatted text (D-066).
+func TestNewErrorAndSuggestions(t *testing.T) {
+	t.Parallel()
+	src := "cty === 1"
+	start := Pos{Offset: 0, Line: 1, Col: 1}
+	end := Pos{Offset: 3, Line: 1, Col: 4}
+	e := NewError(src, CodeUnknownField, `unknown field "cty"`, start, end)
+	e.Suggestions = []string{"city"}
+	if e.Code != CodeUnknownField || e.Near != "cty" || e.Start != start || e.End != end {
+		t.Errorf("NewError = %+v", e)
+	}
+	if want := `UNKNOWN_FIELD at 1:1: unknown field "cty" near "cty"`; e.Error() != want {
+		t.Errorf("Error() = %q, want %q", e.Error(), want)
+	}
+}

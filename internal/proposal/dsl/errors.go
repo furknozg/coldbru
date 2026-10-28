@@ -56,6 +56,10 @@ type Error struct {
 	// Near is a short, single-line excerpt of the source around the error,
 	// meant for the LLM repair prompt (D-027).
 	Near string
+	// Suggestions are close names or values the semantic pass offers for an
+	// unknown field, relation or value (D-066). Error() does not print them;
+	// the message already carries a `did you mean` hint.
+	Suggestions []string
 }
 
 // Error formats as `SYNTAX_ERROR at 1:15: <message> near "<excerpt>"`.
@@ -74,6 +78,12 @@ const (
 	maxNearRunes = 40
 	eofNearRunes = 20
 )
+
+// NewError builds an Error for the semantic pass with the same Near excerpt as
+// the parser's errors (D-065, D-066). start and end are positions in src.
+func NewError(src string, code Code, msg string, start, end Pos) *Error {
+	return newError(src, code, msg, start, end)
+}
 
 func newError(src string, code Code, msg string, start, end Pos) *Error {
 	return &Error{Code: code, Message: msg, Start: start, End: end, Near: nearExcerpt(src, start, end)}
