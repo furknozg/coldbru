@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/spf13/viper"
@@ -69,12 +70,16 @@ func TestRun_DatabasePlatformMigrationsNATS(t *testing.T) {
 	v.Set("DATABASE_URL", u.String())
 	v.Set("NATS_URL", natsURL)
 
+	serviceMigrations := fstest.MapFS{
+		"00001_probe.sql": {Data: []byte("-- +goose Up\nCREATE TABLE probe (id int);\n-- +goose Down\nDROP TABLE probe;\n")},
+	}
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- app.Run(runCtx, app.Options{Name: "app-test", Database: true, PlatformMigrations: true, NATS: true}, v, logger)
+		done <- app.Run(runCtx, app.Options{Name: "app-test", Database: true, PlatformMigrations: true, Migrations: serviceMigrations, NATS: true}, v, logger)
 	}()
 
 	body := waitReady(t, addr, done)
@@ -104,6 +109,16 @@ func TestRun_DatabasePlatformMigrationsNATS(t *testing.T) {
 	}
 	if n != 3 {
 		t.Errorf("platform tables in schema svc = %d, want 3", n)
+	}
+
+	// The service's own set ran after the platform set, with goose's default version table.
+	err = admin.QueryRow(ctx,
+		"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'svc' AND table_name IN ('probe', 'goose_db_version')").Scan(&n)
+	if err != nil {
+		t.Fatalf("query service tables: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("service tables in schema svc = %d, want 2 (probe, goose_db_version)", n)
 	}
 
 	cancel()

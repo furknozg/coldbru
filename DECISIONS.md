@@ -63,7 +63,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-057 | Geliştirmede API belgeleri: API_DOCS_ENABLED ile servis başına Scalar (/docs) ve /openapi.json; swag v2 go tool, spec commit edilir | Takip ve altyapı | Kabul edildi |
 | D-058 | Customer GraphQL sözleşmesi: alan başına tipli filtre işleçleri, TimeValue @oneOf, tam işlem seti, Decimal string, null-güvenli eq/ne; gqlgen v0.17.95 | LLM entegrasyonu | Kabul edildi |
 | D-059 | Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi | LLM entegrasyonu | Kabul edildi |
-| D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi |
+| D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi; outcome listesi yerini aldı → D-068 |
 | D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
 | D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
 | D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
@@ -71,6 +71,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 | D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
+| D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -388,7 +389,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Adım başına JSONB belge — reddedildi: durum kuralları uygulama kodunda kalır, sorgulaması zor.
   - Olay kaynağı (event sourcing) — reddedildi: kod ve test yükü en fazla.
 - **Sonuçlar / bedel:** Daha fazla tablo ve join; sürümler birikir. `campaign` ve `proposal_step` durum değerleri ve geçişleri, dil ve kanalı olmayan adımların (kitle, kanal planı) varyant biçimi açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-021, D-068): `internal/proposal/store/migrations` tabloları açar; `TestConstraints_ProposalStep`, `TestConstraints_ProposalVariantSlots` ve `TestAppendOnly` (integration) durum, sürüm ve ekleme-yalnız kurallarını sınar.
 
 ## D-023: Teslim modeli: UNIQUE(campaign_id, customer_id, channel), durum makinesi, Idempotency-Key
 
@@ -499,7 +500,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - `bigint identity` — reddedildi: servisler arası benzersiz değil, olay ve idempotency için ayrı uuid gerekirdi.
   - UUIDv4 — reddedildi: sırasız, indeks yerleşimi kötüleşir.
 - **Sonuçlar / bedel:** Anahtar 16 bayt, bigint'in iki katı. UUIDv7 oluşturma zamanını açığa vurur; bu demoda sorun değil.
-- **Doğrulama:** Doğrulanmadı — henüz tablo yok.
+- **Doğrulama:** 2026-10-28'de (T-021, D-068): proposal_db tablolarının anahtarları `uuid DEFAULT uuidv7()`; `TestQueries` (integration) ekleme sorgularının UUIDv7 döndürdüğünü gösterir.
 
 ## D-031: Go servis altyapısı: chi v5 router, log/slog, Viper ile yapılandırma
 
@@ -551,7 +552,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Adım türü başına ayrı tablo — reddedildi: onay ve red mantığı dört kez yazılır.
   - Yalnız metin adımında varyant, diğerleri `proposal_step.payload` — reddedildi: onay ve red mantığı iki yerde olur.
 - **Sonuçlar / bedel:** `content jsonb` alanının şeması adım türüne göre değişir ve uygulamada doğrulanır. Adım türü `proposal_variant`'ta da tutulmalı ki `CHECK` onu görebilsin.
-- **Doğrulama:** Doğrulanmadı — henüz tablo yok.
+- **Doğrulama:** 2026-10-28'de (T-021, D-068): `proposal_variant_shape_check` ve `proposal_variant_step_kind_fkey`; `TestConstraints_ProposalVariant` (integration) her tür için geçerli ve geçersiz biçimi sınar.
 
 ## D-035: NATS olayları kendi JSON zarfıyla; konu evt.<servis>.<olay>.v1
 
@@ -926,7 +927,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-060: Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; `outcome` listesi (`accepted` | `validation_failed` | `refusal`) yerini aldı → D-068 · 2026-10-28
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-059 prompt'ların `go:embed` ile dosya olarak tutulmasını ve sürüm kimliğini belirledi; biçim ve sürümün sistemde nasıl izleneceği açıktı (`docs/research/05-prompt-versioning.md` §1.1, §5).
 - **Karar:**
@@ -1094,6 +1095,25 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Derlenmiş JSON birleştirilmiş biçimden uzundur. Yanıt tipleri elle yazılır; şema değişirse sorgu doğrulama testi kırılır. En kötü durumda bir çağrı yaklaşık 31 sn sürer. Yol-aralık eşlemesi derleyiciye kod ekler.
 - **Doğrulama:** `TestCompileSampleBriefGolden` örnek brief'in §8.2'deki JSON'a birebir derlendiğini, `TestCompileValueEncodings` ve `TestCompileDecimalIsNeverAJSONNumber` değer biçimlerini doğrular. `TestQueriesMatchSchema` sorguları şemaya karşı denetler. `TestRetryStatusesAndAttemptCap`, `TestRetryOnTransportError`, `TestNoRetry`, `TestPerAttemptTimeout`, `TestContextCancelStopsRetrying` yeniden deneme ve zaman aşımı kurallarını; `TestUnknownValueBecomesDSLError`, `TestUnknownValueInListPointsAtTheElement` ve `TestSpan*` hata eşlemesini doğrular. Integration (gerçek Customer handler'ı + seed'li Postgres): `TestSampleBriefPreview` count 46, kapsama 20 / 13 / 13 / 3; `TestSampleBriefRecipientsOverAllPages` 46 tekil ve sıralı alıcı; `TestUnknownCityComesBackAtTheLiteral` `Istnbul` için literal konumunda `UNKNOWN_VALUE` ve `İstanbul` önerisi; `TestWrongTokenIsUnauthorized`. `make test` geçti.
 - **Uygulama notu:** Int, literal metninden `int64` olarak kodlanır (`007` → `7`); Decimal yazıldığı gibi string kalır. gqlgen bazı GraphQL hatalarını 4xx ile döndüğü için `errors` taşıyan bir gövde durum kodundan önce gelir ve tekrarlanmaz. Bir denemenin kendi zaman aşımı ağ hatası sayılır ve tekrarlanır; üst bağlam iptal olursa hemen döner. Yanıt en fazla 8 MiB'tır. Ortam değişkenleri: `CUSTOMER_GRAPHQL_URL`, `CUSTOMER_TOKEN` (compose'da `CUSTOMER_TOKEN_PROPOSAL`'dan); compose başlangıç sırası (D-056) değişmedi.
+
+## D-068: proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-022, D-033 ve D-034 tablo sınırlarını, adım türlerini ve durum değerlerini; D-030 UUIDv7 anahtarları; D-060 `llm_call`'ın prompt sürüm sütunlarını belirledi. Kolon listeleri, indeksler, kısıtların DB'de ne kadar zorlanacağı ve görevin kapsamı açıktı (T-021; kodlama kuralı 7). `outbox` ve `processed_event` zaten platform setindedir (D-054).
+- **Karar:**
+  - Kolonlar `docs/domain-model.md` §3 taslağıdır, şu eklemelerle: `proposal_variant.approved_at` ve `rejected_at`; `llm_call`'a D-060 sütunları (`prompt_name`, `prompt_version`, `prompt_sha256` NOT NULL, `cache_creation_tokens`, `outcome`) ile `step_id`, modelin yapılandırılmış çıktısı `response jsonb` ve `error text`. `outcome` listesi `accepted` | `validation_failed` | `refusal` | `api_error` olur (D-060'tan sapma, kullanıcı onayladı).
+  - Kısmi unique: bir kampanyada tür başına en fazla bir `superseded` olmayan adım; bir adımda (`language`, `channel`) başına en fazla bir `draft` veya `approved` varyant (`NULLS NOT DISTINCT`); `(campaign_id, kind, version)` unique. Tüm yabancı anahtarlarda indeks.
+  - Durum ve tür sütunları `text` + `CHECK`; D-034 varyant `CHECK`'i; `approved` satırda `approved_at` dolu, `open` adımda ve `draft` varyantta boş; `rejected` varyantta `rejected_at` ve `rejection_reason` dolu; `superseded` satır önceki damgalarını tarih için korur. Varyantın `kind`'ı `(step_id, kind)` bileşik yabancı anahtarıyla adımınkine bağlanır. Bunun için `proposal_step`'te `UNIQUE (id, kind)` açılır (kullanıcı ayrıca onayladı). `context_note` ve `llm_call`'da `UPDATE` ve `DELETE`'i reddeden bir trigger.
+  - Kapsam: Proposal'ın migration seti, `app.Options`'a servis migration'ları ve açılışta uygulanması, `sqlc.yaml` ile temel ekleme ve okuma sorguları, kısıtları sınayan entegrasyon testleri.
+- **Alternatifler:**
+  - Yalnız D-060 sütunları — reddedildi: başarısız bir denemenin neden reddedildiği yalnız loglarda kalırdı, API hataları `llm_call`'a yazılamazdı.
+  - Yalnız FK indeksleri — reddedildi: çift açık adım veya çift varyant yalnız uygulama koduyla engellenirdi.
+  - Trigger'sız yalnız `CHECK` — reddedildi: elle bir `UPDATE` engellenmezdi. Postgres `ENUM` tipleri — reddedildi: değer eklemek `ALTER TYPE` ister.
+  - Yalnız migration — reddedildi: sqlc ve açılış T-023'ü büyütürdü.
+- **Sonuçlar / bedel:** `llm_call` satırları model çıktısını taşıdığı için büyür. Birkaç indeks yazım maliyeti ekler. Bir PL/pgSQL fonksiyonu ve trigger bakım ister. Görev T-023'ten bir parça iş alır.
+- **Doğrulama:** 2026-10-28'de (T-021, D-068): `internal/proposal/store` integration testleri (115 alt test): `TestMigrations_Applied`, `TestMigrations_DownThenUp`, `TestConstraints_Campaign`, `_ProposalStep`, `_ProposalVariant`, `_ProposalVariantSlots`, `_ContextNote`, `_LLMCall` (her CHECK için red ve kabul, kısmi unique'ler iki yönde, bileşik FK), `TestAppendOnly`, `TestQueries` (10 sqlc sorgusu). `TestRun_ServiceMigrationsRequireDatabase` (app). Gerçek yığında `docker compose up -d --build proposal` sonrası proposal `healthy`; `proposal_db`'de beş servis tablosu, `outbox`, `processed_event`, `goose_db_version` ve `goose_platform_version` `proposal` şemasında. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
+- **Uygulama notu:** Migration'lar `internal/proposal/store/migrations` altında iki dosyadır (çekirdek tablolar; denetim tabloları ve trigger). "Boş olmayan" metin `~ '\S'` ile denetlenir. Trigger fonksiyonu `reject_row_change()` SQLSTATE P0001 ile hata verir. `TRUNCATE` engellenmez. `content` için JSON şeması uygulamada doğrulanır (açık konu).
 
 ---
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -43,6 +44,11 @@ type Options struct {
 	// PlatformMigrations applies the platform migration set (outbox,
 	// processed_event) at startup. It requires Database.
 	PlatformMigrations bool
+	// Migrations is the service's own goose migration set: the directory that directly
+	// holds the numbered .sql files (callers with an embed.FS pass fs.Sub). It is applied
+	// at startup after the platform set and before Setup, with goose's default version
+	// table; an error aborts startup. A nil Migrations applies nothing. It requires Database.
+	Migrations fs.FS
 	// NATS connects to NATS_URL and registers a "nats" readiness check.
 	NATS bool
 	// OpenAPISpec is the service's embedded OpenAPI JSON. With API_DOCS_ENABLED
@@ -116,6 +122,9 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 	if opts.PlatformMigrations && !opts.Database {
 		return errors.New("platform migrations require a database")
 	}
+	if opts.Migrations != nil && !opts.Database {
+		return errors.New("service migrations require a database")
+	}
 
 	reg := health.NewRegistry()
 	m := metrics.New()
@@ -131,6 +140,7 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 		"service", opts.Name,
 		"database", opts.Database,
 		"platform_migrations", opts.PlatformMigrations,
+		"service_migrations", opts.Migrations != nil,
 		"nats", opts.NATS,
 	)
 
@@ -149,6 +159,11 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 		if opts.PlatformMigrations {
 			if err := migrate.UpPlatform(ctx, pool, logger); err != nil {
 				return fmt.Errorf("platform migrations: %w", err)
+			}
+		}
+		if opts.Migrations != nil {
+			if err := migrate.Up(ctx, pool, opts.Migrations, logger); err != nil {
+				return fmt.Errorf("service migrations: %w", err)
 			}
 		}
 	}

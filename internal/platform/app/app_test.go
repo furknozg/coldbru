@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/viper"
@@ -96,6 +97,14 @@ func TestHealthcheck(t *testing.T) {
 func TestRun_PlatformMigrationsRequireDatabase(t *testing.T) {
 	t.Parallel()
 	err := Run(t.Context(), Options{Name: "x", PlatformMigrations: true}, nil, nil)
+	if err == nil {
+		t.Fatal("Run() error = nil, want error")
+	}
+}
+
+func TestRun_ServiceMigrationsRequireDatabase(t *testing.T) {
+	t.Parallel()
+	err := Run(t.Context(), Options{Name: "x", Migrations: fstest.MapFS{}}, nil, nil)
 	if err == nil {
 		t.Fatal("Run() error = nil, want error")
 	}
