@@ -181,7 +181,7 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "service versions",
 			sql:  "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id",
-			want: []string{"1", "2"},
+			want: []string{"1", "2", "3"},
 		},
 		{
 			name: "platform versions",
@@ -684,7 +684,7 @@ func TestConstraints_LLMCall(t *testing.T) {
 	runConstraintCases(t, []constraintCase{
 		{name: "valid accepted", run: call(nil)},
 		{name: "every purpose", run: func(t *testing.T, ctx context.Context, f fixture) error {
-			for _, p := range []string{"screen", "segment", "content"} {
+			for _, p := range []string{"screen", "segment", "content", "channel_plan", "schedule"} {
 				mustExec(t, f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.Purpose = p }))
 			}
 			return nil
@@ -916,6 +916,222 @@ func TestQueries(t *testing.T) {
 		}
 		if second.Attempt != 2 || second.Outcome != "api_error" || second.Error.String != "429 rate limited" || second.Response != nil {
 			t.Errorf("second call = %+v, want the api_error attempt without a response", second)
+		}
+	})
+}
+
+// Migration 00003 widens llm_call.purpose (D-070); Down restores the list of 00002 and is refused
+// while a row with a new purpose exists, because llm_call is append-only.
+func TestMigration00003_PurposeList(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	q := store.New(pool)
+	camp, err := q.CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+	f := fixture{pool: pool, q: q, campaign: camp.ID}
+	step, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "audience", Version: 1})
+	mustExec(t, err)
+	f.audience = step.ID
+
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	insert := func(purpose string) error {
+		return f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.Purpose = purpose })
+	}
+
+	if err := insert("channel_plan"); err != nil {
+		t.Fatalf("channel_plan after Up: %v", err)
+	}
+	// Down is refused while the table holds a purpose the old list does not know.
+	if _, err := provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "llm_call_purpose_check") {
+		t.Fatalf("Down() with a channel_plan row: err = %v, want the constraint to refuse it", err)
+	}
+	if got := queryStrings(t, pool, "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 AND is_applied ORDER BY version_id"); !slices.Equal(got, []string{"1", "2", "3"}) {
+		t.Fatalf("versions after the refused Down = %v: the failed migration must roll back", got)
+	}
+	if err := insert("schedule"); err != nil {
+		t.Fatalf("the constraint was lost by the refused Down: %v", err)
+	}
+}
+
+func TestMigration00003_DownRestoresTheOldList(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	camp, err := store.New(pool).CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+	step, err := store.New(pool).CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "audience", Version: 1})
+	mustExec(t, err)
+	f := fixture{pool: pool, q: store.New(pool), campaign: camp.ID, audience: step.ID}
+
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	res, err := provider.Down(ctx)
+	if err != nil || res.Source.Version != 3 {
+		t.Fatalf("Down() = %+v, %v; want to roll back 00003", res, err)
+	}
+	for _, p := range []string{"screen", "segment", "content"} {
+		if err := f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.Purpose = p }); err != nil {
+			t.Errorf("%s after Down: %v", p, err)
+		}
+	}
+	for _, p := range []string{"channel_plan", "schedule"} {
+		if err := f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.Purpose = p }); err == nil || !strings.Contains(err.Error(), "llm_call_purpose_check") {
+			t.Errorf("%s after Down: err = %v, want llm_call_purpose_check", p, err)
+		}
+	}
+	if _, err := provider.UpByOne(ctx); err != nil {
+		t.Fatalf("UpByOne() error = %v", err)
+	}
+	for _, p := range []string{"channel_plan", "schedule"} {
+		if err := f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.Purpose = p }); err != nil {
+			t.Errorf("%s after re-Up: %v", p, err)
+		}
+	}
+}
+
+// The queries of the proposal flow (T-023): locks, status changes and lookups.
+func TestQueries_Flow(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	q := store.New(pool)
+	camp, err := q.CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+
+	t.Run("campaign lock and status", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		mustExec(t, err)
+		defer tx.Rollback(ctx)
+		locked, err := q.WithTx(tx).GetCampaignForUpdate(ctx, camp.ID)
+		if err != nil || locked.ID != camp.ID {
+			t.Fatalf("GetCampaignForUpdate() = %+v, %v", locked, err)
+		}
+		// A second locker waits until the first transaction ends.
+		waited := make(chan struct{})
+		go func() {
+			defer close(waited)
+			_, _ = q.GetCampaignForUpdate(ctx, camp.ID)
+		}()
+		select {
+		case <-waited:
+			t.Fatal("GetCampaignForUpdate did not wait for the lock")
+		case <-time.After(200 * time.Millisecond):
+		}
+		mustExec(t, tx.Rollback(ctx))
+		<-waited
+
+		got, err := q.SetCampaignStatus(ctx, store.SetCampaignStatusParams{ID: camp.ID, Status: "cancelled"})
+		if err != nil || got.Status != "cancelled" || !got.UpdatedAt.Time.After(camp.UpdatedAt.Time) {
+			t.Errorf("SetCampaignStatus() = %+v, %v; want cancelled with a newer updated_at", got, err)
+		}
+		if _, err := q.SetCampaignStatus(ctx, store.SetCampaignStatusParams{ID: camp.ID, Status: "paused"}); err == nil || !strings.Contains(err.Error(), "campaign_status_check") {
+			t.Errorf("SetCampaignStatus(paused) err = %v, want campaign_status_check", err)
+		}
+	})
+
+	var aud1, aud2, plan store.ProposalStep
+	t.Run("steps", func(t *testing.T) {
+		if v, err := q.MaxStepVersion(ctx, store.MaxStepVersionParams{CampaignID: camp.ID, Kind: "audience"}); err != nil || v != 0 {
+			t.Fatalf("MaxStepVersion() = %d, %v; want 0 before any step", v, err)
+		}
+		aud1, err = q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "audience", Version: 1})
+		mustExec(t, err)
+		approved, err := q.ApproveStep(ctx, aud1.ID)
+		if err != nil || approved.Status != "approved" || !approved.ApprovedAt.Valid {
+			t.Fatalf("ApproveStep() = %+v, %v", approved, err)
+		}
+		plan, err = q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "channel_plan", Version: 1})
+		mustExec(t, err)
+		if got, err := q.GetStep(ctx, plan.ID); err != nil || got.Kind != "channel_plan" {
+			t.Errorf("GetStep() = %+v, %v", got, err)
+		}
+		if _, err := q.GetStep(ctx, uuid.New()); err == nil {
+			t.Error("GetStep(unknown) error = nil")
+		}
+
+		// Superseding the audience keeps its approved_at (history) and frees the live slot.
+		sup, err := q.SupersedeStep(ctx, aud1.ID)
+		if err != nil || sup.Status != "superseded" || !sup.ApprovedAt.Valid {
+			t.Fatalf("SupersedeStep() = %+v, %v", sup, err)
+		}
+		aud2, err = q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "audience", Version: 2})
+		mustExec(t, err)
+		if v, err := q.MaxStepVersion(ctx, store.MaxStepVersionParams{CampaignID: camp.ID, Kind: "audience"}); err != nil || v != 2 {
+			t.Errorf("MaxStepVersion() = %d, %v; want 2 (superseded versions count)", v, err)
+		}
+		live, err := q.ListLiveSteps(ctx, camp.ID)
+		mustExec(t, err)
+		var ids []uuid.UUID
+		for _, s := range live {
+			ids = append(ids, s.ID)
+		}
+		if !slices.Equal(ids, []uuid.UUID{plan.ID, aud2.ID}) {
+			t.Errorf("ListLiveSteps() = %v, want the plan and audience v2 in creation order, without the superseded v1", ids)
+		}
+	})
+
+	t.Run("variants", func(t *testing.T) {
+		mk := func() store.ProposalVariant {
+			v, err := q.CreateVariant(ctx, store.CreateVariantParams{StepID: aud2.ID, Kind: "audience", Content: []byte(`{}`)})
+			mustExec(t, err)
+			return v
+		}
+		a := mk()
+		if got, err := q.GetVariant(ctx, a.ID); err != nil || got.Status != "draft" {
+			t.Fatalf("GetVariant() = %+v, %v", got, err)
+		}
+		rej, err := q.RejectVariant(ctx, store.RejectVariantParams{ID: a.ID, RejectionReason: pgtype.Text{String: "too wide", Valid: true}})
+		if err != nil || rej.Status != "rejected" || !rej.RejectedAt.Valid || rej.RejectionReason.String != "too wide" {
+			t.Fatalf("RejectVariant() = %+v, %v", rej, err)
+		}
+		if _, err := q.RejectVariant(ctx, store.RejectVariantParams{ID: a.ID}); err == nil || !strings.Contains(err.Error(), "proposal_variant_rejected_check") {
+			t.Errorf("RejectVariant(no reason) err = %v, want proposal_variant_rejected_check", err)
+		}
+		// A rejected variant does not hold its slot: the replacement can be created before it is superseded.
+		b := mk()
+		app, err := q.ApproveVariant(ctx, b.ID)
+		if err != nil || app.Status != "approved" || !app.ApprovedAt.Valid {
+			t.Fatalf("ApproveVariant() = %+v, %v", app, err)
+		}
+		live, err := q.ListLiveVariants(ctx, aud2.ID)
+		mustExec(t, err)
+		if len(live) != 2 || live[0].Status != "rejected" || live[1].Status != "approved" {
+			t.Errorf("ListLiveVariants() = %d rows %+v, want the rejected and the approved", len(live), live)
+		}
+		sup, err := q.SupersedeVariant(ctx, a.ID)
+		if err != nil || sup.Status != "superseded" || !sup.RejectedAt.Valid || sup.RejectionReason.String != "too wide" {
+			t.Fatalf("SupersedeVariant() = %+v, %v; want the rejection kept as history", sup, err)
+		}
+		if live, err := q.ListLiveVariants(ctx, aud2.ID); err != nil || len(live) != 1 || live[0].ID != b.ID {
+			t.Errorf("ListLiveVariants() after supersede = %+v, %v", live, err)
+		}
+	})
+
+	t.Run("latest llm calls of a step", func(t *testing.T) {
+		f := fixture{pool: pool, q: q, campaign: camp.ID, audience: aud2.ID}
+		for _, outcome := range []string{"validation_failed", "validation_failed", "accepted"} {
+			mustExec(t, f.llmCall(ctx, func(c *store.InsertLLMCallParams) {
+				c.Outcome = outcome
+				c.Purpose = "segment"
+			}))
+		}
+		mustExec(t, f.llmCall(ctx, func(c *store.InsertLLMCallParams) { c.StepID = &plan.ID; c.Purpose = "channel_plan" }))
+		rows, err := q.ListLatestLLMCallsOfStep(ctx, store.ListLatestLLMCallsOfStepParams{StepID: &aud2.ID, Limit: 2})
+		mustExec(t, err)
+		if len(rows) != 2 || rows[0].Outcome != "accepted" || rows[1].Outcome != "validation_failed" {
+			t.Errorf("ListLatestLLMCallsOfStep(limit 2) = %d rows, outcomes %v; want the newest two, newest first", len(rows), []string{rows[0].Outcome, rows[1].Outcome})
+		}
+		for _, r := range rows {
+			if r.StepID == nil || *r.StepID != aud2.ID {
+				t.Errorf("a row of another step: %+v", r)
+			}
 		}
 	})
 }

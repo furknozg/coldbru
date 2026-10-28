@@ -112,8 +112,8 @@ func TestRequiresDSLMatchesParser(t *testing.T) {
 func TestShippedPackages(t *testing.T) {
 	t.Parallel()
 	all := All()
-	if len(all) != 2 || all[0].Name != NameScreen || all[1].Name != NameSegment {
-		t.Fatalf("All() = %v", all)
+	if len(all) != 4 || all[0].Name != NameChannelPlan || all[1].Name != NameSchedule || all[2].Name != NameScreen || all[3].Name != NameSegment {
+		t.Fatalf("All() has %d packages, want channel_plan, schedule, screen, segment in that order", len(all))
 	}
 	s, g := Screen(), Segment()
 	if s.ID() != "screen@1.0.0" || g.ID() != "segment@1.0.0" {
@@ -129,6 +129,90 @@ func TestShippedPackages(t *testing.T) {
 		if len(p.SHA256) != 64 {
 			t.Errorf("%s: sha256 = %q", p.Name, p.SHA256)
 		}
+	}
+}
+
+func TestPlanAndSchedulePackages(t *testing.T) {
+	t.Parallel()
+	cp, sc := ChannelPlan(), Schedule()
+	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@1.0.0" {
+		t.Errorf("ids = %s, %s", cp.ID(), sc.ID())
+	}
+	for _, p := range []*Package{cp, sc} {
+		if p.Model != "claude-haiku-5-5" || p.Effort != "low" || len(p.Tools) != 0 || p.OutputSchema == nil || p.RequiresDSL != "" {
+			t.Errorf("%s = model %s effort %s tools %d schema %v", p.ID(), p.Model, p.Effort, len(p.Tools), p.OutputSchema != nil)
+		}
+		// Call-specific data stays out of the system text (D-060): no template markers.
+		for _, bad := range []string{"{{", "%s", "%v", "$BRIEF"} {
+			if strings.Contains(p.System, bad) {
+				t.Errorf("%s: system text contains %q", p.ID(), bad)
+			}
+		}
+		if strings.HasSuffix(p.System, "\n") || strings.Contains(p.System, "\r") {
+			t.Errorf("%s: system text has a trailing newline or a CR", p.ID())
+		}
+		// Both treat the brief as untrusted data (D-070).
+		if !strings.Contains(p.System, "untrusted data") {
+			t.Errorf("%s: the brief is not declared untrusted", p.ID())
+		}
+	}
+	// The plan prompt keeps the rules of D-010: default, tie, explicit both and single.
+	for _, w := range []string{"The default is primary_fallback", "the primary channel is email", "Choose both only when", "Choose single only when", "reach above 0"} {
+		if !strings.Contains(cp.System, w) {
+			t.Errorf("channel_plan prompt lost %q", w)
+		}
+	}
+	// The schedule prompt keeps the zones, the null rule and the window.
+	for _, w := range []string{"time zone", "send_at is null for every language", "at least 5 minutes", "at most 30 days"} {
+		if !strings.Contains(sc.System, w) {
+			t.Errorf("schedule prompt lost %q", w)
+		}
+	}
+}
+
+func TestPlanAndScheduleOutputSchemas(t *testing.T) {
+	t.Parallel()
+	var plan struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+		Required             []string `json:"required"`
+		AdditionalProperties bool     `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(ChannelPlan().OutputSchema, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if m := plan.Properties["mode"].Enum; strings.Join(m, ",") != "single,primary_fallback,both" {
+		t.Errorf("mode enum = %v", m)
+	}
+	if m := plan.Properties["primary"].Enum; strings.Join(m, ",") != "sms,email" {
+		t.Errorf("primary enum = %v", m)
+	}
+	if len(plan.Required) != 3 || plan.AdditionalProperties {
+		t.Errorf("plan schema = %+v", plan)
+	}
+
+	var sched struct {
+		Properties map[string]struct {
+			Items struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+				Required   []string                   `json:"required"`
+				Additional bool                       `json:"additionalProperties"`
+			} `json:"items"`
+		} `json:"properties"`
+		Required             []string `json:"required"`
+		AdditionalProperties bool     `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(Schedule().OutputSchema, &sched); err != nil {
+		t.Fatal(err)
+	}
+	items := sched.Properties["entries"].Items
+	if len(sched.Required) != 1 || sched.Required[0] != "entries" || sched.AdditionalProperties ||
+		len(items.Required) != 3 || items.Additional || len(items.Properties) != 3 || items.Properties["send_at"] == nil {
+		t.Errorf("schedule schema = %+v", sched)
+	}
+	if !strings.Contains(string(items.Properties["send_at"]), `"null"`) {
+		t.Error("send_at cannot be null")
 	}
 }
 

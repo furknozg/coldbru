@@ -1,10 +1,12 @@
 // Package anthropic is the real adapter of llm.LLM on the official Go SDK, anthropic-sdk-go/v2
-// (D-047, D-069). It implements the three calls of the agent flow:
+// (D-047, D-069, D-070). It implements the calls of the agent flow:
 //
 //   - Screen: Haiku 5.5, thinking disabled, native structured output, fail-closed (D-069).
 //   - ProposeSegment: Sonnet 5.5, adaptive thinking, a non-streaming strict tool loop with
 //     tool_choice auto in which invalid filters come back as is_error tool results (D-027, D-069).
 //   - StreamStructured: Sonnet 5.5, thinking between_tools, streamed structured output.
+//   - ProposeChannelPlan and ProposeSchedule: Haiku 5.5, thinking disabled, native structured
+//     output, a non-streaming repair loop of at most three attempts in one conversation (D-070).
 //
 // The system text, tool definitions and output schema come from the embedded prompt packages
 // (D-059) and are sent unchanged, with a cache breakpoint on the system block, so the prefix is
@@ -29,16 +31,20 @@ const (
 	// from the repair loop.
 	DefaultMaxRetries = 2
 
-	ScreenMaxTokens  = 256
-	SegmentMaxTokens = 4096
-	ContentMaxTokens = 2048
+	ScreenMaxTokens   = 256
+	SegmentMaxTokens  = 4096
+	ContentMaxTokens  = 2048
+	PlanMaxTokens     = 512
+	ScheduleMaxTokens = 512
 )
 
 // Client implements llm.LLM. It is safe for concurrent use.
 type Client struct {
-	api     sdk.Client
-	screen  *prompts.Package
-	segment *prompts.Package
+	api         sdk.Client
+	screen      *prompts.Package
+	segment     *prompts.Package
+	channelPlan *prompts.Package
+	schedule    *prompts.Package
 }
 
 var _ llm.LLM = (*Client)(nil)
@@ -59,7 +65,13 @@ func New(cfg Config, extra ...option.RequestOption) (*Client, error) {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 	opts = append(opts, extra...)
-	return &Client{api: sdk.NewClient(opts...), screen: prompts.Screen(), segment: prompts.Segment()}, nil
+	return &Client{
+		api:         sdk.NewClient(opts...),
+		screen:      prompts.Screen(),
+		segment:     prompts.Segment(),
+		channelPlan: prompts.ChannelPlan(),
+		schedule:    prompts.Schedule(),
+	}, nil
 }
 
 // errorf is fmt.Errorf with the package prefix.

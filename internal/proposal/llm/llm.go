@@ -51,6 +51,17 @@ type LLM interface {
 	// Other errors return no raw: *RefusalError, *InvalidOutputError (cut off or not JSON),
 	// *APIError.
 	StreamStructured(ctx context.Context, pkg *prompts.Package, userJSON []byte, onDelta func(text string), validate func(raw json.RawMessage) error) (raw json.RawMessage, usage Usage, err error)
+
+	// ProposeChannelPlan asks for the delivery plan of an audience (D-010, D-070). validate (may be
+	// nil) is run in code on every answer; its error comes back to the model in the same
+	// conversation as a user message, see Problems. At most MaxProposeAttempts attempts (one plus
+	// two repairs). Errors: *RefusalError (no repair), *RepairExhaustedError carrying the last
+	// problems, *APIError.
+	ProposeChannelPlan(ctx context.Context, in ChannelPlanInput, validate func(ChannelPlan) error) (ChannelPlanResult, error)
+
+	// ProposeSchedule asks for the send time of every language of the audience (D-009, D-070). The
+	// repair loop and the errors are those of ProposeChannelPlan.
+	ProposeSchedule(ctx context.Context, in ScheduleInput, validate func([]ScheduleEntry) error) (ScheduleResult, error)
 }
 
 // Verdict is the outcome of the injection pre-screen.

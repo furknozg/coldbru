@@ -14,3 +14,7 @@ RETURNING *;
 
 -- name: ListLLMCalls :many
 SELECT * FROM llm_call WHERE campaign_id = $1 ORDER BY id;
+
+-- name: ListLatestLLMCallsOfStep :many
+-- Newest first. UUIDv7 ids sort by creation time (D-030).
+SELECT * FROM llm_call WHERE step_id = $1 ORDER BY id DESC LIMIT $2;

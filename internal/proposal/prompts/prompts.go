@@ -27,13 +27,15 @@ import (
 	"github.com/furknozg/coldbru/internal/proposal/catalog"
 )
 
-//go:embed screen segment
+//go:embed screen segment channel_plan schedule
 var files embed.FS
 
 // Names of the packages shipped here.
 const (
-	NameScreen  = "screen"
-	NameSegment = "segment"
+	NameScreen      = "screen"
+	NameSegment     = "segment"
+	NameChannelPlan = "channel_plan"
+	NameSchedule    = "schedule"
 )
 
 // CatalogPart is the manifest entry that stands for the rendered filter catalog.
@@ -248,7 +250,7 @@ func load(fsys fs.FS, dir string, root *catalog.Entity) (*Package, error) {
 // that the tests catch, so a failure panics.
 var loaded = func() map[string]*Package {
 	out := map[string]*Package{}
-	for _, name := range []string{NameScreen, NameSegment} {
+	for _, name := range []string{NameScreen, NameSegment, NameChannelPlan, NameSchedule} {
 		p, err := load(files, name, catalog.Root)
 		if err != nil {
 			panic(err)
@@ -263,6 +265,12 @@ func Screen() *Package { return loaded[NameScreen] }
 
 // Segment returns the segment tool-loop package (Sonnet 5.5, D-026, D-069).
 func Segment() *Package { return loaded[NameSegment] }
+
+// ChannelPlan returns the channel plan package (Haiku 5.5, D-070).
+func ChannelPlan() *Package { return loaded[NameChannelPlan] }
+
+// Schedule returns the schedule package (Haiku 5.5, D-070).
+func Schedule() *Package { return loaded[NameSchedule] }
 
 // All returns every shipped package ordered by name.
 func All() []*Package {

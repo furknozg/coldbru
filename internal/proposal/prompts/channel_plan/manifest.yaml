@@ -1,0 +1,8 @@
+# Prompt package channel_plan (D-059, D-070): the delivery plan of an approved audience.
+name: channel_plan
+version: 1.0.0
+model: claude-haiku-5-5
+effort: low
+system:
+  - system.txt
+output_schema: output.schema.json

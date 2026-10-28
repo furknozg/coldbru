@@ -135,7 +135,7 @@ erDiagram
         uuid campaign_id FK
         uuid step_id "NULL olabilir"
         uuid variant_id "NULL olabilir"
-        text purpose "screen|segment|content"
+        text purpose "screen|segment|content|channel_plan|schedule"
         text model
         int attempt
         int input_tokens
@@ -234,6 +234,8 @@ Kurallar:
 - Red yalnız o varyantı yeniden üretir (D-009). Yeni varyant aynı adımda açılır, `version` artmaz.
 - Güncel adım: `status = 'open'` olan, yoksa son `approved` adım. Kampanyada saklanmaz (D-033).
 - Satırlar silinmez. Bir kampanyada her tür için en fazla bir adım `superseded` dışında olabilir (`proposal_step_live_kind_key`).
+- Akış `internal/proposal/flow`'dadır (D-070). Kanal planını ve dil başına zamanı Haiku 5.5 önerir, kod doğrular. Elle düzenleme aynı doğrulayıcılardan geçen yeni bir `draft` varyanttır. `Reopen` onaylı bir adımı ve sonraki tüm adımları `superseded` yapıp yeni sürüm açar. Başarısız üretim adımın son `llm_call` satırlarından okunur ve `Regenerate` ile, ön elemede yarım kalan kampanya `RegenerateCampaign` ile sürdürülür. Ön eleme brief'i engellerse kampanya `cancelled` olur.
+- Üretim kampanya başına Postgres advisory lock altında arka planda çalışır; ilerleme süreç içi olay dağıtıcısına yazılır (T-025 SSE).
 
 ## 4. notification_db
 

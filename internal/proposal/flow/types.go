@@ -1,0 +1,230 @@
+package flow
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/furknozg/coldbru/internal/proposal/compile"
+	"github.com/furknozg/coldbru/internal/proposal/customer"
+	"github.com/furknozg/coldbru/internal/proposal/llm"
+)
+
+// Step kinds, in the order the steps open (D-033).
+const (
+	KindAudience    = "audience"
+	KindChannelPlan = "channel_plan"
+	KindContent     = "content"
+	KindSchedule    = "schedule"
+)
+
+var kindOrder = []string{KindAudience, KindChannelPlan, KindContent, KindSchedule}
+
+// kindIndex returns the position of kind in the step order, -1 for an unknown kind.
+func kindIndex(kind string) int {
+	for i, k := range kindOrder {
+		if k == kind {
+			return i
+		}
+	}
+	return -1
+}
+
+// Campaign, step and variant statuses (D-033, D-068).
+const (
+	CampaignStatusDrafting  = "drafting"
+	CampaignStatusCancelled = "cancelled"
+
+	StepStatusOpen       = "open"
+	StepStatusApproved   = "approved"
+	StepStatusSuperseded = "superseded"
+
+	VariantStatusDraft      = "draft"
+	VariantStatusApproved   = "approved"
+	VariantStatusRejected   = "rejected"
+	VariantStatusSuperseded = "superseded"
+)
+
+// Slot is the place of a variant in its step: the language and channel columns of
+// proposal_variant (D-034). The audience and channel plan steps have one slot with both empty,
+// the content step one per (language, channel), the schedule step one per language.
+type Slot struct {
+	Language string `json:"language,omitempty"`
+	Channel  string `json:"channel,omitempty"`
+}
+
+func (s Slot) String() string {
+	switch {
+	case s.Language == "" && s.Channel == "":
+		return "-"
+	case s.Channel == "":
+		return s.Language
+	}
+	return s.Language + "/" + s.Channel
+}
+
+// Coverage counts customers by the channels they can be reached on (D-010), in the snake_case of
+// the variant content.
+type Coverage struct {
+	Both        int `json:"both"`
+	EmailOnly   int `json:"email_only"`
+	SMSOnly     int `json:"sms_only"`
+	Unreachable int `json:"unreachable"`
+}
+
+// LanguageAudience is the audience figures of one language (D-009).
+type LanguageAudience struct {
+	Language string   `json:"language"`
+	Count    int      `json:"count"`
+	Coverage Coverage `json:"coverage"`
+}
+
+// AudienceContent is the content of the audience variant (D-034, D-070): the DSL the model wrote,
+// the compiled GraphQL filter, and the audience size and coverage Customer computed.
+type AudienceContent struct {
+	DSL        string             `json:"dsl"`
+	Filter     json.RawMessage    `json:"filter"`
+	Count      int                `json:"count"`
+	Coverage   Coverage           `json:"coverage"`
+	ByLanguage []LanguageAudience `json:"by_language"`
+}
+
+func coverageFrom(c customer.Coverage) Coverage {
+	return Coverage{Both: c.Both, EmailOnly: c.EmailOnly, SMSOnly: c.SmsOnly, Unreachable: c.Unreachable}
+}
+
+func (c Coverage) toCustomer() customer.Coverage {
+	return customer.Coverage{Both: c.Both, EmailOnly: c.EmailOnly, SmsOnly: c.SMSOnly, Unreachable: c.Unreachable}
+}
+
+// NewAudienceContent builds the audience variant content from an accepted filter and its preview.
+// Languages are sorted so that the content is deterministic.
+func NewAudienceContent(dslSrc string, f *compile.Filter, p *customer.Preview) (AudienceContent, error) {
+	if p == nil {
+		return AudienceContent{}, fmt.Errorf("flow: audience without a preview")
+	}
+	filter, err := json.Marshal(f) // a nil *Filter encodes as null
+	if err != nil {
+		return AudienceContent{}, fmt.Errorf("flow: encode filter: %w", err)
+	}
+	out := AudienceContent{
+		DSL: dslSrc, Filter: filter, Count: p.Count, Coverage: coverageFrom(p.Coverage),
+		ByLanguage: make([]LanguageAudience, 0, len(p.ByLanguage)),
+	}
+	for _, l := range p.ByLanguage {
+		out.ByLanguage = append(out.ByLanguage, LanguageAudience{Language: l.Language, Count: l.Count, Coverage: coverageFrom(l.Coverage)})
+	}
+	sort.Slice(out.ByLanguage, func(i, j int) bool { return out.ByLanguage[i].Language < out.ByLanguage[j].Language })
+	return out, nil
+}
+
+// Preview returns the audience as the coverage table the plan prompt receives.
+func (a AudienceContent) Preview() *customer.Preview {
+	p := &customer.Preview{Count: a.Count, Coverage: a.Coverage.toCustomer()}
+	for _, l := range a.ByLanguage {
+		p.ByLanguage = append(p.ByLanguage, customer.LanguageCoverage{Language: l.Language, Count: l.Count, Coverage: l.Coverage.toCustomer()})
+	}
+	return p
+}
+
+// Recipients counts the messages a plan sends: per channel, and in total. For mode both a person
+// reachable on both channels counts twice, in Total as well.
+type Recipients struct {
+	Email int `json:"email"`
+	SMS   int `json:"sms"`
+	Total int `json:"total"`
+}
+
+// LanguageRecipients is the messages per channel in one language.
+type LanguageRecipients struct {
+	Language string `json:"language"`
+	Email    int    `json:"email"`
+	SMS      int    `json:"sms"`
+}
+
+// PlanContent is the content of the channel plan variant (D-010, D-034, D-070). The recipient
+// counts are computed in code from the audience coverage and the plan, never by the model.
+type PlanContent struct {
+	Mode       llm.PlanMode         `json:"mode"`
+	Primary    llm.Channel          `json:"primary"`
+	Rationale  string               `json:"rationale"`
+	Recipients Recipients           `json:"recipients"`
+	ByLanguage []LanguageRecipients `json:"by_language"`
+}
+
+// ScheduleContent is the content of a schedule variant (D-009). SendAt is nil for "send
+// immediately".
+type ScheduleContent struct {
+	SendAt    *time.Time `json:"send_at"`
+	Rationale string     `json:"rationale"`
+}
+
+// CampaignInfo is a campaign row.
+type CampaignInfo struct {
+	ID        uuid.UUID `json:"id"`
+	Brief     string    `json:"brief"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// StepInfo is a proposal_step row.
+type StepInfo struct {
+	ID         uuid.UUID  `json:"id"`
+	CampaignID uuid.UUID  `json:"campaign_id"`
+	Kind       string     `json:"kind"`
+	Version    int        `json:"version"`
+	Status     string     `json:"status"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+}
+
+// VariantView is a proposal_variant row.
+type VariantView struct {
+	ID              uuid.UUID       `json:"id"`
+	StepID          uuid.UUID       `json:"step_id"`
+	Kind            string          `json:"kind"`
+	Language        string          `json:"language,omitempty"`
+	Channel         string          `json:"channel,omitempty"`
+	Status          string          `json:"status"`
+	Content         json.RawMessage `json:"content"`
+	RejectionReason string          `json:"rejection_reason,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	ApprovedAt      *time.Time      `json:"approved_at,omitempty"`
+	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
+}
+
+// NoteView is a context_note row.
+type NoteView struct {
+	ID        uuid.UUID  `json:"id"`
+	StepID    *uuid.UUID `json:"step_id,omitempty"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// StepView is a current step with its live variants and the state of its generation.
+type StepView struct {
+	StepInfo
+	// Variants are the draft, approved and rejected variants, oldest first.
+	Variants []VariantView `json:"variants"`
+	// Generating: a generation of this step is queued or running in this process.
+	Generating bool `json:"generating"`
+	// Failed: the last generation of the step failed (a refusal, an exhausted repair loop, an
+	// API error), and Reason says why. Regenerate retries it.
+	Failed bool   `json:"failed"`
+	Reason string `json:"failure_reason,omitempty"`
+	// Missing are the slots of an open step that have no draft or approved variant yet.
+	Missing []Slot `json:"missing,omitempty"`
+}
+
+// CampaignView is the read model of a campaign (Get).
+type CampaignView struct {
+	CampaignInfo
+	// Steps are the current steps, in step order: everything that is not superseded.
+	Steps []StepView `json:"steps"`
+	// Notes are all context notes, oldest first.
+	Notes []NoteView `json:"notes"`
+}

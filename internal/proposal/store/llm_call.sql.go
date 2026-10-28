@@ -139,3 +139,54 @@ func (q *Queries) ListLLMCalls(ctx context.Context, campaignID uuid.UUID) ([]Llm
 	}
 	return items, nil
 }
+
+const listLatestLLMCallsOfStep = `-- name: ListLatestLLMCallsOfStep :many
+SELECT id, campaign_id, step_id, variant_id, purpose, model, attempt, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, stop_reason, latency_ms, prompt_name, prompt_version, prompt_sha256, outcome, response, error, created_at FROM llm_call WHERE step_id = $1 ORDER BY id DESC LIMIT $2
+`
+
+type ListLatestLLMCallsOfStepParams struct {
+	StepID *uuid.UUID
+	Limit  int32
+}
+
+// Newest first. UUIDv7 ids sort by creation time (D-030).
+func (q *Queries) ListLatestLLMCallsOfStep(ctx context.Context, arg ListLatestLLMCallsOfStepParams) ([]LlmCall, error) {
+	rows, err := q.db.Query(ctx, listLatestLLMCallsOfStep, arg.StepID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LlmCall
+	for rows.Next() {
+		var i LlmCall
+		if err := rows.Scan(
+			&i.ID,
+			&i.CampaignID,
+			&i.StepID,
+			&i.VariantID,
+			&i.Purpose,
+			&i.Model,
+			&i.Attempt,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheCreationTokens,
+			&i.StopReason,
+			&i.LatencyMs,
+			&i.PromptName,
+			&i.PromptVersion,
+			&i.PromptSha256,
+			&i.Outcome,
+			&i.Response,
+			&i.Error,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

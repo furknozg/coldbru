@@ -44,3 +44,43 @@ func (q *Queries) GetCampaign(ctx context.Context, id uuid.UUID) (Campaign, erro
 	)
 	return i, err
 }
+
+const getCampaignForUpdate = `-- name: GetCampaignForUpdate :one
+SELECT id, brief, status, created_at, updated_at FROM campaign WHERE id = $1 FOR UPDATE
+`
+
+// Row lock that serializes every state change of one campaign (D-070).
+func (q *Queries) GetCampaignForUpdate(ctx context.Context, id uuid.UUID) (Campaign, error) {
+	row := q.db.QueryRow(ctx, getCampaignForUpdate, id)
+	var i Campaign
+	err := row.Scan(
+		&i.ID,
+		&i.Brief,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setCampaignStatus = `-- name: SetCampaignStatus :one
+UPDATE campaign SET status = $2, updated_at = now() WHERE id = $1 RETURNING id, brief, status, created_at, updated_at
+`
+
+type SetCampaignStatusParams struct {
+	ID     uuid.UUID
+	Status string
+}
+
+func (q *Queries) SetCampaignStatus(ctx context.Context, arg SetCampaignStatusParams) (Campaign, error) {
+	row := q.db.QueryRow(ctx, setCampaignStatus, arg.ID, arg.Status)
+	var i Campaign
+	err := row.Scan(
+		&i.ID,
+		&i.Brief,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
