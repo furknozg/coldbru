@@ -68,6 +68,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
 | D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
 | D-064 | İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent | Kitle ve izinler | Kabul edildi |
+| D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -597,7 +598,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Dil bilgisini expr sözdizimine uydurmak — reddedildi: `~=` ve ok fonksiyonları gider, sözdizimi LLM'e daha az tanıdık.
   - goja + ön işleme — reddedildi: token farkındalıklı ön işleme ve konum eşlemesi gerekir.
 - **Sonuçlar / bedel:** Lexer, ayrıştırıcı ve testleri bizim bakımımızda; fuzz testi gerekir. Dil bilgisindeki muğlaklıklar (alan ile ilişki referansının aynı başlaması, `some`/`none`/`every`'nin ayrılmış kelime olması, sayı biçimi) ayrıştırıcı yazılırken kesinleşmeli.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-018): Pratt ayrıştırıcısı, tipli AST, konumlu hatalar ve kanonik yazıcı `internal/proposal/dsl`'de; ayrıntı D-065.
 
 ## D-039: Göreli zaman ago("30d") ile yazılır, Customer sorgu anında now() ile çözer
 
@@ -1025,6 +1026,31 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Eşzamanlı izin güncellemeleri advisory lock'ta sıraya girer; yalnız admin aracı yazdığı için sorun değildir. `signup_form` ve `account_deletion` yalnız seed'den gelir, bu araçla yazılamaz. Yeni bir kaynak değeri kod değişikliği ister.
 - **Doğrulama:** 2026-10-27'de (T-017), seed'li customer_db üzerinde entegrasyon testleri: bilinmeyen id `false/false`, istek sırası korunuyor; 1000 müşteride `consentStatus` uygunluğu `audienceRecipients` ile birebir (e-posta 703, SMS 586); geri çekme `CNS-002220`, geri açma `CNS-002221` yazıyor, bayrak ile son kayıt uyumlu, kitle kapsaması değişiyor ve geri dönüyor; aynı istek tekrarlanınca satır yazılmıyor; 8 paralel güncelleme ardışık ve tekil kimlik alıyor; hata kodları beklendiği gibi. Compose'da `make consent` ile `CUS-000180` için SMS izni geri çekildi (aynı istek tekrarlanınca yeni satır yok) ve geri açıldı; kötü niyetli müşteri değeri `make` aşamasında reddedildi.
 
+## D-065: DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-038 kendi Pratt ayrıştırıcımızı, D-045 ve D-046 0.1 kapsamını belirledi. Sayı ve metin sözdizimi, hata raporlama, istemci tarafı sınırlar, kanonik yazıcı, kesin hata kodu listesi, lambda kuralları ve ters yönlü karşılaştırmalar açıktı (T-018 analizi).
+- **Karar:**
+  - Sözcük kuralları: sayı `-?[0-9]+(\.[0-9]+)?` (üs, baştaki `+`, alt çizgi yok); AST'de metin olarak saklanır, float'a çevrilmez. Metin `'` veya `"` ile; kaçışlar yalnız `\\`, `\"`, `\'`; metin içinde satır sonu yok; UTF-8 serbest. Boşluk ve satır sonu serbest; yorum yok.
+  - Hata raporlama: ilk sözdizimi hatasında durulur. Hata kod, mesaj, 1 tabanlı satır ve rune sütunu, başlangıç-bitiş ve mesajda `near "…"` parçası taşır (D-027 onarımı için).
+  - İstemci sınırları: Customer'ınkilerle aynı (derinlik 8, 100 düğüm, `in` ≤ 100, D-062) ve kaynak en fazla 4096 bayt; aşılırsa `COMPLEXITY_LIMIT`. Customer yine son sözü söyler.
+  - Kanonik yazıcı: `Print(ast)` tek biçimli DSL üretir (çift tırnak, tek boşluk, gereksiz parantez yok). Fuzz testi `Parse(Print(Parse(x))) == Parse(x)` ve panik olmamasını doğrular. Normalize DSL teklif kaydında saklanabilir (D-022).
+  - Hata kodları kesindir (`docs/coldbru-gqdsl.md` §12.1): ayrıştırıcı `SYNTAX_ERROR`, `UNSUPPORTED_OPERATOR` (`~=`, `==`, `!=`, alan-alan), `UNSUPPORTED_EXPRESSION` (`ago`/`date`/`some`/`none`/`every` dışı çağrı, atama vb.), `INVALID_RELATION_SCOPE`, `COMPLEXITY_LIMIT` üretir; anlamsal geçiş (T-019) `UNKNOWN_FIELD`, `UNKNOWN_RELATION`, `UNKNOWN_VALUE`, `TYPE_MISMATCH` üretir. Yeni kod karar ister.
+  - Lambda: parametre tek bir tanımlayıcıdır, ayrılmış kelime olamaz, iç içe lambdalarda tekrar kullanılamaz. Gövdede her alan bu değişkenle nitelenir (`o.totalGbp`); gövdede yalın kök alan `INVALID_RELATION_SCOPE` döner.
+  - Solda değer olan karşılaştırma (`1000 < totalSpendGbp`) `SYNTAX_ERROR` döner, mesaj alanın sola yazılmasını söyler.
+- **Alternatifler:**
+  - JS'e yakın sözcük kuralları (üs, JSON kaçışları, `//` yorumları) veya dar kurallar + yorum — reddedildi: dil yüzeyi büyür.
+  - Birden çok hata toplamak veya yalnız bayt ofseti — reddedildi.
+  - Yalnız uzunluk sınırı veya hiç sınır — reddedildi: LLM aşırı kuralı ağ çağrısından önce düzeltsin.
+  - Yazıcısız, yalnız panik fuzz — reddedildi.
+  - İki kaba hata kodu — reddedildi: onarım ve testler hata türünü ayırt etsin.
+  - Lambda gövdesinde yalın adın ilişkiye ait sayılması — reddedildi: aynı adlı müşteri ve sipariş alanlarında belirsizlik.
+  - Ters karşılaştırmayı çevirip kabul etmek — reddedildi: tek biçim.
+- **Sonuçlar / bedel:** LLM'in JS alışkanlıkları (yorum, `1e3`, ters karşılaştırma) onarım turu harcatabilir; sistem prompt'u bunları örneklemeli. Sınırlar iki yerde (Proposal ve Customer) tutulur ve senkron kalmalıdır.
+- **Uygulama notu:** `!` karşılaştırmadan sıkı bağlar (§3.9); `!a === 1` `SYNTAX_ERROR` döner ve `!(a === 1)` yazılmasını söyler. Aynı işleç zincirleri parantez içinden de düzleştirilir (`(a && b) && c` tek `And`), böylece yazıcının parantez atması round-trip'i bozmaz. `null`/`undefined`/`NaN` `SYNTAX_ERROR` ('null değeri yok') döner. Derinlik ve düğüm sınırları ayrıştırma bittikten sonra, `in` sınırı ayrıştırırken denetlenir. Kod sabitleri Go adlarıyla (`CodeSyntaxError` …), değerleri §12.1'deki kodlardır. `!` bağlanması ve bu yorumlar kullanıcı tarafından ayrıca onaylandı.
+- **Doğrulama:** 2026-10-28'de (T-018): `internal/proposal/dsl` birim testleri `-race` ile geçti, kapsama %98,1; her hata kodu kesin satır:sütun ile, çok satırlı kaynak ve Türkçe metinle sınandı; §8.2 ve §13 örnekleri ayrıştırılıp round-trip yapıyor; sınır testleri 4096/4097 bayt, derinlik 8/9, 100/101 düğüm, `in` 100/101. `FuzzParse` 60 saniyede 3.066.670 çalıştırma, sonra 20 saniyede 1.311.644 çalıştırma yaptı; çökme yok.
+
 ---
 
 ## Açık konular
@@ -1032,7 +1058,6 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
 - Retry ayrıntıları: gönderimde (`SEND`) hangi hatalar yeniden denenir, geri çekilme ve deneme sayısı, `sending` lease süresi; olay tüketicisi için D-055 (D-023, D-024)
-- DSL hata kodlarının kesin listesi; null ve sayı biçimi D-058'de (D-038, D-045)
 - Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
 - `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
