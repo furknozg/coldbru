@@ -266,6 +266,8 @@ Is interpreted as:
 a || (b && c)
 ```
 
+Because `!` binds tighter than comparisons, negate a comparison with parentheses: `!(loyaltyTier === "Bronze")`. `!loyaltyTier === "Bronze"` is a `SYNTAX_ERROR` (D-065).
+
 ### 3.10 Identifiers and literals
 
 Identifiers reference catalog fields or relationships. Names are camelCase (D-044).
@@ -292,7 +294,7 @@ Literals in 0.1:
 - `ago("…")` and `date("…")`.
 - List literals, only on the right-hand side of `in`.
 
-There is no null literal in 0.1. `===` and `!==` are null-safe: `favouriteCategory !== "x"` also matches customers whose value is empty; ordering operators never match null (D-058). Money values are sent to GraphQL as decimal strings such as `"1234.50"` (D-058); the exact numeric literal syntax of the DSL (sign, decimals) is decided when the parser is written.
+There is no null literal in 0.1. `===` and `!==` are null-safe: `favouriteCategory !== "x"` also matches customers whose value is empty; ordering operators never match null (D-058). Money values are sent to GraphQL as decimal strings such as `"1234.50"` (D-058); numbers are written as `-?[0-9]+(\.[0-9]+)?` (no exponent, no leading `+`, no `_`) and kept as text, never as floats (D-065). Strings use `'` or `"`; the only escapes are `\\`, `\"` and `\'`, and a string cannot span lines. There are no comments. A literal on the left of a comparison (`1000 < totalSpendGbp`) is a `SYNTAX_ERROR` (D-065).
 
 ---
 
@@ -432,7 +434,7 @@ SQL null handling requires explicit server-side normalization so that three-valu
 
 Relationship predicates may be nested where the catalog defines nested relationships. In 0.1 the catalog exposes only the three customer relationships, so nesting is limited to one level. Whether order items and products become filterable relationships is open (D-042).
 
-Lambda identifiers are local aliases used for field resolution. They are not executable functions.
+Lambda identifiers are local aliases used for field resolution. They are not executable functions. Every field inside a lambda body must be qualified with its variable (`o.totalGbp`); a bare customer field there is `INVALID_RELATION_SCOPE`, and a nested lambda cannot reuse an enclosing variable name (D-065).
 
 ### 5.6 Predicate scope
 
@@ -777,7 +779,7 @@ The GraphQL server enforces the same limits again, plus access control (§11). C
 | `COMPLEXITY_LIMIT`       | Query exceeds configured limits: nesting depth > 8, more than 100 condition nodes, or an `in` list over 100 values (D-062) |
 | `UNSUPPORTED_EXPRESSION` | JavaScript construct outside the DSL                        |
 
-Errors include source ranges so that the agent can repair an invalid expression. The Customer service returns its own codes in GraphQL `extensions.code`; `UNKNOWN_VALUE` carries up to three `suggestions` (Levenshtein ≤ 2 or prefix on the canonical key), and `extensions.filterPath` points at the offending filter field. Empty `and`/`or` lists, a field without an operator and a relationship without a quantifier are rejected with `BAD_USER_INPUT` (D-062). The final list of error codes is open (D-045).
+The list is final (D-065). The parser (Proposal) emits `SYNTAX_ERROR`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_EXPRESSION`, `INVALID_RELATION_SCOPE` and `COMPLEXITY_LIMIT` (source of at most 4096 bytes, depth 8, 100 nodes, 100 `in` values); the semantic pass emits `UNKNOWN_FIELD`, `UNKNOWN_RELATION`, `UNKNOWN_VALUE` and `TYPE_MISMATCH`. Parsing stops at the first error. Errors include the 1-based line, rune column, start-end range and a `near "…"` excerpt so that the agent can repair an invalid expression. The Customer service returns its own codes in GraphQL `extensions.code`; `UNKNOWN_VALUE` carries up to three `suggestions` (Levenshtein ≤ 2 or prefix on the canonical key), and `extensions.filterPath` points at the offending filter field. Empty `and`/`or` lists, a field without an operator and a relationship without a quantifier are rejected with `BAD_USER_INPUT` (D-062). The final list of error codes is open (D-045).
 
 ---
 
