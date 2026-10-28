@@ -5,6 +5,7 @@ import (
 	_ "embed"
 
 	"github.com/furknozg/coldbru/internal/platform/app"
+	"github.com/furknozg/coldbru/internal/proposal/boot"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
 
@@ -15,8 +16,8 @@ var openAPISpec []byte
 
 // @title			Coldbru Proposal API
 // @version		0.1.0
-// @description	REST API of the proposal service: campaign proposals.
+// @description	REST API of the proposal service: campaigns, their proposal steps and variants, and the live event stream of a campaign. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.
 // @BasePath		/
 func main() {
-	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "proposal", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true})
+	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "proposal", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true, Setup: boot.Setup})
 }

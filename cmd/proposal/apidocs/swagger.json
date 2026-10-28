@@ -1,8 +1,1063 @@
 {
     "components": {
         "schemas": {
+            "api.CampaignList": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/flow.CampaignInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "limit": {
+                        "description": "Limit and Offset echo the page that was asked for. A page with fewer than Limit items is the last.",
+                        "example": 20,
+                        "type": "integer"
+                    },
+                    "offset": {
+                        "example": 0,
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "items",
+                    "limit",
+                    "offset"
+                ],
+                "type": "object"
+            },
+            "api.ContextRequest": {
+                "properties": {
+                    "body": {
+                        "description": "Body is the note the marketer adds to the open step. At most 2000 characters.",
+                        "example": "Hafta sonu kampanyası olduğunu belirt.",
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "body"
+                ],
+                "type": "object"
+            },
+            "api.CreateCampaignRequest": {
+                "properties": {
+                    "brief": {
+                        "description": "Brief is what the marketer wants, in their own words. At most 2000 characters.",
+                        "example": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "brief"
+                ],
+                "type": "object"
+            },
+            "api.EditRequest": {
+                "properties": {
+                    "content": {
+                        "description": "Content is the new content of the variant, in the shape of its step: {\"dsl\"} for the\naudience; {\"mode\",\"primary\",\"rationale\"} for the channel plan; for the content step {\"text\"}\nof an SMS or {\"subject\",\"preheader\",\"headline\",\"paragraphs\",\"cta_label\"} of an email;\n{\"send_at\",\"rationale\"} for the schedule.",
+                        "type": "object"
+                    }
+                },
+                "required": [
+                    "content"
+                ],
+                "type": "object"
+            },
+            "api.EventCatalog": {
+                "properties": {
+                    "campaign_cancelled": {
+                        "$ref": "#/components/schemas/flow.CampaignCancelled"
+                    },
+                    "content_delta": {
+                        "$ref": "#/components/schemas/flow.ContentDelta"
+                    },
+                    "content_reset": {
+                        "$ref": "#/components/schemas/flow.ContentReset"
+                    },
+                    "context_added": {
+                        "$ref": "#/components/schemas/flow.ContextAdded"
+                    },
+                    "generation_failed": {
+                        "$ref": "#/components/schemas/flow.GenerationFailed"
+                    },
+                    "generation_started": {
+                        "$ref": "#/components/schemas/flow.GenerationStarted"
+                    },
+                    "ping": {
+                        "$ref": "#/components/schemas/api.PingEvent"
+                    },
+                    "screen_result": {
+                        "$ref": "#/components/schemas/flow.ScreenResult"
+                    },
+                    "snapshot": {
+                        "$ref": "#/components/schemas/flow.CampaignView"
+                    },
+                    "step_approved": {
+                        "$ref": "#/components/schemas/flow.StepApproved"
+                    },
+                    "step_opened": {
+                        "$ref": "#/components/schemas/flow.StepOpened"
+                    },
+                    "step_superseded": {
+                        "$ref": "#/components/schemas/flow.StepSuperseded"
+                    },
+                    "variant_approved": {
+                        "$ref": "#/components/schemas/flow.VariantApproved"
+                    },
+                    "variant_created": {
+                        "$ref": "#/components/schemas/flow.VariantCreated"
+                    },
+                    "variant_rejected": {
+                        "$ref": "#/components/schemas/flow.VariantRejected"
+                    },
+                    "variant_superseded": {
+                        "$ref": "#/components/schemas/flow.VariantSuperseded"
+                    }
+                },
+                "required": [
+                    "campaign_cancelled",
+                    "content_delta",
+                    "content_reset",
+                    "context_added",
+                    "generation_failed",
+                    "generation_started",
+                    "ping",
+                    "screen_result",
+                    "snapshot",
+                    "step_approved",
+                    "step_opened",
+                    "step_superseded",
+                    "variant_approved",
+                    "variant_created",
+                    "variant_rejected",
+                    "variant_superseded"
+                ],
+                "type": "object"
+            },
+            "api.PingEvent": {
+                "properties": {
+                    "at": {
+                        "description": "At is the time the ping was sent.",
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at"
+                ],
+                "type": "object"
+            },
+            "api.Problem": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the stable machine-readable name of the problem.",
+                        "example": "step_not_open",
+                        "type": "string"
+                    },
+                    "detail": {
+                        "description": "Detail explains this occurrence. It never contains internal details.",
+                        "example": "The step is approved; reopen it to change it.",
+                        "type": "string"
+                    },
+                    "instance": {
+                        "description": "Instance is the path of the request.",
+                        "example": "/variants/019a0e6e-0000-7000-8000-000000000001/approve",
+                        "type": "string"
+                    },
+                    "problems": {
+                        "description": "Problems lists the individual validation messages of an invalid request or invalid content.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "description": "Status is the HTTP status code.",
+                        "example": 409,
+                        "type": "integer"
+                    },
+                    "title": {
+                        "description": "Title is a short, fixed summary of the problem type.",
+                        "example": "The step is not open",
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Type identifies the problem type: urn:coldbru:proposal:problem:\u003ccode\u003e.",
+                        "example": "urn:coldbru:proposal:problem:step_not_open",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "status",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "api.RejectRequest": {
+                "properties": {
+                    "reason": {
+                        "description": "Reason tells the model what was wrong; it is used when the slot is regenerated. At most 1000 characters.",
+                        "example": "Çok resmi, daha samimi olsun.",
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "reason"
+                ],
+                "type": "object"
+            },
+            "api.ReopenRequest": {
+                "properties": {
+                    "kind": {
+                        "description": "Kind is the approved step to revise; it and every later step are replaced.",
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "example": "channel_plan",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "kind"
+                ],
+                "type": "object"
+            },
+            "flow.CampaignCancelled": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "reason"
+                ],
+                "type": "object"
+            },
+            "flow.CampaignInfo": {
+                "properties": {
+                    "brief": {
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "drafting",
+                            "scheduled",
+                            "sending",
+                            "completed",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "brief",
+                    "created_at",
+                    "id",
+                    "status",
+                    "updated_at"
+                ],
+                "type": "object"
+            },
+            "flow.CampaignView": {
+                "properties": {
+                    "brief": {
+                        "type": "string"
+                    },
+                    "cost": {
+                        "$ref": "#/components/schemas/flow.CostSummary",
+                        "description": "Cost is the estimated cost of the live content variants (D-071)."
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "notes": {
+                        "description": "Notes are all context notes, oldest first.",
+                        "items": {
+                            "$ref": "#/components/schemas/flow.NoteView"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "enum": [
+                            "drafting",
+                            "scheduled",
+                            "sending",
+                            "completed",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    },
+                    "steps": {
+                        "description": "Steps are the current steps, in step order: everything that is not superseded.",
+                        "items": {
+                            "$ref": "#/components/schemas/flow.StepView"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "updated_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "brief",
+                    "cost",
+                    "created_at",
+                    "id",
+                    "notes",
+                    "status",
+                    "steps",
+                    "updated_at"
+                ],
+                "type": "object"
+            },
+            "flow.ContentDelta": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "attempt": {
+                        "type": "integer"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "slot": {
+                        "$ref": "#/components/schemas/flow.Slot"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "attempt",
+                    "campaign_id",
+                    "slot",
+                    "step_id",
+                    "text"
+                ],
+                "type": "object"
+            },
+            "flow.ContentReset": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "attempt": {
+                        "type": "integer"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "slot": {
+                        "$ref": "#/components/schemas/flow.Slot"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "attempt",
+                    "campaign_id",
+                    "slot",
+                    "step_id"
+                ],
+                "type": "object"
+            },
+            "flow.ContextAdded": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "body": {
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "note_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "body",
+                    "campaign_id",
+                    "note_id",
+                    "step_id"
+                ],
+                "type": "object"
+            },
+            "flow.CostSummary": {
+                "properties": {
+                    "email_gbp": {
+                        "type": "string"
+                    },
+                    "sms_gbp": {
+                        "type": "string"
+                    },
+                    "total_gbp": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "email_gbp",
+                    "sms_gbp",
+                    "total_gbp"
+                ],
+                "type": "object"
+            },
+            "flow.GenerationFailed": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    },
+                    "slot": {
+                        "$ref": "#/components/schemas/flow.Slot"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "kind",
+                    "reason",
+                    "slot",
+                    "step_id"
+                ],
+                "type": "object"
+            },
+            "flow.GenerationStarted": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "slots": {
+                        "items": {
+                            "$ref": "#/components/schemas/flow.Slot"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "kind",
+                    "slots",
+                    "step_id"
+                ],
+                "type": "object"
+            },
+            "flow.NoteView": {
+                "properties": {
+                    "body": {
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "body",
+                    "created_at",
+                    "id"
+                ],
+                "type": "object"
+            },
+            "flow.ScreenResult": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    },
+                    "verdict": {
+                        "enum": [
+                            "allow",
+                            "block",
+                            "error"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "reason",
+                    "verdict"
+                ],
+                "type": "object"
+            },
+            "flow.Slot": {
+                "properties": {
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "language": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "flow.StepApproved": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "kind",
+                    "step_id",
+                    "version"
+                ],
+                "type": "object"
+            },
+            "flow.StepInfo": {
+                "properties": {
+                    "approved_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "open",
+                            "approved",
+                            "superseded"
+                        ],
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "created_at",
+                    "id",
+                    "kind",
+                    "status",
+                    "version"
+                ],
+                "type": "object"
+            },
+            "flow.StepOpened": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "kind",
+                    "step_id",
+                    "version"
+                ],
+                "type": "object"
+            },
+            "flow.StepSuperseded": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "kind",
+                    "step_id",
+                    "version"
+                ],
+                "type": "object"
+            },
+            "flow.StepView": {
+                "properties": {
+                    "approved_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "failed": {
+                        "description": "Failed: the last generation of the step failed (a refusal, an exhausted repair loop, an\nAPI error), and Reason says why. Regenerate retries it.",
+                        "type": "boolean"
+                    },
+                    "failure_reason": {
+                        "type": "string"
+                    },
+                    "generating": {
+                        "description": "Generating: a generation of this step is queued or running in this process.",
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "missing": {
+                        "description": "Missing are the slots of an open step that have no draft or approved variant yet.",
+                        "items": {
+                            "$ref": "#/components/schemas/flow.Slot"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "enum": [
+                            "open",
+                            "approved",
+                            "superseded"
+                        ],
+                        "type": "string"
+                    },
+                    "variants": {
+                        "description": "Variants are the draft, approved and rejected variants, oldest first.",
+                        "items": {
+                            "$ref": "#/components/schemas/flow.VariantView"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "version": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "created_at",
+                    "failed",
+                    "generating",
+                    "id",
+                    "kind",
+                    "status",
+                    "variants",
+                    "version"
+                ],
+                "type": "object"
+            },
+            "flow.VariantApproved": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "variant_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "step_id",
+                    "variant_id"
+                ],
+                "type": "object"
+            },
+            "flow.VariantCreated": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "content": {
+                        "type": "object"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "slot": {
+                        "$ref": "#/components/schemas/flow.Slot"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "variant_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "content",
+                    "kind",
+                    "slot",
+                    "step_id",
+                    "variant_id"
+                ],
+                "type": "object"
+            },
+            "flow.VariantRejected": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "variant_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "reason",
+                    "step_id",
+                    "variant_id"
+                ],
+                "type": "object"
+            },
+            "flow.VariantSuperseded": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "variant_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "step_id",
+                    "variant_id"
+                ],
+                "type": "object"
+            },
+            "flow.VariantView": {
+                "properties": {
+                    "approved_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "content": {
+                        "type": "object"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "audience",
+                            "channel_plan",
+                            "content",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "language": {
+                        "type": "string"
+                    },
+                    "rejected_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "rejection_reason": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "draft",
+                            "approved",
+                            "rejected",
+                            "superseded"
+                        ],
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "content",
+                    "created_at",
+                    "id",
+                    "kind",
+                    "status",
+                    "step_id"
+                ],
+                "type": "object"
+            },
             "health.CheckResult": {
                 "properties": {
+                    "detail": {
+                        "description": "Detail is what the check found out besides pass or fail, for example \"mode=mock\"; empty for\nchecks that report none.",
+                        "example": "mode=mock",
+                        "type": "string"
+                    },
                     "error": {
                         "description": "Error is the failure reason; empty when the check passed.",
                         "example": "context deadline exceeded",
@@ -44,7 +1099,7 @@
         }
     },
     "info": {
-        "description": "REST API of the proposal service: campaign proposals.",
+        "description": "REST API of the proposal service: campaigns, their proposal steps and variants, and the live event stream of a campaign. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.",
         "title": "Coldbru Proposal API",
         "version": "0.1.0"
     },
@@ -53,6 +1108,592 @@
         "url": ""
     },
     "paths": {
+        "/campaigns": {
+            "get": {
+                "description": "Returns one page of campaigns, newest first.",
+                "parameters": [
+                    {
+                        "description": "Page size, 1 to 100",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "default": 20,
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Campaigns to skip",
+                        "in": "query",
+                        "name": "offset",
+                        "schema": {
+                            "default": 0,
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.CampaignList"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "limit or offset out of range"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "List campaigns",
+                "tags": [
+                    "campaigns"
+                ]
+            },
+            "post": {
+                "description": "Stores the brief as a new campaign and returns at once (202). The brief is screened and the audience proposed in the background; follow the progress with GET /campaigns/{id}/events. A blocked brief cancels the campaign.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.CreateCampaignRequest",
+                                "summary": "request",
+                                "description": "The brief"
+                            }
+                        }
+                    },
+                    "description": "The brief",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignInfo"
+                                }
+                            }
+                        },
+                        "description": "Accepted",
+                        "headers": {
+                            "Location": {
+                                "description": "Path of the new campaign: /campaigns/{id}",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Malformed JSON"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Body larger than 64 KiB"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not application/json"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Empty or too long brief, unknown field"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Create a campaign",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}": {
+            "get": {
+                "description": "Returns the campaign with its current steps and their live variants, the context notes and the estimated cost.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Get a campaign",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}/context": {
+            "post": {
+                "description": "Records a note on the open step. Its draft and rejected variants are replaced and regenerated with the note (202); approved variants stay.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.ContextRequest",
+                                "summary": "request",
+                                "description": "The note"
+                            }
+                        }
+                    },
+                    "description": "The note",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.NoteView"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The campaign is not a draft, or has no open step"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unprocessable Entity"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Add context to the open step",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}/events": {
+            "get": {
+                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nThe response is not JSON; the schema below only documents the data of each event.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.EventCatalog"
+                                }
+                            }
+                        },
+                        "description": "Stream of events; each event's data is the property of the same name"
+                    },
+                    "400": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "No such campaign (answered before the stream starts)"
+                    },
+                    "500": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Live events of a campaign (Server-Sent Events)",
+                "tags": [
+                    "events"
+                ]
+            }
+        },
+        "/campaigns/{id}/regenerate": {
+            "post": {
+                "description": "Restarts the screening and the audience proposal of a campaign whose process stopped before the audience step opened (202). Does nothing while the pipeline is running.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The campaign is not a draft, or already has steps"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Restart a campaign that has no steps",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}/reopen": {
+            "post": {
+                "description": "Revises an approved step: it and every later step are replaced, a new version of the step opens and its generation starts (202).",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.ReopenRequest",
+                                "summary": "request",
+                                "description": "The step to reopen"
+                            }
+                        }
+                    },
+                    "description": "The step to reopen",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.StepInfo"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "No such campaign, or it has no step of that kind"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The campaign is not a draft, or the step is not approved"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unknown step kind"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Reopen an approved step",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
         "/healthz": {
             "get": {
                 "description": "Answers 200 while the process is running. Checks no dependency.",
@@ -102,6 +1743,394 @@
                 "summary": "Readiness probe",
                 "tags": [
                     "platform"
+                ]
+            }
+        },
+        "/steps/{id}/regenerate": {
+            "post": {
+                "description": "Retries the generation of an open step, after a failure or a restart (202). Slots that have a draft or approved variant are left alone. Returns the campaign.",
+                "parameters": [
+                    {
+                        "description": "Step id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The step is not open, or the campaign is not a draft"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Regenerate an open step",
+                "tags": [
+                    "steps"
+                ]
+            }
+        },
+        "/variants/{id}/approve": {
+            "post": {
+                "description": "Approves a draft variant. When it was the last slot of its step the step is approved and the next one opens and starts generating; approving the schedule step confirms the campaign. Returns the updated campaign.",
+                "parameters": [
+                    {
+                        "description": "Variant id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The campaign is not a draft, the step is not open, or the variant is not a draft"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The schedule was approved but confirming the campaign failed; the approval stands"
+                    }
+                },
+                "summary": "Approve a variant",
+                "tags": [
+                    "variants"
+                ]
+            }
+        },
+        "/variants/{id}/edit": {
+            "post": {
+                "description": "Replaces a draft variant with the edited content, which passes the validators generated content passes. The edit becomes a new draft variant in the same slot and the old one is replaced. Invalid content is a 422 whose problems list every broken rule.",
+                "parameters": [
+                    {
+                        "description": "Variant id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.EditRequest",
+                                "summary": "request",
+                                "description": "The new content"
+                            }
+                        }
+                    },
+                    "description": "The new content",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.VariantView"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The step is not open, or the variant is not a draft"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The content failed validation; problems lists why"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Edit a variant by hand",
+                "tags": [
+                    "variants"
+                ]
+            }
+        },
+        "/variants/{id}/reject": {
+            "post": {
+                "description": "Rejects a draft variant with a reason. Only its slot is regenerated, with the reason given to the model (202). Returns the updated campaign.",
+                "parameters": [
+                    {
+                        "description": "Variant id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.RejectRequest",
+                                "summary": "request",
+                                "description": "The reason"
+                            }
+                        }
+                    },
+                    "description": "The reason",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The campaign is not a draft, the step is not open, or the variant is not a draft"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Missing or too long reason"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Reject a variant",
+                "tags": [
+                    "variants"
                 ]
             }
         }

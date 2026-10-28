@@ -72,6 +72,27 @@ type Deps struct {
 	Pool      *pgxpool.Pool
 	NATS      *nats.Conn
 	JetStream jetstream.JetStream
+
+	shutdown []func(ctx context.Context) error
+}
+
+// OnShutdown registers fn to run when the service stops: after the HTTP server has shut down, and
+// before NATS is drained and the database pool is closed, so that a worker still using them can
+// finish. Functions run most recently registered first, each with the shutdown timeout as its
+// deadline; an error is logged and does not stop the others. Call it from Setup.
+func (d *Deps) OnShutdown(fn func(ctx context.Context) error) {
+	d.shutdown = append(d.shutdown, fn)
+}
+
+// runShutdown runs the OnShutdown functions in reverse order of registration.
+func (d *Deps) runShutdown(timeout time.Duration) {
+	for i := len(d.shutdown) - 1; i >= 0; i-- {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		if err := d.shutdown[i](ctx); err != nil {
+			d.Logger.Warn("shutdown hook failed", "error", err)
+		}
+		cancel()
+	}
 }
 
 // Main is the whole body of a service's main function. It never returns.
@@ -187,6 +208,8 @@ func Run(ctx context.Context, opts Options, v *viper.Viper, logger *slog.Logger)
 		return err
 	}
 
+	// Deferred after the database and NATS cleanups, so it runs before them.
+	defer d.runShutdown(shutdownTimeout)
 	if opts.Setup != nil {
 		if err := opts.Setup(ctx, d); err != nil {
 			return fmt.Errorf("setup: %w", err)

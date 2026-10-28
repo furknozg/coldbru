@@ -53,7 +53,7 @@ const (
 // the content step one per (language, channel), the schedule step one per language.
 type Slot struct {
 	Language string `json:"language,omitempty"`
-	Channel  string `json:"channel,omitempty"`
+	Channel  string `json:"channel,omitempty" enums:"sms,email"`
 }
 
 func (s Slot) String() string {
@@ -90,7 +90,7 @@ type LanguageAudience struct {
 // the compiled GraphQL filter, and the audience size and coverage Customer computed.
 type AudienceContent struct {
 	DSL        string             `json:"dsl"`
-	Filter     json.RawMessage    `json:"filter"`
+	Filter     json.RawMessage    `json:"filter" swaggertype:"object"`
 	Count      int                `json:"count"`
 	Coverage   Coverage           `json:"coverage"`
 	ByLanguage []LanguageAudience `json:"by_language"`
@@ -187,57 +187,57 @@ type ScheduleContent struct {
 
 // CampaignInfo is a campaign row.
 type CampaignInfo struct {
-	ID        uuid.UUID `json:"id"`
-	Brief     string    `json:"brief"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id" validate:"required" format:"uuid"`
+	Brief     string    `json:"brief" validate:"required"`
+	Status    string    `json:"status" validate:"required" enums:"drafting,scheduled,sending,completed,cancelled"`
+	CreatedAt time.Time `json:"created_at" validate:"required" format:"date-time"`
+	UpdatedAt time.Time `json:"updated_at" validate:"required" format:"date-time"`
 }
 
 // StepInfo is a proposal_step row.
 type StepInfo struct {
-	ID         uuid.UUID  `json:"id"`
-	CampaignID uuid.UUID  `json:"campaign_id"`
-	Kind       string     `json:"kind"`
-	Version    int        `json:"version"`
-	Status     string     `json:"status"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+	ID         uuid.UUID  `json:"id" validate:"required" format:"uuid"`
+	CampaignID uuid.UUID  `json:"campaign_id" validate:"required" format:"uuid"`
+	Kind       string     `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+	Version    int        `json:"version" validate:"required"`
+	Status     string     `json:"status" validate:"required" enums:"open,approved,superseded"`
+	CreatedAt  time.Time  `json:"created_at" validate:"required" format:"date-time"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty" format:"date-time"`
 }
 
 // VariantView is a proposal_variant row.
 type VariantView struct {
-	ID              uuid.UUID       `json:"id"`
-	StepID          uuid.UUID       `json:"step_id"`
-	Kind            string          `json:"kind"`
+	ID              uuid.UUID       `json:"id" validate:"required" format:"uuid"`
+	StepID          uuid.UUID       `json:"step_id" validate:"required" format:"uuid"`
+	Kind            string          `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
 	Language        string          `json:"language,omitempty"`
-	Channel         string          `json:"channel,omitempty"`
-	Status          string          `json:"status"`
-	Content         json.RawMessage `json:"content"`
+	Channel         string          `json:"channel,omitempty" enums:"sms,email"`
+	Status          string          `json:"status" validate:"required" enums:"draft,approved,rejected,superseded"`
+	Content         json.RawMessage `json:"content" swaggertype:"object" validate:"required"`
 	RejectionReason string          `json:"rejection_reason,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	ApprovedAt      *time.Time      `json:"approved_at,omitempty"`
-	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at" validate:"required" format:"date-time"`
+	ApprovedAt      *time.Time      `json:"approved_at,omitempty" format:"date-time"`
+	RejectedAt      *time.Time      `json:"rejected_at,omitempty" format:"date-time"`
 }
 
 // NoteView is a context_note row.
 type NoteView struct {
-	ID        uuid.UUID  `json:"id"`
-	StepID    *uuid.UUID `json:"step_id,omitempty"`
-	Body      string     `json:"body"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID        uuid.UUID  `json:"id" validate:"required" format:"uuid"`
+	StepID    *uuid.UUID `json:"step_id,omitempty" format:"uuid"`
+	Body      string     `json:"body" validate:"required"`
+	CreatedAt time.Time  `json:"created_at" validate:"required" format:"date-time"`
 }
 
 // StepView is a current step with its live variants and the state of its generation.
 type StepView struct {
 	StepInfo
 	// Variants are the draft, approved and rejected variants, oldest first.
-	Variants []VariantView `json:"variants"`
+	Variants []VariantView `json:"variants" validate:"required"`
 	// Generating: a generation of this step is queued or running in this process.
-	Generating bool `json:"generating"`
+	Generating bool `json:"generating" validate:"required"`
 	// Failed: the last generation of the step failed (a refusal, an exhausted repair loop, an
 	// API error), and Reason says why. Regenerate retries it.
-	Failed bool   `json:"failed"`
+	Failed bool   `json:"failed" validate:"required"`
 	Reason string `json:"failure_reason,omitempty"`
 	// Missing are the slots of an open step that have no draft or approved variant yet.
 	Missing []Slot `json:"missing,omitempty"`
@@ -247,11 +247,11 @@ type StepView struct {
 type CampaignView struct {
 	CampaignInfo
 	// Steps are the current steps, in step order: everything that is not superseded.
-	Steps []StepView `json:"steps"`
+	Steps []StepView `json:"steps" validate:"required"`
 	// Notes are all context notes, oldest first.
-	Notes []NoteView `json:"notes"`
+	Notes []NoteView `json:"notes" validate:"required"`
 	// Cost is the estimated cost of the live content variants (D-071).
-	Cost CostSummary `json:"cost"`
+	Cost CostSummary `json:"cost" validate:"required"`
 }
 
 // CostSummary adds up the estimated_cost_gbp of the draft and approved variants of the current
@@ -259,7 +259,7 @@ type CampaignView struct {
 // and superseded variants are not counted. A variant without an estimate counts as zero. The figures
 // are estimates at the configured demo prices.
 type CostSummary struct {
-	SMSGBP   string `json:"sms_gbp"`
-	EmailGBP string `json:"email_gbp"`
-	TotalGBP string `json:"total_gbp"`
+	SMSGBP   string `json:"sms_gbp" validate:"required"`
+	EmailGBP string `json:"email_gbp" validate:"required"`
+	TotalGBP string `json:"total_gbp" validate:"required"`
 }

@@ -8,6 +8,8 @@
 # root Dockerfile (SERVICE build arg) and wait for postgres / nats-init (D-056). Host ports: proposal 8081,
 # notification 8082, analytics 8083, mockprovider 8084; customer is reachable only inside the compose network.
 # API_DOCS_ENABLED (default true here, false in code) serves /docs and /openapi.json on the four REST services (D-057).
+# proposal picks its model by LLM_MODE (auto|anthropic|mock, default auto): with an empty ANTHROPIC_API_KEY it runs on
+# the built-in mock, so the stack works without a key (D-072). /readyz shows the mode.
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -116,6 +118,8 @@ services:
       NATS_URL: nats://nats:4222
       CUSTOMER_GRAPHQL_URL: http://customer:8080/graphql
       CUSTOMER_TOKEN: ${CUSTOMER_TOKEN_PROPOSAL:-proposal-dev-token}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODE: ${LLM_MODE:-auto}
       CAMPAIGN_CTA_URL: ${CAMPAIGN_CTA_URL:-https://shop.example.com}
       SMS_SEGMENT_PRICE_GBP: ${SMS_SEGMENT_PRICE_GBP:-0.04}
       EMAIL_PRICE_GBP: ${EMAIL_PRICE_GBP:-0.001}

@@ -23,8 +23,8 @@ type Event interface {
 
 // Meta is the part every event shares.
 type Meta struct {
-	CampaignID uuid.UUID `json:"campaign_id"`
-	At         time.Time `json:"at"`
+	CampaignID uuid.UUID `json:"campaign_id" validate:"required" format:"uuid"`
+	At         time.Time `json:"at" validate:"required" format:"date-time"`
 }
 
 // Campaign returns the campaign id.
@@ -39,93 +39,105 @@ type (
 	// the screen call itself failed; the campaign is cancelled for the last two (D-069).
 	ScreenResult struct {
 		Meta
-		Verdict string `json:"verdict"`
-		Reason  string `json:"reason"`
+		Verdict string `json:"verdict" validate:"required" enums:"allow,block,error"`
+		Reason  string `json:"reason" validate:"required"`
 	}
 	// CampaignCancelled: the campaign was cancelled; Reason says why.
 	CampaignCancelled struct {
 		Meta
-		Reason string `json:"reason"`
+		Reason string `json:"reason" validate:"required"`
 	}
 	// StepOpened: a step opened, version 1 or a new version after a reopen.
 	StepOpened struct {
 		Meta
-		StepID  uuid.UUID `json:"step_id"`
-		Kind    string    `json:"kind"`
-		Version int       `json:"version"`
+		StepID  uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Kind    string    `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Version int       `json:"version" validate:"required"`
 	}
 	// StepApproved: every slot of the step is approved.
 	StepApproved struct {
 		Meta
-		StepID  uuid.UUID `json:"step_id"`
-		Kind    string    `json:"kind"`
-		Version int       `json:"version"`
+		StepID  uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Kind    string    `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Version int       `json:"version" validate:"required"`
 	}
 	// StepSuperseded: the step was replaced by a reopen.
 	StepSuperseded struct {
 		Meta
-		StepID  uuid.UUID `json:"step_id"`
-		Kind    string    `json:"kind"`
-		Version int       `json:"version"`
+		StepID  uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Kind    string    `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Version int       `json:"version" validate:"required"`
 	}
 	// GenerationStarted: the model (or the content generator) started on the Slots of a step.
 	GenerationStarted struct {
 		Meta
-		StepID uuid.UUID `json:"step_id"`
-		Kind   string    `json:"kind"`
-		Slots  []Slot    `json:"slots"`
+		StepID uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Kind   string    `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Slots  []Slot    `json:"slots" validate:"required"`
 	}
 	// GenerationFailed: generating a slot failed, for example a refusal or an exhausted repair
 	// loop. Slot is empty for steps with one slot. Deltas received earlier are to be dropped.
 	GenerationFailed struct {
 		Meta
-		StepID uuid.UUID `json:"step_id"`
-		Kind   string    `json:"kind"`
-		Slot   Slot      `json:"slot"`
-		Reason string    `json:"reason"`
+		StepID uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Kind   string    `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Slot   Slot      `json:"slot" validate:"required"`
+		Reason string    `json:"reason" validate:"required"`
 	}
 	// VariantCreated: a new draft variant exists (generated or edited).
 	VariantCreated struct {
 		Meta
-		StepID    uuid.UUID       `json:"step_id"`
-		VariantID uuid.UUID       `json:"variant_id"`
-		Kind      string          `json:"kind"`
-		Slot      Slot            `json:"slot"`
-		Content   json.RawMessage `json:"content"`
+		StepID    uuid.UUID       `json:"step_id" validate:"required" format:"uuid"`
+		VariantID uuid.UUID       `json:"variant_id" validate:"required" format:"uuid"`
+		Kind      string          `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
+		Slot      Slot            `json:"slot" validate:"required"`
+		Content   json.RawMessage `json:"content" swaggertype:"object" validate:"required"`
 	}
 	// VariantApproved: a variant was approved.
 	VariantApproved struct {
 		Meta
-		StepID    uuid.UUID `json:"step_id"`
-		VariantID uuid.UUID `json:"variant_id"`
+		StepID    uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		VariantID uuid.UUID `json:"variant_id" validate:"required" format:"uuid"`
 	}
 	// VariantRejected: a variant was rejected with a reason; its slot is regenerated.
 	VariantRejected struct {
 		Meta
-		StepID    uuid.UUID `json:"step_id"`
-		VariantID uuid.UUID `json:"variant_id"`
-		Reason    string    `json:"reason"`
+		StepID    uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		VariantID uuid.UUID `json:"variant_id" validate:"required" format:"uuid"`
+		Reason    string    `json:"reason" validate:"required"`
 	}
 	// VariantSuperseded: a variant was replaced (by a new draft, a regeneration or a reopen).
 	VariantSuperseded struct {
 		Meta
-		StepID    uuid.UUID `json:"step_id"`
-		VariantID uuid.UUID `json:"variant_id"`
+		StepID    uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		VariantID uuid.UUID `json:"variant_id" validate:"required" format:"uuid"`
 	}
 	// ContentDelta: a text fragment of a content variant being generated, forwarded from the
-	// ContentGenerator. It is a preview; the variant is final only with VariantCreated.
+	// ContentGenerator. Attempt is the 1-based attempt the fragment belongs to: the text of an
+	// attempt after the first replaces the earlier text (see ContentReset). It is a preview; the
+	// variant is final only with VariantCreated.
 	ContentDelta struct {
 		Meta
-		StepID uuid.UUID `json:"step_id"`
-		Slot   Slot      `json:"slot"`
-		Text   string    `json:"text"`
+		StepID  uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Slot    Slot      `json:"slot" validate:"required"`
+		Text    string    `json:"text" validate:"required"`
+		Attempt int       `json:"attempt" validate:"required"`
+	}
+	// ContentReset: attempt (2 or 3) of a content slot starts because the previous answer broke a
+	// rule; the preview of the slot is to be cleared, and the deltas that follow carry the new
+	// attempt number (D-071, D-072).
+	ContentReset struct {
+		Meta
+		StepID  uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		Slot    Slot      `json:"slot" validate:"required"`
+		Attempt int       `json:"attempt" validate:"required"`
 	}
 	// ContextAdded: the marketer added a context note to the open step.
 	ContextAdded struct {
 		Meta
-		StepID uuid.UUID `json:"step_id"`
-		NoteID uuid.UUID `json:"note_id"`
-		Body   string    `json:"body"`
+		StepID uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		NoteID uuid.UUID `json:"note_id" validate:"required" format:"uuid"`
+		Body   string    `json:"body" validate:"required"`
 	}
 )
 
@@ -143,6 +155,7 @@ const (
 	TypeVariantRejected   = "variant_rejected"
 	TypeVariantSuperseded = "variant_superseded"
 	TypeContentDelta      = "content_delta"
+	TypeContentReset      = "content_reset"
 	TypeContextAdded      = "context_added"
 )
 
@@ -159,6 +172,7 @@ func (VariantApproved) Type() string   { return TypeVariantApproved }
 func (VariantRejected) Type() string   { return TypeVariantRejected }
 func (VariantSuperseded) Type() string { return TypeVariantSuperseded }
 func (ContentDelta) Type() string      { return TypeContentDelta }
+func (ContentReset) Type() string      { return TypeContentReset }
 func (ContextAdded) Type() string      { return TypeContextAdded }
 
 // DefaultHubBuffer is the buffer of a subscription made with NewHub(0).

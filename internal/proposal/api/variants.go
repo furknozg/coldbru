@@ -1,0 +1,148 @@
+package api
+
+import (
+	"net/http"
+)
+
+// approve godoc
+//
+//	@Summary		Approve a variant
+//	@Description	Approves a draft variant. When it was the last slot of its step the step is approved and the next one opens and starts generating; approving the schedule step confirms the campaign. Returns the updated campaign.
+//	@Tags			variants
+//	@Produce		json
+//	@Param			id	path		string	true	"Variant id"	format(uuid)
+//	@Success		200	{object}	flow.CampaignView
+//	@Failure		400	{object}	api.Problem	"id is not a UUID"
+//	@Failure		404	{object}	api.Problem
+//	@Failure		409	{object}	api.Problem	"The campaign is not a draft, the step is not open, or the variant is not a draft"
+//	@Failure		500	{object}	api.Problem
+//	@Failure		502	{object}	api.Problem	"The schedule was approved but confirming the campaign failed; the approval stands"
+//	@Router			/variants/{id}/approve [post]
+func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	camp, err := h.flow.CampaignOfVariant(r.Context(), id)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	if err := h.flow.Approve(r.Context(), id); err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusOK, camp)
+}
+
+// reject godoc
+//
+//	@Summary		Reject a variant
+//	@Description	Rejects a draft variant with a reason. Only its slot is regenerated, with the reason given to the model (202). Returns the updated campaign.
+//	@Tags			variants
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Variant id"	format(uuid)
+//	@Param			request	body		api.RejectRequest	true	"The reason"
+//	@Success		202		{object}	flow.CampaignView
+//	@Failure		400		{object}	api.Problem	"id is not a UUID, or malformed JSON"
+//	@Failure		404		{object}	api.Problem
+//	@Failure		409		{object}	api.Problem	"The campaign is not a draft, the step is not open, or the variant is not a draft"
+//	@Failure		413		{object}	api.Problem
+//	@Failure		415		{object}	api.Problem
+//	@Failure		422		{object}	api.Problem	"Missing or too long reason"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/variants/{id}/reject [post]
+func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req RejectRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	reason, ok := checkText(w, r, "reason", req.Reason, MaxReasonChars)
+	if !ok {
+		return
+	}
+	camp, err := h.flow.CampaignOfVariant(r.Context(), id)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	if err := h.flow.Reject(r.Context(), id, reason); err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusAccepted, camp)
+}
+
+// edit godoc
+//
+//	@Summary		Edit a variant by hand
+//	@Description	Replaces a draft variant with the edited content, which passes the validators generated content passes. The edit becomes a new draft variant in the same slot and the old one is replaced. Invalid content is a 422 whose problems list every broken rule.
+//	@Tags			variants
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Variant id"	format(uuid)
+//	@Param			request	body		api.EditRequest		true	"The new content"
+//	@Success		200		{object}	flow.VariantView
+//	@Failure		400		{object}	api.Problem	"id is not a UUID, or malformed JSON"
+//	@Failure		404		{object}	api.Problem
+//	@Failure		409		{object}	api.Problem	"The step is not open, or the variant is not a draft"
+//	@Failure		413		{object}	api.Problem
+//	@Failure		415		{object}	api.Problem
+//	@Failure		422		{object}	api.Problem	"The content failed validation; problems lists why"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/variants/{id}/edit [post]
+func (h *Handler) edit(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req EditRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.Content) == 0 {
+		fail(w, r, CodeInvalidRequest, "The request body does not match the expected shape.", "content: is required")
+		return
+	}
+	v, err := h.flow.Edit(r.Context(), id, req.Content)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// regenerateStep godoc
+//
+//	@Summary		Regenerate an open step
+//	@Description	Retries the generation of an open step, after a failure or a restart (202). Slots that have a draft or approved variant are left alone. Returns the campaign.
+//	@Tags			steps
+//	@Produce		json
+//	@Param			id	path		string	true	"Step id"	format(uuid)
+//	@Success		202	{object}	flow.CampaignView
+//	@Failure		400	{object}	api.Problem	"id is not a UUID"
+//	@Failure		404	{object}	api.Problem
+//	@Failure		409	{object}	api.Problem	"The step is not open, or the campaign is not a draft"
+//	@Failure		500	{object}	api.Problem
+//	@Router			/steps/{id}/regenerate [post]
+func (h *Handler) regenerateStep(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	camp, err := h.flow.CampaignOfStep(r.Context(), id)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	if err := h.flow.Regenerate(r.Context(), id); err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusAccepted, camp)
+}

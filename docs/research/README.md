@@ -11,6 +11,7 @@
 | [03-llm-agent-flow.md](03-llm-agent-flow.md) | Model, yapılandırılmış çıktı, doğrulama, SMS/HTML, enjeksiyon, mock LLM, teklif durumu, bütçe |
 | [04-data-platform.md](04-data-platform.md) | Migration, servisler arası iletişim, SSE, Türkçe şehir eşleşmesi, seed ölçekleme, nginx, p95 |
 | [05-prompt-versioning.md](05-prompt-versioning.md) | Prompt sürümleme: `go:embed` dosyaları, DB kayıt defteri, harici araçlar, değerlendirme kapısı, sürümün `llm_call`/olay/arayüze akışı |
+| [06-dsl-benchmarking.md](06-dsl-benchmarking.md) | DSL ile modelin GraphQL filtresini doğrudan yazmasının karşılaştırılması: token maliyeti, gecikme/CPU ve flamegraph, yük, canlı kalite deneyi; karar: D-073 |
 
 ## Sonradan verilen kararlar (2026-10-27)
 

@@ -32,11 +32,13 @@ type ContentRequest struct {
 // Implementations must be safe for concurrent use.
 type ContentGenerator interface {
 	// Generate returns the validated content of one slot. onDelta (may be nil) gets the text
-	// fragments of the stream as they arrive; they are a preview that the caller drops when
-	// Generate fails. The model calls it makes are reported through llm.Report on ctx: the flow
-	// puts a recorder there and stores the records (D-060). The returned content must be a JSON
-	// object.
-	Generate(ctx context.Context, req ContentRequest, onDelta func(text string)) (json.RawMessage, error)
+	// fragments of the stream as they arrive, with the 1-based attempt they belong to (a repair
+	// starts a new attempt and its text starts over, D-071, D-072); they are a preview that the
+	// caller drops when Generate fails. The start of every attempt is announced by a call with an
+	// empty text, so a repair attempt is noticed even before its first fragment. The model calls
+	// it makes are reported through llm.Report on ctx: the flow puts a recorder there and stores
+	// the records (D-060). The returned content must be a JSON object.
+	Generate(ctx context.Context, req ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error)
 	// Validate checks hand-edited content of the slot req describes (its language, channel,
 	// audience, plan and recipients; the other fields may be empty) with the validators Generate
 	// applies (D-070, D-071), and returns the content to store: the edit with the measurements and

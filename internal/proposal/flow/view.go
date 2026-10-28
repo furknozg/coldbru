@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -66,6 +67,42 @@ func failureOfCalls(rows []store.LlmCall) (failed bool, reason string) {
 		return true, fmt.Sprintf("%s: %s: %s", r.Purpose, r.Outcome, strings.TrimSpace(reason))
 	}
 	return false, ""
+}
+
+// CampaignOfVariant returns the campaign a variant belongs to; ErrNotFound when there is no such
+// variant.
+func (s *Service) CampaignOfVariant(ctx context.Context, variantID uuid.UUID) (uuid.UUID, error) {
+	_, st, err := s.lookup(ctx, variantID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return st.CampaignID, nil
+}
+
+// CampaignOfStep returns the campaign a step belongs to; ErrNotFound when there is no such step.
+func (s *Service) CampaignOfStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error) {
+	st, err := s.q.GetStep(ctx, stepID)
+	if err != nil {
+		return uuid.Nil, notFound(err)
+	}
+	return st.CampaignID, nil
+}
+
+// ListCampaigns returns up to limit campaigns, newest first, skipping offset (D-072). The caller
+// caps limit; a negative offset or a limit below 1 is ErrInvalidInput.
+func (s *Service) ListCampaigns(ctx context.Context, limit, offset int) ([]CampaignInfo, error) {
+	if limit < 1 || offset < 0 || limit > math.MaxInt32 || offset > math.MaxInt32 {
+		return nil, fmt.Errorf("%w: limit %d, offset %d", ErrInvalidInput, limit, offset)
+	}
+	rows, err := s.q.ListCampaigns(ctx, store.ListCampaignsParams{Limit: int32(limit), Offset: int32(offset)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CampaignInfo, len(rows))
+	for i, c := range rows {
+		out[i] = campaignInfo(c)
+	}
+	return out, nil
 }
 
 // Get returns the read model of a campaign: the campaign, its current steps in step order with
