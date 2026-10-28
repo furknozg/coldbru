@@ -1,0 +1,13 @@
+# Prompt package segment (D-059, D-060, D-069): brief -> audience filter, as a tool loop.
+# The system text is the parts below, joined in this order at startup; "@catalog" is the filter
+# catalog rendered from internal/proposal/catalog (D-066).
+name: segment
+version: 1.0.0
+model: claude-sonnet-5-5
+effort: medium
+requires_dsl: "0.1"
+system:
+  - system.txt
+  - grammar.txt
+  - "@catalog"
+tools: tools.json

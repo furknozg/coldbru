@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["allow", "block"],
+      "description": "block only when the brief matches one of the blocking rules; allow otherwise."
+    },
+    "reason": {
+      "type": "string",
+      "description": "One short sentence naming the rule that applies, in the language of the brief."
+    }
+  },
+  "required": ["verdict", "reason"],
+  "additionalProperties": false
+}

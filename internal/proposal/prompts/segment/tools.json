@@ -1,0 +1,34 @@
+[
+  {
+    "name": "propose_segment",
+    "description": "Submit the final audience filter. Call this exactly once, as your answer, with the complete DSL expression. The server checks it against the catalog and the customer service; if it is rejected you receive an error result listing every problem, and you may call this tool again (3 attempts in total). Do not call it with a draft you doubt; use count_audience for drafts.",
+    "strict": true,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "dsl": {
+          "type": "string",
+          "description": "The filter expression in the DSL. Only the expression: no code fences, no comments, no explanation."
+        }
+      },
+      "required": ["dsl"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "count_audience",
+    "description": "Probe how many reachable customers a draft filter selects, with the split by channel and language. Use it to sanity-check the size of the audience before proposing. It changes nothing and is never your final answer. An invalid draft returns an error result listing the problems.",
+    "strict": true,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "dsl": {
+          "type": "string",
+          "description": "The draft filter expression in the DSL."
+        }
+      },
+      "required": ["dsl"],
+      "additionalProperties": false
+    }
+  }
+]
