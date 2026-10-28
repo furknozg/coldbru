@@ -26,6 +26,12 @@ var (
 	ErrInvalidInput = errors.New("flow: invalid input")
 	// ErrConfirm: the schedule step was approved but the Confirmer failed; the approval stands.
 	ErrConfirm = errors.New("flow: confirming the campaign failed")
+	// ErrScheduleNotApproved: Confirm was asked for a campaign whose schedule step is not approved.
+	ErrScheduleNotApproved = errors.New("flow: the schedule step is not approved")
+	// ErrNoRecipients: at confirmation the approved plan reaches nobody (D-074).
+	ErrNoRecipients = errors.New("flow: the plan reaches no recipients")
+	// ErrNotCancellable: Cancel was asked for a campaign that is completed or already cancelled.
+	ErrNotCancellable = errors.New("flow: campaign is completed or already cancelled")
 	// ErrNoContentGenerator: the content step needs a ContentGenerator and the service has none.
 	ErrNoContentGenerator = errors.New("flow: no content generator configured")
 )

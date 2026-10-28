@@ -47,9 +47,11 @@ type ContentGenerator interface {
 }
 
 // Confirmer is called once when the last variant of the schedule step is approved, after the
-// approval is committed (D-070). T-026 implements it: it fetches the recipients, assigns the
-// channels and publishes the confirmed event through the outbox. A failure is returned by
-// Approve wrapped in ErrConfirm; the approval is not rolled back.
+// approval is committed (D-070), and again by Service.Confirm. internal/proposal/confirm implements
+// it (D-074): it fetches the recipients, assigns the channels and, in one transaction, sets the
+// campaign `scheduled` and writes the confirmed event and the recipient batches to the outbox. It
+// must return nil without writing when the campaign is already `scheduled`. A failure is returned
+// by Approve wrapped in ErrConfirm; the approval is not rolled back.
 type Confirmer interface {
 	Confirm(ctx context.Context, campaignID uuid.UUID) error
 }

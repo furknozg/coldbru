@@ -19,10 +19,28 @@ const (
 	notifyChannel       = "outbox"
 )
 
+// selectBatch reads the oldest unpublished rows ($1 is EnvelopeSubjectPrefix, $2 the batch size).
+// An envelope row (subject under $1) is published with its row id added as "id"; a raw message
+// (WriteMessage) is published as stored.
+const selectBatch = `
+	SELECT id::text, subject,
+	       CASE WHEN starts_with(subject, $1)
+	            THEN payload || jsonb_build_object('id', id::text)
+	            ELSE payload END
+	FROM outbox
+	WHERE published_at IS NULL
+	ORDER BY created_at, id
+	LIMIT $2
+	FOR UPDATE SKIP LOCKED`
+
 // Relay moves unpublished outbox rows to JetStream. A trigger on the outbox
 // table sends NOTIFY on every insert statement and the Relay LISTENs on a
 // dedicated connection; PollInterval is the fallback when no notification
 // arrives (D-054).
+//
+// The Relay publishes two kinds of rows: event envelopes written by Write (subject under "evt.",
+// the row id is added as the envelope's "id") and raw messages written by WriteMessage (any other
+// subject, published as stored). Both carry the row id as Nats-Msg-Id.
 //
 // Publishing is at least once: if the process dies between PubAck and the
 // commit that sets published_at, the row is published again. The outbox id is
@@ -149,13 +167,7 @@ func (r *Relay) publishBatch(ctx context.Context, size int) (int, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op after Commit
 
-	rows, err := tx.Query(ctx, `
-		SELECT id::text, subject, payload || jsonb_build_object('id', id::text)
-		FROM outbox
-		WHERE published_at IS NULL
-		ORDER BY created_at, id
-		LIMIT $1
-		FOR UPDATE SKIP LOCKED`, size)
+	rows, err := tx.Query(ctx, selectBatch, EnvelopeSubjectPrefix, size)
 	if err != nil {
 		return 0, fmt.Errorf("select outbox batch: %w", err)
 	}

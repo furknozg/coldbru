@@ -12,7 +12,9 @@ import (
 
 	"github.com/furknozg/coldbru/internal/content"
 	"github.com/furknozg/coldbru/internal/platform/app"
+	"github.com/furknozg/coldbru/internal/platform/outbox"
 	"github.com/furknozg/coldbru/internal/proposal/api"
+	"github.com/furknozg/coldbru/internal/proposal/confirm"
 	"github.com/furknozg/coldbru/internal/proposal/contentgen"
 	"github.com/furknozg/coldbru/internal/proposal/customer"
 	"github.com/furknozg/coldbru/internal/proposal/flow"
@@ -103,13 +105,25 @@ func Setup(ctx context.Context, d *app.Deps) error {
 	// The check passes in every mode and only reports the mode: nothing is called (D-072).
 	d.Health.AddDetail("llm", func(context.Context) (string, error) { return "mode=" + string(mode), nil })
 
+	// The confirmer publishes campaign_confirmed to the hub the flow's event streams read (D-074).
+	hub := flow.NewHub(0)
+	confirmer, err := confirm.New(confirm.Deps{
+		Pool: d.Pool, Customer: cust, CTAURL: contentCfg.CTAURL, Hub: hub, Logger: d.Logger,
+	})
+	if err != nil {
+		return fmt.Errorf("confirmer: %w", err)
+	}
+	// Registered before the flow's hook, so it runs after it: the relay keeps publishing until no
+	// action can write to the outbox any more.
+	startRelay(ctx, d)
+
 	svc, err := flow.New(flow.Deps{
-		Pool:     d.Pool,
-		LLM:      model,
-		Customer: cust,
-		Content:  contentgen.New(model, contentCfg.Prices),
-		// T-026 replaces the no-op with the real confirmer.
-		Confirmer: flow.NopConfirmer{},
+		Pool:      d.Pool,
+		LLM:       model,
+		Customer:  cust,
+		Content:   contentgen.New(model, contentCfg.Prices),
+		Confirmer: confirmer,
+		Hub:       hub,
 		Logger:    d.Logger,
 	})
 	if err != nil {
@@ -120,4 +134,30 @@ func Setup(ctx context.Context, d *app.Deps) error {
 	api.New(api.Config{Flow: svc, Logger: d.Logger, Shutdown: ctx}).Mount(d.Router)
 	d.Logger.Info("proposal routes mounted", "llm_mode", string(mode), "cta_url", contentCfg.CTAURL)
 	return nil
+}
+
+// startRelay runs the outbox relay that publishes the confirmed and cancelled events and the
+// recipient batches to NATS (D-006, D-054, D-074), and stops it on shutdown. It is a no-op, with a
+// warning, when the service has no JetStream connection; cmd/proposal always has one.
+func startRelay(ctx context.Context, d *app.Deps) {
+	if d.JetStream == nil {
+		d.Logger.Warn("outbox relay not started: no NATS connection")
+		return
+	}
+	relayCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	relay := &outbox.Relay{Pool: d.Pool, JS: d.JetStream, Logger: d.Logger}
+	go func() {
+		defer close(done)
+		_ = relay.Run(relayCtx) // Run returns nil when its context ends
+	}()
+	d.OnShutdown(func(ctx context.Context) error {
+		cancel()
+		select {
+		case <-done:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
 }

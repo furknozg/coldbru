@@ -221,6 +221,12 @@ func TestErrorMapping(t *testing.T) {
 		{"not drafting", flow.ErrNotDrafting, 409, api.CodeCampaignNotDrafting},
 		{"has steps", flow.ErrHasSteps, 409, api.CodeCampaignHasSteps},
 		{"not approved", flow.ErrNotApproved, 409, api.CodeStepNotApproved},
+		{"schedule not approved", flow.ErrScheduleNotApproved, 409, api.CodeScheduleNotApproved},
+		{"no recipients", flow.ErrNoRecipients, 409, api.CodeNoRecipients},
+		{"no recipients inside a failed confirmation", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrNoRecipients), 409, api.CodeNoRecipients},
+		{"schedule not approved inside a failed confirmation", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrScheduleNotApproved), 409, api.CodeScheduleNotApproved},
+		{"not drafting inside a failed confirmation", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrNotDrafting), 409, api.CodeCampaignNotDrafting},
+		{"not cancellable", flow.ErrNotCancellable, 409, api.CodeNotCancellable},
 		{"invalid input", fmt.Errorf("%w: a rejection needs a reason", flow.ErrInvalidInput), 422, api.CodeInvalidInput},
 		{"confirm failed", fmt.Errorf("%w: %w", flow.ErrConfirm, errors.New("outbox: connection refused")), 502, api.CodeConfirmFailed},
 		{"unknown", errors.New("pq: password authentication failed for user proposal_svc"), 500, api.CodeInternal},
@@ -462,5 +468,121 @@ func TestResponsesAreNotCached(t *testing.T) {
 		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 			t.Errorf("Cache-Control = %q", cc)
 		}
+	}
+}
+
+func TestConfirmEndpoint(t *testing.T) {
+	t.Parallel()
+	path := "/campaigns/" + campID.String() + "/confirm"
+	t.Run("returns the campaign", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeFlow{}
+		h, _ := newRouter(t, f)
+		rec := call(t, h, http.MethodPost, path, "", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+		}
+		if v := decodeAs[flow.CampaignView](t, rec); v.ID != campID {
+			t.Errorf("view = %+v", v)
+		}
+		if got := f.calls(); len(got) != 2 || got[0] != "confirm "+campID.String() || got[1] != "get "+campID.String() {
+			t.Errorf("calls = %q, want confirm then get", got)
+		}
+	})
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"not found", flow.ErrNotFound, 404, api.CodeNotFound},
+		{"already scheduled or cancelled", flow.ErrNotDrafting, 409, api.CodeCampaignNotDrafting},
+		{"schedule not approved", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrScheduleNotApproved), 409, api.CodeScheduleNotApproved},
+		{"no recipients", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrNoRecipients), 409, api.CodeNoRecipients},
+		{"customer failed", fmt.Errorf("%w: %w", flow.ErrConfirm, errors.New("customer: unexpected HTTP status 500")), 502, api.CodeConfirmFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeFlow{confirm: func(context.Context, uuid.UUID) error { return tt.err }}
+			h, _ := newRouter(t, f)
+			p := wantProblem(t, call(t, h, http.MethodPost, path, "", ""), tt.status, tt.code)
+			if strings.Contains(p.Detail, "customer") {
+				t.Errorf("detail %q leaks the cause", p.Detail)
+			}
+		})
+	}
+	t.Run("bad id", func(t *testing.T) {
+		t.Parallel()
+		wantProblem(t, call(t, mustRouter(t), http.MethodPost, "/campaigns/nope/confirm", "", ""), 400, api.CodeInvalidID)
+	})
+}
+
+func mustRouter(t *testing.T) http.Handler {
+	t.Helper()
+	h, _ := newRouter(t, &fakeFlow{})
+	return h
+}
+
+func TestCancelEndpoint(t *testing.T) {
+	t.Parallel()
+	path := "/campaigns/" + campID.String() + "/cancel"
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+		wantCall    string // the reason the flow receives; "-" when it is not called
+		status      int
+		code        string
+	}{
+		{"no body", "", "", "cancel " + campID.String() + " ", 200, ""},
+		{"whitespace body without a media type", "", " \n", "cancel " + campID.String() + " ", 200, ""},
+		{"empty object", "application/json", `{}`, "cancel " + campID.String() + " ", 200, ""},
+		{"reason is trimmed", "application/json", `{"reason":"  wrong text \n"}`, "cancel " + campID.String() + " wrong text", 200, ""},
+		{"reason at the cap", "application/json", `{"reason":"` + strings.Repeat("ö", api.MaxReasonChars) + `"}`, "cancel " + campID.String() + " " + strings.Repeat("ö", api.MaxReasonChars), 200, ""},
+		{"reason too long", "application/json", `{"reason":"` + strings.Repeat("ö", api.MaxReasonChars+1) + `"}`, "-", 422, api.CodeInvalidRequest},
+		{"body without a media type", "", `{"reason":"x"}`, "-", 415, api.CodeUnsupportedMedia},
+		{"malformed", "application/json", `{"reason":`, "-", 400, api.CodeMalformedJSON},
+		{"unknown field", "application/json", `{"why":"x"}`, "-", 422, api.CodeInvalidRequest},
+		{"wrong type", "application/json", `{"reason":3}`, "-", 422, api.CodeInvalidRequest},
+		{"too large", "application/json", `{"reason":"` + strings.Repeat("a", api.MaxBodyBytes) + `"}`, "-", 413, api.CodePayloadTooLarge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeFlow{}
+			h, _ := newRouter(t, f)
+			rec := call(t, h, http.MethodPost, path, tt.contentType, tt.body)
+			calls := f.calls()
+			if tt.code != "" {
+				wantProblem(t, rec, tt.status, tt.code)
+				if len(calls) != 0 {
+					t.Errorf("the flow was called for a bad request: %q", calls)
+				}
+				return
+			}
+			if rec.Code != tt.status {
+				t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+			}
+			if len(calls) != 2 || calls[0] != tt.wantCall || calls[1] != "get "+campID.String() {
+				t.Errorf("calls = %q, want %q then get", calls, tt.wantCall)
+			}
+		})
+	}
+	for _, tt := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"not found", flow.ErrNotFound, 404, api.CodeNotFound},
+		{"completed or already cancelled", flow.ErrNotCancellable, 409, api.CodeNotCancellable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeFlow{cancel: func(context.Context, uuid.UUID, string) error { return tt.err }}
+			h, _ := newRouter(t, f)
+			wantProblem(t, call(t, h, http.MethodPost, path, "", ""), tt.status, tt.code)
+		})
 	}
 }

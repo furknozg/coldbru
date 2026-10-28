@@ -47,6 +47,14 @@ type (
 		Meta
 		Reason string `json:"reason" validate:"required"`
 	}
+	// CampaignConfirmed: the schedule was confirmed, the campaign is `scheduled`, and the confirmed
+	// event and the recipient batches were written to the outbox (D-074). RecipientCounts are
+	// messages per channel; a person on two channels (plan mode both) counts twice.
+	CampaignConfirmed struct {
+		Meta
+		RecipientCounts  Recipients `json:"recipient_counts" validate:"required"`
+		RecipientBatches int        `json:"recipient_batches" validate:"required"`
+	}
 	// StepOpened: a step opened, version 1 or a new version after a reopen.
 	StepOpened struct {
 		Meta
@@ -145,6 +153,7 @@ type (
 const (
 	TypeScreenResult      = "screen_result"
 	TypeCampaignCancelled = "campaign_cancelled"
+	TypeCampaignConfirmed = "campaign_confirmed"
 	TypeStepOpened        = "step_opened"
 	TypeStepApproved      = "step_approved"
 	TypeStepSuperseded    = "step_superseded"
@@ -162,6 +171,7 @@ const (
 // Type implementations.
 func (ScreenResult) Type() string      { return TypeScreenResult }
 func (CampaignCancelled) Type() string { return TypeCampaignCancelled }
+func (CampaignConfirmed) Type() string { return TypeCampaignConfirmed }
 func (StepOpened) Type() string        { return TypeStepOpened }
 func (StepApproved) Type() string      { return TypeStepApproved }
 func (StepSuperseded) Type() string    { return TypeStepSuperseded }

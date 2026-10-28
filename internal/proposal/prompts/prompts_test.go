@@ -135,7 +135,7 @@ func TestShippedPackages(t *testing.T) {
 func TestPlanAndSchedulePackages(t *testing.T) {
 	t.Parallel()
 	cp, sc := ChannelPlan(), Schedule()
-	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@1.0.0" {
+	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@1.1.0" {
 		t.Errorf("ids = %s, %s", cp.ID(), sc.ID())
 	}
 	for _, p := range []*Package{cp, sc} {
@@ -166,6 +166,24 @@ func TestPlanAndSchedulePackages(t *testing.T) {
 	for _, w := range []string{"time zone", "send_at is null for every language", "at least 5 minutes", "at most 30 days"} {
 		if !strings.Contains(sc.System, w) {
 			t.Errorf("schedule prompt lost %q", w)
+		}
+	}
+	// D-075: a named time applies to every language; the language of the brief is not an
+	// audience language; only an explicit restriction narrows it to a group.
+	for _, w := range []string{
+		"applies to every language of the audience",
+		"The language the brief is written in is NOT an audience language",
+		"explicitly restricts a time to a group of the audience",
+		"\"İngilizce konuşanlara akşam\"",
+		"in the language of the brief, whatever the language of the entry is",
+	} {
+		if !strings.Contains(sc.System, w) {
+			t.Errorf("schedule prompt lost the D-075 wording %q", w)
+		}
+	}
+	for _, w := range []string{"only for one language", "names a time only for one language", "unless the brief says the time is for everyone"} {
+		if strings.Contains(sc.System, w) {
+			t.Errorf("schedule prompt still has the old rule 3 wording %q", w)
 		}
 	}
 }

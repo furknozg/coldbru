@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/furknozg/coldbru/internal/platform/events"
+	"github.com/furknozg/coldbru/internal/platform/outbox"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
@@ -464,4 +466,64 @@ func (s *Service) Reopen(ctx context.Context, campaignID uuid.UUID, kind string)
 	}
 	s.enqueue(job{kind: jobFill, campaign: campaignID, step: opened.ID})
 	return stepInfo(opened), nil
+}
+
+// Confirm runs the Confirmer again for a campaign that is still `drafting`: the retry path after
+// Approve returned ErrConfirm (D-070, D-074). The Confirmer checks that the schedule step is
+// approved (ErrScheduleNotApproved) and that the plan reaches somebody (ErrNoRecipients). Errors:
+// ErrNotFound, ErrNotDrafting (also for a campaign that is already scheduled), and ErrConfirm
+// wrapping the Confirmer's own error.
+func (s *Service) Confirm(ctx context.Context, campaignID uuid.UUID) error {
+	camp, err := s.q.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return notFound(err)
+	}
+	if camp.Status != CampaignStatusDrafting {
+		return ErrNotDrafting
+	}
+	if err := s.confirm.Confirm(ctx, campaignID); err != nil {
+		return fmt.Errorf("%w: %w", ErrConfirm, err)
+	}
+	return nil
+}
+
+// DefaultCancelReason is the reason recorded when the marketer gives none.
+const DefaultCancelReason = "cancelled by the marketer"
+
+// Cancel cancels a campaign (D-033, D-074). A `drafting` campaign only changes status: no event
+// leaves the service, and a generation that is still running finds the campaign no longer a draft
+// and drops its result. A `scheduled` or `sending` campaign also writes evt.proposal.cancelled.v1
+// to the outbox in the same transaction, so that Notification stops sending. A `completed` or
+// already `cancelled` campaign is ErrNotCancellable. reason may be empty (DefaultCancelReason);
+// the caller limits its length. Subscribers get a campaign_cancelled event.
+func (s *Service) Cancel(ctx context.Context, campaignID uuid.UUID, reason string) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = DefaultCancelReason
+	}
+	return s.inTx(ctx, campaignID, func(t *txn, camp store.Campaign) error {
+		publish := false
+		switch camp.Status {
+		case CampaignStatusDrafting:
+		case CampaignStatusScheduled, CampaignStatusSending:
+			publish = true
+		default:
+			return ErrNotCancellable
+		}
+		if _, err := t.q.SetCampaignStatus(ctx, store.SetCampaignStatusParams{ID: camp.ID, Status: CampaignStatusCancelled}); err != nil {
+			return err
+		}
+		if publish {
+			env, err := events.New(EventTypeCancelled, EventVersion, EventProducer, camp.ID.String(),
+				CancelledData{CampaignID: camp.ID.String(), Reason: reason})
+			if err != nil {
+				return err
+			}
+			if _, err := outbox.Write(ctx, t.tx, env); err != nil {
+				return err
+			}
+		}
+		t.emit(CampaignCancelled{Meta: s.meta(camp.ID), Reason: reason})
+		return nil
+	})
 }
