@@ -1,0 +1,14 @@
+{
+  "prompts": [
+    {
+      "name": "screen",
+      "version": "1.0.0",
+      "sha256": "fe0dfe95c6c768c9cac6dc1912bc0b93cda9a51057c17fa52839b43e10ebfce4"
+    },
+    {
+      "name": "segment",
+      "version": "1.0.0",
+      "sha256": "d564e2b07d544480597c4a273222b3854f2bbe6de98e433ffe1233a6fa29ed90"
+    }
+  ]
+}

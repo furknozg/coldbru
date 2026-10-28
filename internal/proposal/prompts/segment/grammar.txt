@@ -1,0 +1,35 @@
+FILTER DSL (version 0.1)
+The DSL looks like JavaScript but is not JavaScript. An expression is a boolean condition over customer fields.
+
+Operators
+- Comparison: === (equal), !== (not equal), >, >=, <, <=. No coercion: a number field takes a number, a text field takes a quoted string.
+- Membership: field in ["a", "b"]. The list is non-empty, literals only, at most 100 items.
+- Logic: && (and), || (or), ! (not). Precedence from tight to loose: parentheses, !, comparisons and in, &&, ||. ! binds tighter than a comparison, so negate a comparison with parentheses: !(a === 1).
+- Reserved and rejected: ~=, ==, !=, comparing two fields, a literal on the left.
+
+Literals (always on the right-hand side)
+- Text: "İstanbul" or 'İstanbul'. Escapes are only \\ \" \'. No line breaks inside text.
+- Number: -?[0-9]+(\.[0-9]+)? with no exponent, no leading +, no underscores. Int fields take whole numbers, money (Decimal) fields at most two decimals.
+- Boolean: true, false. There is no null.
+- Time: ago("30d") or ago("12h") is a point in time relative to now: a positive whole number plus d (days) or h (hours). date("2026-01-31") is an absolute date. A Date or DateTime field accepts date() with every operator; ago() only with >, >=, <, <=.
+
+Relation predicates
+- relation.some(x => condition): at least one related record satisfies the condition.
+- relation.none(x => condition): no related record satisfies it.
+- relation.every(x => condition): every related record satisfies it (true when there are none).
+- x is a variable name you choose (one identifier, not a reserved word, not reused in a nested predicate). Every field of the related record is written with it: x.fieldName. Conditions inside one lambda must hold for the same record. Customer fields cannot be used inside a lambda body.
+
+Reserved words: some, none, every, in, true, false, ago, date.
+
+Size limits: at most 4096 bytes, 8 levels of nesting, 100 nodes.
+
+Error codes you may see in tool results
+- SYNTAX_ERROR: the text does not follow the grammar.
+- UNSUPPORTED_OPERATOR: ~=, ==, != or a field-to-field comparison.
+- UNSUPPORTED_EXPRESSION: a call or construct outside the DSL.
+- INVALID_RELATION_SCOPE: a customer field inside a lambda, or a lambda variable reused.
+- COMPLEXITY_LIMIT: the filter is too long, too deep or has too many items.
+- UNKNOWN_FIELD, UNKNOWN_RELATION: a name that is not in the catalog; suggestions list close names.
+- UNKNOWN_VALUE: a value outside a closed list or an unknown city; suggestions list valid values.
+- TYPE_MISMATCH: the operator or literal does not fit the field type.
+- EMPTY_AUDIENCE: the filter is valid but selects no reachable customer; loosen the conditions.

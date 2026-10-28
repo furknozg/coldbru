@@ -1,0 +1,8 @@
+# Prompt package screen (D-059, D-069): the injection pre-screen of a brief.
+name: screen
+version: 1.0.0
+model: claude-haiku-5-5
+effort: low
+system:
+  - system.txt
+output_schema: output.schema.json

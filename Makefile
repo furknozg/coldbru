@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql generate-catalog consent
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql generate-catalog generate-prompts consent
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -37,8 +37,8 @@ API_SPEC_SERVICES := proposal notification analytics mockprovider
 # Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051), then regenerates the
 # OpenAPI 3.1 spec of each service in API_SPEC_SERVICES into cmd/<svc>/apidocs/swagger.json (D-057),
 # gqlgen the Customer GraphQL server code from its schema (D-058), and the Proposal filter catalog
-# from that schema plus its metadata (D-044, D-066).
-generate: generate-sqlc generate-openapi generate-graphql generate-catalog
+# from that schema plus its metadata (D-044, D-066), and the prompt lock file (D-059).
+generate: generate-sqlc generate-openapi generate-graphql generate-catalog generate-prompts
 
 generate-sqlc:
 	@dirs=$$(find internal -name sqlc.yaml -exec dirname {} \;); \
@@ -68,6 +68,14 @@ generate-graphql:
 generate-catalog:
 	@echo "catalog gen: internal/proposal/catalog"
 	@go run ./internal/proposal/catalog/gen
+
+# Writes internal/proposal/prompts/prompts.lock.json: name, version and request-prefix sha256 of
+# every prompt package (D-059). Fails when a prompt changed but its manifest version did not; the
+# catalog is part of the segment prompt, so run generate-catalog first. A test fails when the
+# committed lock is stale.
+generate-prompts: generate-catalog
+	@echo "prompts gen: internal/proposal/prompts"
+	@go run ./internal/proposal/prompts/gen
 
 # Developer command: records an opt-in or opt-out through Customer's updateConsent, as the admin
 # caller, from inside the compose network (D-063, D-064). Docker must be on PATH and the stack up

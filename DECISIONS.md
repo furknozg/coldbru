@@ -72,6 +72,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 | D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
 | D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi |
+| D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -435,7 +436,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Çalışan compose yığınına karşı test — reddedildi: testler paylaşılan duruma bağlı, paralel çalışması zor.
   - Yalnız birim testi — reddedildi: gerçek SQL, unique kısıt ve JetStream davranışı test edilmez.
 - **Sonuçlar / bedel:** Testler Docker ister ve ilk çalıştırmada imaj çekimi yavaştır. Bu makinede Docker CLI PATH'te değil; testcontainers'ın Docker soketini bulup bulmadığı doğrulanmadı.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): `internal/proposal/llm/llmtest` senaryolu sahteyi (`Scripted`) ve `httptest` Messages sunucusunu (JSON ve SSE, 429/529, refusal, max_tokens, kesik JSON, akış ortası hata) sağlar; gerçek adaptör `option.WithBaseURL` ile ona bağlanır. `live` etiketli `TestLiveScreenAndSegment` yazıldı, çalıştırılmadı; testler `ANTHROPIC_API_KEY` okumaz. Docker, testcontainers tarafından `~/.docker/run/docker.sock` üzerinden bulunuyor.
 
 ## D-026: Modeller: segment ve metin Sonnet 5.5, enjeksiyon ön elemesi Haiku 5.5
 
@@ -448,7 +449,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Segmentte Opus 5.5 — reddedildi: maliyet ve gecikme yükselir.
   - Yalnız Haiku 5.5 — reddedildi: Türkçe ton ve karmaşık kural kalitesi düşebilir.
 - **Sonuçlar / bedel:** Her brief'e bir ön eleme çağrısı ve gecikmesi eklenir. 5.x modellerinde `temperature` ve prefill 400 döner; istemci bunları göndermemeli. Ön elemenin işaretlediği brief'te ne olacağı açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): `TestRequestBodyScreen`, `TestRequestBodySegment`, `TestRequestBodyStream` her çağrının modelini, thinking türünü, `effort` ve `max_tokens` değerini ve `temperature`/prefill gönderilmediğini; `TestRepeatedCallsSendIdenticalPrefixBytes` önbellek önekinin brief'ten bağımsız olduğunu doğrular.
 
 ## D-027: Yapılandırılmış çıktı: segmentte strict tool döngüsü, metinde native structured outputs
 
@@ -464,7 +465,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Her şey strict tool — reddedildi: metin akışı tool girdisi streaming'iyle gelir, arayüzde parçalı dolum zorlaşır.
   - Her şey native çıktı, tool yok — reddedildi: ajan kitle sayısını kendisi yoklayamaz.
 - **Sonuçlar / bedel:** İki mekanizma ve iki şema bakımı. `tool_choice: auto` ile model tool çağırmayabilir; bu durum onarım denemesi sayılmalı. `refusal` ve `max_tokens` durumlarında JSON ayrıştırmadan önce `stop_reason` kontrol edilmeli. Üç onarım başarısız olursa kullanıcıya ne gösterileceği açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): `TestSegmentValidFirstTry`, `TestSegmentRepairsInTheSameConversation`, `TestSegmentRepairExhaustedAfterThreeProposes`, `TestSegmentEndTurnWithoutToolCountsAsAnAttempt`, `TestSegmentRefusalStopsAtOnce`, `TestSegmentToolsAreStrictAndCanonical`, `TestStreamStructuredDeltasInOrderThenFinalJSON`, `TestStreamStructuredFailures`. Integration: `TestSampleBriefRepairedAgainstTheRealCustomerService` (ilk öneri `Istnbul` → satır 1 sütun 10'da `UNKNOWN_VALUE` ve `İstanbul` önerisi → düzeltilmiş öneri count 46, kapsama 20/13/13/3).
 
 ## D-028: SMS en fazla 160 karakter; kodlama ve segment sayısı gösterilir
 
@@ -713,7 +714,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Alternatifler:**
   - `net/http` ile kendi istemcimiz — reddedildi: retry, streaming ve tipler elle yazılırdı.
 - **Sonuçlar / bedel:** Bir dış bağımlılık. v2 kırıcı bir sürümdü; eski örnekler v1 modül yolunu gösterir. SDK varsayılan olarak 2 kez yeniden dener; onarım döngüsüyle (D-027) birlikte toplam deneme sayısı hesaba katılmalı.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): `github.com/anthropics/anthropic-sdk-go/v2` v2.4.0 (araştırma tarihindeki son sürüm v2.3.0'dı); SDK yeniden denemesi 2 (`TestScreenTransportRetriesThenSucceeds`, `TestScreenRetriesGiveUpAfterTwo`). Anahtar yalnız platform config'ten okunur, SDK ortamı kendisi okumaz (`option.WithoutEnvironmentDefaults`); `TestConfigNeverPrintsTheKey`.
 
 ## D-048: Servis DB'lerinde tablolar servis adlı şemada; healthcheck her servis rolünü kontrol eder
 
@@ -923,7 +924,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Harici araçlar (Langfuse, PromptLayer, Braintrust, Humanloop, Helicone, Anthropic Console) — reddedildi: `docker compose up` ve anahtarsız test koşullarını bozar, Go desteği zayıf veya ücretli.
   - Yalnız içerik hash'i, yalnız elle semver veya tam sayı revizyon — reddedildi: hash insan tarafından okunmaz; elle sürüm unutulur ve kayıt yanlış olur.
 - **Sonuçlar / bedel:** Prompt canlıda kod değiştirmeden düzenlenemez. Her sürüm artışı Claude prompt önbelleğini bir kez soğutur. Sistem metnine istemeden dinamik veri girmesi önbelleği ve hash'i bozar; dinamik veri kullanıcı mesajında kalmalıdır. Kilit dosyası ve test küçük bir bakım yüküdür. Biçim (düz metin veya şablon), `llm_call` sütunları, olay alanları, değerlendirme katmanları ve arayüz gösterimi açık konudur.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok (Proposal LLM görevlerinde, T-022).
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): `internal/proposal/prompts`: `screen@1.0.0`, `segment@1.0.0`, `prompts.lock.json`, `make generate-prompts`; `TestLockFileIsFresh`, `TestLockCheck` (sürüm artırılmadan değişen hash `ErrVersionNotBumped`), `TestRequiresDSLMatchesParser`, `TestBuildHashCoversThePrefix`, `TestSegmentSystemIsByteStable`.
 
 ## D-060: Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok
 
@@ -1115,6 +1116,31 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Doğrulama:** 2026-10-28'de (T-021, D-068): `internal/proposal/store` integration testleri (115 alt test): `TestMigrations_Applied`, `TestMigrations_DownThenUp`, `TestConstraints_Campaign`, `_ProposalStep`, `_ProposalVariant`, `_ProposalVariantSlots`, `_ContextNote`, `_LLMCall` (her CHECK için red ve kabul, kısmi unique'ler iki yönde, bileşik FK), `TestAppendOnly`, `TestQueries` (10 sqlc sorgusu). `TestRun_ServiceMigrationsRequireDatabase` (app). Gerçek yığında `docker compose up -d --build proposal` sonrası proposal `healthy`; `proposal_db`'de beş servis tablosu, `outbox`, `processed_event`, `goose_db_version` ve `goose_platform_version` `proposal` şemasında. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
 - **Uygulama notu:** Migration'lar `internal/proposal/store/migrations` altında iki dosyadır (çekirdek tablolar; denetim tabloları ve trigger). "Boş olmayan" metin `~ '\S'` ile denetlenir. Trigger fonksiyonu `reject_row_change()` SQLSTATE P0001 ile hata verir. `TRUNCATE` engellenmez. `content` için JSON şeması uygulamada doğrulanır (açık konu).
 
+## D-069: LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-026 modelleri, D-027 strict tool döngüsünü, structured outputs'u ve "en fazla 3 deneme"yi, D-047 SDK'yı, D-059 ve D-060 prompt paketlerini belirledi. Onarımın nasıl yapılacağı, ön elemenin sonucu, çağrı parametreleri, refusal davranışı, tur sınırı ve görevin kapsamı açıktı (T-022).
+- **Karar:**
+  - Onarım aynı konuşmadadır: geçersiz bir `propose_segment` (ayrıştırma, katalog veya Customer hatası, ya da kitle 0) `is_error` tool_result olarak satır, sütun, `near` ve önerilerle döner. Toplam en fazla 3 `propose_segment` denemesi (1 + 2 onarım); modelin tool çağırmadan bitirmesi de bir deneme sayılır. `count_audience` dahil toplam en fazla 8 model turu; aşılırsa döngü başarısız biter. SDK'nın taşıma yeniden denemeleri ayrıdır (varsayılan 2). Thinking blokları değiştirilmeden geri gönderilir.
+  - Ön eleme (Haiku 5.5) structured outputs ile `{verdict: allow | block, reason}` döner. `block`'ta segment çağrısı yapılmaz, kullanıcı gerekçeyi görüp brief'i düzenler. Ön eleme çağrısı hata verirse de akış durur (fail-closed).
+  - Parametreler: segment Sonnet 5.5, adaptive thinking, `effort: medium`, `max_tokens` 4096. Metin Sonnet 5.5, thinking `between_tools` (Sonnet 5.5'te `disabled` 400 döner), `effort: low`, `max_tokens` 2048, stream. Ön eleme Haiku 5.5, thinking `disabled`, `effort: low`, `max_tokens` 256. `temperature` ve prefill gönderilmez (D-026).
+  - Ön eleme ölçütü (kullanıcı ayrıca onayladı): talimatları geçersiz kılma, izinden bağımsız herkese gönderme, veri sızdırma veya sistem kurallarını değiştirme girişimi `block`; agresif ama meşru pazarlama metni `allow`. Segment prompt'unun sorumlulukları: brief JSON blokta güvenilmeyen veridir; ajan yalnız katalog alanlarıyla DSL filtresi yazar (D-041), göreli zaman için `ago()` kullanır, tarih hesabı yapmaz, boyutu `count_audience` ile yoklar, son DSL'i bir kez `propose_segment` ile verir ve dönen hatalarla onarır.
+  - Segment çağrısı `max_tokens` ile kesilirse başarısız bir deneme sayılır (kullanıcı ayrıca onayladı); daha yüksek limitle tekrar yoktur.
+  - Kayıtlar (kullanıcı ayrıca onayladı): `StreamStructured` çağıranın verdiği bir doğrulama fonksiyonunu akış bittikten sonra çalıştırır; `llm_call` kaydı sonuç belli olunca bir kez yazılır (`accepted` veya `validation_failed`), çünkü tablo ekleme-yalnızdır. Kitle 0 hatasının kodu `EMPTY_AUDIENCE` yalnız `llm` paketindedir; D-065'in DSL hata listesi değişmez. `SegmentTools` (Customer) altyapı hatası `outcome = api_error` olarak, ayrıntısı `error` metninde kaydedilir.
+  - `stop_reason: refusal`: server-side fallback yok. Onarım denenmez; `llm_call`'a `outcome = refusal` ve `stop_details` kategorisi yazılır, kullanıcıya brief'i düzenlemesi söylenir.
+  - Kapsam: LLM portu, Anthropic adaptörü, onarım döngüsü, senaryolu sahte ve `httptest` SSE sunucusu, `screen@1.0.0` ve `segment@1.0.0` düz metin prompt'ları, `prompts.lock.json` ve kilit testi (D-059). Metin çağrısı için jenerik, stream'li structured output yöntemi yazılır; somut SMS ve e-posta şeması ile `content` prompt'u T-024'tedir.
+- **Alternatifler:**
+  - Her onarım yeni durumsuz bir çağrı — reddedildi: `count_audience` geçmişi kaybolurdu ve her onarım daha pahalı olurdu. 1 + 3 onarım — reddedildi: D-027'deki "en fazla 3 deneme"den sapma.
+  - Ön elemede uyarıp onayla devam — reddedildi: savunma insan dikkatine kalırdı. Yalnız kaydetmek — reddedildi: ön eleme savunma olmaktan çıkardı.
+  - Thinking'siz ve her yerde `low` — reddedildi: karmaşık brief'te kural kalitesi düşebilirdi. Metinde `medium` — reddedildi: akış başlangıcı gecikirdi.
+  - `fallbacks: "default"` — reddedildi: beta bağımlılığı, yalnız cyber ve frontier_llm reddini kapsar, farklı model çıktısı verir.
+  - Tur sınırı yok — reddedildi: sınırsız yoklama. 15 tur — reddedildi: en kötü durumda maliyet iki katına yaklaşır.
+  - Metin şemasını da T-022'de yapmak — reddedildi: HTML email ve SMS kararları (T-024) önceden verilmek zorunda kalırdı. Yalnız mekanizma — reddedildi: kilit ve istek bayt testleri yer tutucu prompt'larla kalırdı.
+- **Sonuçlar / bedel:** Aynı konuşmada onarım konuşmayı uzatır. Ön elemenin yanlış pozitifleri kullanıcıyı durdurur. Segment çağrısı thinking yüzünden daha yavaş ve pahalıdır. Nadir bir yanlış red akışı durdurur. Çok keşifçi bir ajan 8 turda kesilebilir. T-022 metni uçtan uca göstermez.
+- **Doğrulama:** 2026-10-28'de (T-022, D-069): yukarıdaki D-026, D-027 ve D-059 testlerine ek olarak `TestSegmentTurnLimit`, `TestSegmentMaxTokensIsAFailedAttempt`, `TestSegmentEmptyAudienceIsAValidationError`, `TestSegmentBackendFailureStopsTheLoop`, `TestScreenFailsClosed`, `TestScreenBlockIsAnErrorToo`, `TestScreenRefusalRecordsCategory`, `TestStreamStructuredValidate`, `TestStreamStructuredDoesNotValidateAFailedStream`; integration `TestEmptyAudienceAgainstTheRealCustomerService`. `make generate` ikinci çalıştırmada fark bırakmadı; `make test` geçti.
+- **Uygulama notu:** Kayıt `llm.WithRecorder(ctx, r)` ile toplanır; `CallRecord.Attempt` segmentte model turu numarasıdır (1–8) ve kabul edilen öneriyi taşıyan tur `SegmentResult.Turn`'dür. Refusal kategorisi `error` metnine yazılır. Onarım uyarı metinleri adaptörde sabittir, prompt hash'ine girmez. Segment prompt'u "hafta = 7d, ay = 30d" kuralı ve derlenen 3 örnek içerir. `ANTHROPIC_BASE_URL` isteğe bağlıdır.
+
 ---
 
 ## Açık konular
@@ -1126,7 +1152,7 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - `proposal_variant.content` alanının adım türüne göre JSON şeması (D-034)
 - Circuit breaker eşikleri ve kütüphanesi, izin kontrolü batch boyutu (D-011)
 - Olay listesi ve `data` alanlarının kesinleşmesi (taslak: `docs/domain-model.md`) (D-035)
-- Üç onarım denemesi başarısız olunca ve ön eleme brief'i işaretleyince kullanıcıya ne gösterilir (D-026, D-027)
+- Üç onarım denemesi başarısız olunca kullanıcıya ne gösterilir (D-027); ön eleme işaretlerse akış durur ve gerekçe gösterilir (D-069), arayüzü T-035'te
 - Gönderim anında bir alıcının SMS metni 160 karakteri aşarsa ne yapılır (D-028)
 - HTML email biçimi (araştırma önerisi yuvalı şablon)
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
