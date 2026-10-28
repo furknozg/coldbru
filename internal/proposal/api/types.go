@@ -46,3 +46,9 @@ type ReopenRequest struct {
 	// Kind is the approved step to revise; it and every later step are replaced.
 	Kind string `json:"kind" enums:"audience,channel_plan,content,schedule" example:"channel_plan" validate:"required"`
 }
+
+// CancelRequest is the optional body of POST /campaigns/{id}/cancel.
+type CancelRequest struct {
+	// Reason is why the campaign is cancelled; it is recorded and sent to Notification. At most 1000 characters. Without one, "cancelled by the marketer" is used.
+	Reason string `json:"reason,omitempty" example:"Wrong discount in the text." maxLength:"1000"`
+}

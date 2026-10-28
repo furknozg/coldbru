@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,21 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// decodeOptional is decode for a body that may be absent: an empty body leaves dst as it is and is
+// accepted without a media type; anything else must be valid JSON as for decode.
+func decodeOptional(w http.ResponseWriter, r *http.Request, dst any) bool {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
+	if err != nil {
+		bodyError(w, r, err)
+		return false
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return true
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	return decode(w, r, dst)
 }
 
 // bodyError answers a decoding error.

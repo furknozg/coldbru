@@ -24,6 +24,9 @@ const (
 	CodeCampaignNotDrafting = "campaign_not_drafting"
 	CodeCampaignHasSteps    = "campaign_has_steps"
 	CodeStepNotApproved     = "step_not_approved"
+	CodeScheduleNotApproved = "schedule_not_approved"
+	CodeNoRecipients        = "no_recipients"
+	CodeNotCancellable      = "campaign_not_cancellable"
 	CodeInvalidContent      = "invalid_content"
 	CodeInvalidInput        = "invalid_input"
 	CodeInvalidRequest      = "invalid_request"
@@ -70,6 +73,9 @@ var specs = map[string]problemSpec{
 	CodeCampaignNotDrafting: {http.StatusConflict, "The campaign is not a draft"},
 	CodeCampaignHasSteps:    {http.StatusConflict, "The campaign already has steps"},
 	CodeStepNotApproved:     {http.StatusConflict, "The step is not approved"},
+	CodeScheduleNotApproved: {http.StatusConflict, "The schedule is not approved"},
+	CodeNoRecipients:        {http.StatusConflict, "The plan reaches no recipients"},
+	CodeNotCancellable:      {http.StatusConflict, "The campaign cannot be cancelled"},
 	CodeInvalidContent:      {http.StatusUnprocessableEntity, "The content is invalid"},
 	CodeInvalidInput:        {http.StatusUnprocessableEntity, "The input is invalid"},
 	CodeInvalidRequest:      {http.StatusUnprocessableEntity, "The request body is invalid"},
@@ -122,6 +128,12 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 		fail(w, r, CodeCampaignHasSteps, "The campaign already has steps; regenerate its open step instead.")
 	case errors.Is(err, flow.ErrNotApproved):
 		fail(w, r, CodeStepNotApproved, "Only an approved step can be reopened.")
+	case errors.Is(err, flow.ErrScheduleNotApproved):
+		fail(w, r, CodeScheduleNotApproved, "The schedule step is not approved; approve every language's send time first.")
+	case errors.Is(err, flow.ErrNoRecipients):
+		fail(w, r, CodeNoRecipients, "The approved plan reaches nobody right now; reopen the audience or the channel plan.")
+	case errors.Is(err, flow.ErrNotCancellable):
+		fail(w, r, CodeNotCancellable, "The campaign is completed or already cancelled.")
 	case errors.Is(err, flow.ErrInvalidInput):
 		fail(w, r, CodeInvalidInput, strings.TrimPrefix(err.Error(), "flow: "))
 	case errors.Is(err, flow.ErrConfirm):

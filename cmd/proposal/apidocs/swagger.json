@@ -27,6 +27,17 @@
                 ],
                 "type": "object"
             },
+            "api.CancelRequest": {
+                "properties": {
+                    "reason": {
+                        "description": "Reason is why the campaign is cancelled; it is recorded and sent to Notification. At most 1000 characters. Without one, \"cancelled by the marketer\" is used.",
+                        "example": "Wrong discount in the text.",
+                        "maxLength": 1000,
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "api.ContextRequest": {
                 "properties": {
                     "body": {
@@ -73,6 +84,9 @@
                 "properties": {
                     "campaign_cancelled": {
                         "$ref": "#/components/schemas/flow.CampaignCancelled"
+                    },
+                    "campaign_confirmed": {
+                        "$ref": "#/components/schemas/flow.CampaignConfirmed"
                     },
                     "content_delta": {
                         "$ref": "#/components/schemas/flow.ContentDelta"
@@ -122,6 +136,7 @@
                 },
                 "required": [
                     "campaign_cancelled",
+                    "campaign_confirmed",
                     "content_delta",
                     "content_reset",
                     "context_added",
@@ -254,6 +269,31 @@
                     "at",
                     "campaign_id",
                     "reason"
+                ],
+                "type": "object"
+            },
+            "flow.CampaignConfirmed": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "recipient_batches": {
+                        "type": "integer"
+                    },
+                    "recipient_counts": {
+                        "$ref": "#/components/schemas/flow.Recipients"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "recipient_batches",
+                    "recipient_counts"
                 ],
                 "type": "object"
             },
@@ -571,6 +611,20 @@
                     "created_at",
                     "id"
                 ],
+                "type": "object"
+            },
+            "flow.Recipients": {
+                "properties": {
+                    "email": {
+                        "type": "integer"
+                    },
+                    "sms": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    }
+                },
                 "type": "object"
             },
             "flow.ScreenResult": {
@@ -1326,6 +1380,204 @@
                 ]
             }
         },
+        "/campaigns/{id}/cancel": {
+            "post": {
+                "description": "Cancels a campaign that is a draft, scheduled or sending. A draft only changes status; a scheduled or sending campaign also queues the cancelled event so that Notification stops sending. The body, and the reason in it, are optional. Returns the updated campaign.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.CancelRequest",
+                                "summary": "request",
+                                "description": "The reason"
+                            }
+                        }
+                    },
+                    "description": "The reason"
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "campaign_not_cancellable: the campaign is completed or already cancelled"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Reason longer than 1000 characters"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Cancel a campaign",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}/confirm": {
+            "post": {
+                "description": "Retries the confirmation of a campaign whose schedule step is approved but which is still a draft, for example after the automatic confirmation failed (a Customer outage). It fetches the recipients, assigns each person their channel(s) under the approved plan and, in one transaction, sets the campaign to `scheduled` and queues the confirmed event and the recipient batches for NATS. Returns the updated campaign.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "campaign_not_drafting: already scheduled, cancelled or sent; schedule_not_approved; no_recipients: the plan reaches nobody now"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "confirm_failed: Customer or the database failed; nothing changed, try again"
+                    }
+                },
+                "summary": "Confirm a campaign",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
         "/campaigns/{id}/context": {
             "post": {
                 "description": "Records a note on the open step. Its draft and rejected variants are replaced and regenerated with the note (202); approved variants stay.",
@@ -1444,7 +1696,7 @@
         },
         "/campaigns/{id}/events": {
             "get": {
-                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nThe response is not JSON; the schema below only documents the data of each event.",
+                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nLifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches) and `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer).\n\nThe response is not JSON; the schema below only documents the data of each event.",
                 "parameters": [
                     {
                         "description": "Campaign id",

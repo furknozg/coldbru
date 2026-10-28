@@ -77,6 +77,8 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi |
 | D-072 | Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock | Takip ve altyapı | Kabul edildi |
 | D-073 | DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof | Test ve kapsam | Kabul edildi |
+| D-074 | Onay: alıcılar onay anında Customer'dan, saklanmaz; olay ve 500'lük RECIPIENTS batch'leri tek outbox transaction'ında; cancel ve confirm uçları | Gönderim | Kabul edildi |
+| D-075 | Zamanlama prompt'u schedule@1.1.0: brief'teki zaman tüm dillere; konum bazlı zamanlama T-043'te, T-027'den önce | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -545,7 +547,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kampanya durumu adımı yansıtır (`awaiting_audience` …) — reddedildi: aynı bilgi iki yerde tutulur.
   - Kampanya durumu saklanmaz, sorguyla türetilir — reddedildi: teslimat durumu başka serviste, servisler arası sorgu gerekirdi.
 - **Sonuçlar / bedel:** `scheduled → sending → completed` geçişleri Notification'dan gelen olaylarla Proposal'da güncellenir; arada eventual-consistency penceresi vardır. Bu olayların adları ve içerikleri `docs/domain-model.md`'de taslaktır.
-- **Doğrulama:** 2026-10-28'de (T-023, D-070): adım sırası ve `open → approved → superseded` geçişleri `internal/proposal/flow`'da; `TestSampleBriefEndToEnd`, `TestConcurrentApprovalsOpenTheNextStepOnce`, `TestReopenSupersedesTheStepAndEveryLaterOne`. Kampanya `drafting → cancelled` (ön eleme) burada; `scheduled`, `sending`, `completed` T-026 ve Notification olaylarıyla.
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): adım sırası ve `open → approved → superseded` geçişleri `internal/proposal/flow`'da; `TestSampleBriefEndToEnd`, `TestConcurrentApprovalsOpenTheNextStepOnce`, `TestReopenSupersedesTheStepAndEveryLaterOne`. Kampanya `drafting → cancelled` (ön eleme) burada. T-026'da (D-074) `drafting → scheduled` onayda ve `drafting | scheduled | sending → cancelled` iptalde doğrulandı; `sending` ve `completed` Notification olaylarıyla gelecek.
 
 ## D-034: Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK
 
@@ -1249,6 +1251,42 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Compose'u değiştirmemek veya Prometheus + Grafana — reddedildi. Yalnız rapor script'i veya Analytics fiyat sütunu — reddedildi. Yalnız `llm_*` veya hiç metrik — reddedildi. Pyroscope/Parca — reddedildi.
 - **Sonuçlar / bedel:** DSL ile JSON'un token farkı canlı deneyden önce yalnız bayt düzeyinde bilinir. Canlı deney para harcar ve elle başlatılır. Compose dosyası bir profil kadar büyür. Fiyat değişince yapılandırma güncellenir. Metriklerde etiket kardinalitesine dikkat edilmelidir. Seed'in 1000 kullanıcıyla SQL zamanlaması için anlamsız olduğu, seed ölçeği açık konusuna bağlıdır.
 - **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (araştırma: `docs/research/06-dsl-benchmarking.md`).
+
+## D-074: Onay: alıcılar onay anında Customer'dan, saklanmaz; olay ve 500'lük RECIPIENTS batch'leri tek outbox transaction'ında; cancel ve confirm uçları
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** Gönderim
+- **Bağlam:** D-010 alıcıların Proposal'dan kişi başına atanmış kanalla RECIPIENTS work-queue'suna gitmesini, D-006 ve D-054 yayının outbox ile yapılmasını, D-033 `drafting → scheduled` geçişini ve iptali, D-070 onayın zamanlama adımını kapatan `Approve` sonrasında `Confirmer` ile yapılmasını belirledi. Platform outbox'ı (`outbox.Write`) yalnız `evt.<servis>.<olay>.v<n>` konulu olay zarfı yazabiliyordu. Alıcı listesinin ne zaman alınacağı ve saklanıp saklanmayacağı, batch ve olay biçimi, iptal ve başarısız onayın yolu açıktı (T-026).
+- **Karar:**
+  - Platform outbox'ına konu verilebilen bir yazım eklenir (`WriteMessage(tx, subject, payload)`; tablo değişmez). Kampanyanın `scheduled` olması, `evt.proposal.confirmed.v1` ve tüm `recipients.<campaign_id>` batch'leri tek transaction'da yazılır; relay hepsini taşır.
+  - Alıcı listesi zamanlama onaylanınca Customer'dan sayfa sayfa (1000) alınır ve onaylı plana göre her kişiye kanal atanır (D-010). Liste `proposal_db`'de ayrı bir tabloda saklanmaz; yalnız outbox mesajlarının payload'ında bulunur.
+  - Batch: `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, channel, contact}]}`, en fazla 500 alıcı; "iki kanal" modunda kişi kanal başına bir kez yer alır. Olay `data`'sı: `{campaign_id, schedules[{language, send_at}], messages[{language, channel, content}], cta_url, recipient_batches, recipient_counts}`; Notification metni olaydan çizer (D-071 `internal/content`).
+  - `POST /campaigns/{id}/cancel`: `drafting`'te yalnız durum `cancelled` olur; `scheduled` veya `sending`'de ayrıca `evt.proposal.cancelled.v1` outbox ile yayınlanır (D-033). `POST /campaigns/{id}/confirm`: zamanlama onaylı ama kampanya hâlâ `drafting` ise onayı yeniden dener (D-070'teki yeniden deneme yolu). Onay anında alıcı sayısı 0 ise 409 döner.
+  - Kullanıcı ayrıca onayladı: onay anında kitle değişmişse (`ago`, D-039) onaylı metni veya zamanlaması olmayan dil-kanal çiftine düşen alıcılar düşürülür, loglanır ve sayılara girmez. Olayda `send_at: null` Notification için "olayı işlediği anda hemen gönder" demektir. Proposal'ın havuzu compose'da `pool_max_conns=16`'dır (D-020: havuz ayarları URL'den).
+  - Kullanıcı ayrıca onayladı: başarılı onayda SSE'ye `campaign_confirmed {recipient_counts, recipient_batches}` olayı gider (D-072 olay listesine ekleme). Taslak kampanya iptal edilince süren üretimin sonucu atılır ve yeni üretim başlamaz.
+- **Alternatifler:**
+  - Batch'leri commit'ten sonra doğrudan yayınlamak — reddedildi: çökmede olay gitmiş ama batch'ler eksik kalabilirdi.
+  - `campaign_recipient` tablosu — reddedildi: `proposal_db`'de kişisel veri ve yeni şema.
+  - 1000'lik batch ve yalnız id taşıyan olay — reddedildi: Notification metin için Proposal'a senkron bağımlı olurdu (D-006).
+  - Yalnız cancel — reddedildi: başarısız onay zamanlamanın yeniden onaylanmasını gerektirirdi.
+- **Sonuçlar / bedel:** Platform outbox API'si genişler. Outbox satırları silinmediği için (D-054) alıcıların ad ve iletişim bilgisi yayınlanmış payload'larda kalır. Önizleme ile onay arasında kitle değişebilir (`ago`, D-039). Olay içeriği büyüktür. İki uç daha eklenir.
+- **Doğrulama:** 2026-10-28'de (T-026): `internal/proposal/confirm` integration testleri (gerçek Postgres, Customer handler'ı, NATS ve relay): örnek brief REST ile onaylanınca kampanya `scheduled`; EVENTS'te tek `evt.proposal.confirmed.v1` (33 e-posta / 13 SMS / 46, 3 metin, `utm_campaign`'li `cta_url`); RECIPIENTS'te 46 alıcılı tek batch, kanallar Customer'ın gerçek uygunluğuyla aynı; ikinci onay yazmaz; 5 eşzamanlı onay tek kez yazar; Customer 500 → 502, boş kitle → 409 `no_recipients`, ardından `POST /confirm` onaylar; zamanlanmış kampanyanın iptali `evt.proposal.cancelled.v1` yayınlar, taslak iptali hiçbir şey yayınlamaz. Outbox: ham batch satırının id'si `Nats-Msg-Id` ile aynıdır ve payload'a id eklenmez. Birim: `Assign` tüm modlar, `Batches` 0/1/499/500/501/1000/1001. Canlı yığında (`LLM_MODE=mock`) aynı akış: `scheduled`, EVENTS'te onay olayı, RECIPIENTS'te 46 alıcılı batch, `POST /cancel` sonrası `evt.proposal.cancelled.v1`. `make test` geçti.
+- **Uygulama notu:** Ham mesaj ile olay zarfı konu ad alanından ayrılır: `WriteMessage` `evt.` ile başlayan konuyu reddeder, relay yalnız `evt.` satırlarının payload'ına id ekler; payload `jsonb` olduğu için normalize edilmiş JSON yayınlanır. Alıcılar transaction dışında çekilir; transaction içinde kampanya satırı kilitlenir ve onaylı adımlar yeniden okunur, araya bir yeniden açma girdiyse hiçbir şey yazılmadan 502 döner. Boş iptal gerekçesi "cancelled by the marketer" olur. Tamamlanmış veya iptal edilmiş kampanyanın iptali 409 `campaign_not_cancellable` döner. `messages[].content` saklı varyant JSON'unun kendisidir.
+
+## D-075: Zamanlama prompt'u schedule@1.1.0: brief'teki zaman tüm dillere; konum bazlı zamanlama T-043'te, T-027'den önce
+
+- **Durum:** Kabul edildi · 2026-10-28
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Gerçek modelle (Haiku 5.5) "… Yarın Sabah'a schedule la" brief'i `tr` için yarın 09:00 (İstanbul), `en` için `null` (hemen) üretti. Sebep `schedule@1.0.0`'ın 3. kuralıydı ("brief bir zamanı yalnız bir dil için belirtirse…"): model brief'in yazıldığı dili kitle dili saydı. Bu kural D-070'te onaylanan sorumluluklarda yoktu, prompt yazılırken eklenmişti. Ayrıca D-070'in dil → saat dilimi eşlemesi (tr → Europe/Istanbul, en → Europe/London) örnek brief'te yanlıştır: kitle tamamen İstanbul'dadır, `en` konuşanlar da orada yaşar. Kullanıcı zamanlamanın dil yerine konuma (bölge, saat dilimi) dayanmasını istedi: brief bölgeleri belirtiyorsa (ör. İstanbul'da x, İtalya'da y saatinde) ona göre, belirtmiyorsa konum bazlı gerekçeyle.
+- **Karar:**
+  - Ara çözüm `schedule@1.1.0`: brief'te veya notlarda geçen zaman kitlenin tüm dillerine uygulanır; brief'in yazıldığı dil bir kitle dili sayılmaz; yalnız brief açıkça bir kitle grubunu sınırlarsa (ör. "İngilizce konuşanlara akşam") o gruba uygulanır. Gerekçe her girdide brief'in dilindedir.
+  - Konum bazlı zamanlama yeni görev T-043'tür ve T-027'den (notification_db) önce yapılır. Etki alanı: Customer GraphQL'e saat dilimi kırılımı ve `Recipient.timezone` (D-058 sözleşmesine ekleme), zamanlama yuvaları (D-034 CHECK ve olası migration, kodlama kuralı 7), schedule prompt'unun saat dilimlerini kitlenin konumundan alması, `evt.proposal.confirmed.v1` `schedules` ve batch alanları, Notification zamanlama konuları. D-009'un zamanlama kısmı ("alıcının yerel saati reddedildi") ve D-070'in dil → saat dilimi eşlemesi o görevde yeniden karara bağlanır; ayrıntılar orada sorulur.
+- **Alternatifler:**
+  - 3. kuralı kaldırmak — reddedildi: dil bazlı farklı saat isteyen brief'ler tek saate inerdi.
+  - Prompt'u T-043'e kadar olduğu gibi bırakmak — reddedildi: aynı çelişki tekrarlanırdı.
+  - Konum bazlı zamanlamayı Notification'dan sonra veya T-026 içinde yapmak — reddedildi: Notification'ın şeması sonradan değişirdi / T-026 büyürdü.
+- **Sonuçlar / bedel:** Kısa ömürlü bir prompt sürümü ve önbelleğin bir kez soğuması. T-043'e kadar saat dilimi hâlâ dilden türetilir; İstanbul'daki `en` kitle Londra saatiyle zamanlanır. T-027 bir görev gecikir.
+- **Doğrulama:** 2026-10-28'de: `schedule@1.1.0` (`internal/proposal/prompts/schedule/system.txt`), kilit yeniden üretildi; `TestPlanAndSchedulePackages` yeni 3. kuralı ve gerekçe kuralını arar, eski "only for one language" ifadesinin kalmadığını doğrular; `make test` geçti. Gerçek modelle aynı brief yeniden denenmedi (ücretli çağrı).
 
 ---
 

@@ -32,6 +32,7 @@ type EventCatalog struct {
 	Snapshot          flow.CampaignView      `json:"snapshot" validate:"required"`
 	ScreenResult      flow.ScreenResult      `json:"screen_result" validate:"required"`
 	CampaignCancelled flow.CampaignCancelled `json:"campaign_cancelled" validate:"required"`
+	CampaignConfirmed flow.CampaignConfirmed `json:"campaign_confirmed" validate:"required"`
 	StepOpened        flow.StepOpened        `json:"step_opened" validate:"required"`
 	StepApproved      flow.StepApproved      `json:"step_approved" validate:"required"`
 	StepSuperseded    flow.StepSuperseded    `json:"step_superseded" validate:"required"`
@@ -55,6 +56,8 @@ type EventCatalog struct {
 //	@Description	The server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.
 //	@Description
 //	@Description	Events of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.
+//	@Description
+//	@Description	Lifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches) and `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer).
 //	@Description
 //	@Description	The response is not JSON; the schema below only documents the data of each event.
 //	@Tags			events

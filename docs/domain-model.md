@@ -351,7 +351,7 @@ Analytics bir olayı birden çok kez alabilir. Bu yüzden `processed_event` dedu
 | Stream | Saklama | Konular | İçerik |
 |---|---|---|---|
 | `EVENTS` | limits, 7 gün | `evt.>` | Servisler arası olaylar; servis başına durable tüketici |
-| `RECIPIENTS` | work-queue | `recipients.>`; kampanya başına alt konu `recipients.<campaign_id>` taslak | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
+| `RECIPIENTS` | work-queue | `recipients.>`; kampanya başına alt konu `recipients.<campaign_id>` (D-074) | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
 | `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.>` ve `fire.>`; `sched.<campaign_id>.<language>` → `fire.<campaign_id>.<language>` biçimi taslak | Dil başına tek zamanlama; tetiklenince hedef konuya ileti düşer |
 | `SEND` | work-queue | `send.sms`, `send.email` | Teslimat başına ileti, `{delivery_id}` |
 
@@ -381,15 +381,15 @@ Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, 
 
 | Konu | Üretici → tüketici | `data` (taslak) |
 |---|---|---|
-| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, send_at}]`, `messages[{language, channel, content}]`, `recipient_batches` |
-| `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason` |
+| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, send_at}]` (`null` = hemen), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
+| `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason`; yalnız `scheduled` veya `sending` kampanyanın iptalinde (D-074) |
 | `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call` satırı: `id`, `campaign_id`, `model`, `purpose`, token sayıları |
 | `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `language`, `started_at` |
 | `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, kanal ve durum sayıları, `sms_segments` |
 
-Alıcı batch'i (`RECIPIENTS`, taslak): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, channel, contact}]}`. NATS'in 1 MB ileti sınırı batch boyutunu belirler (D-008'den korunan bedel).
+Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
 
-Alıcı listesi Proposal'dan geçer. Proposal listeyi Customer GraphQL'inden alır ve onaylı kanal planına göre her kişiye kanal atar (D-010). Listenin hangi anda alınacağı ve Proposal'da kalıcı saklanıp saklanmayacağı açık; aşağıdaki akış zamanlama onayından sonrasını varsayar.
+Alıcı listesi Proposal'dan geçer. Proposal listeyi Customer GraphQL'inden alır ve onaylı kanal planına göre her kişiye kanal atar (D-010). Liste zamanlama onaylanınca alınır ve Proposal'da ayrı bir tabloda saklanmaz; olay ve batch'ler tek outbox transaction'ında yazılır (D-074).
 
 ## 7. Uçtan uca akış
 
@@ -432,5 +432,4 @@ DECISIONS.md'nin "Açık konular" listesine ek olarak bu belgede taslak kalanlar
 - `notification_db` ve `analytics_db` tablolarının kolon listeleri ve kısıtları (migration yazılırken).
 - `proposal_variant.content` şemaları; HTML email gövde biçimi.
 - Olay `data` alanları ve `RECIPIENTS` / `SCHEDULES` konu adları.
-- Proposal'ın alıcı listesini hangi anda aldığı ve kalıcı saklayıp saklamayacağı.
 - Mock provider'ın idempotency önbelleğinin bellekte mi tutulacağı.

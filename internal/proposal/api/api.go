@@ -46,6 +46,8 @@ type Flow interface {
 	Reopen(ctx context.Context, campaignID uuid.UUID, kind string) (flow.StepInfo, error)
 	RegenerateCampaign(ctx context.Context, campaignID uuid.UUID) error
 	Regenerate(ctx context.Context, stepID uuid.UUID) error
+	Confirm(ctx context.Context, campaignID uuid.UUID) error
+	Cancel(ctx context.Context, campaignID uuid.UUID, reason string) error
 	CampaignOfVariant(ctx context.Context, variantID uuid.UUID) (uuid.UUID, error)
 	CampaignOfStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	// Hub is the event hub the event stream subscribes to.
@@ -109,6 +111,8 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/campaigns/{id}/context", h.addContext)
 	r.Post("/campaigns/{id}/reopen", h.reopen)
 	r.Post("/campaigns/{id}/regenerate", h.regenerateCampaign)
+	r.Post("/campaigns/{id}/confirm", h.confirm)
+	r.Post("/campaigns/{id}/cancel", h.cancel)
 	r.Post("/variants/{id}/approve", h.approve)
 	r.Post("/variants/{id}/reject", h.reject)
 	r.Post("/variants/{id}/edit", h.edit)

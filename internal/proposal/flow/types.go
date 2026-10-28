@@ -36,6 +36,9 @@ func kindIndex(kind string) int {
 // Campaign, step and variant statuses (D-033, D-068).
 const (
 	CampaignStatusDrafting  = "drafting"
+	CampaignStatusScheduled = "scheduled"
+	CampaignStatusSending   = "sending"
+	CampaignStatusCompleted = "completed"
 	CampaignStatusCancelled = "cancelled"
 
 	StepStatusOpen       = "open"

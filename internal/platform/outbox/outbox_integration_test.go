@@ -26,7 +26,10 @@ import (
 	"github.com/furknozg/coldbru/internal/platform/outbox"
 )
 
-const streamName = "EVENTS"
+const (
+	streamName     = "EVENTS"
+	recipientsName = "RECIPIENTS"
+)
 
 var (
 	baseDSN   string
@@ -88,9 +91,10 @@ func run(m *testing.M) int {
 
 // env is one test's isolated database (platform migrations applied) and EVENTS stream.
 type env struct {
-	pool   *pgxpool.Pool
-	js     jetstream.JetStream
-	stream jetstream.Stream
+	pool       *pgxpool.Pool
+	js         jetstream.JetStream
+	stream     jetstream.Stream
+	recipients jetstream.Stream // work-queue stream of raw messages, as in infra/nats/streams
 }
 
 func newEnv(t *testing.T) *env {
@@ -132,7 +136,18 @@ func newEnv(t *testing.T) *env {
 			t.Errorf("delete stream: %v", err)
 		}
 	})
-	return &env{pool: pool, js: js, stream: stream}
+	recipients, err := js.CreateStream(ctx, jetstream.StreamConfig{
+		Name: recipientsName, Subjects: []string{"recipients.>"}, Retention: jetstream.WorkQueuePolicy,
+	})
+	if err != nil {
+		t.Fatalf("create recipients stream: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := js.DeleteStream(context.WithoutCancel(ctx), recipientsName); err != nil {
+			t.Errorf("delete recipients stream: %v", err)
+		}
+	})
+	return &env{pool: pool, js: js, stream: stream, recipients: recipients}
 }
 
 func discardLogger() *slog.Logger {
@@ -377,6 +392,160 @@ func TestWrite_InvalidEnvelope(t *testing.T) {
 	_, err = outbox.Write(ctx, tx, events.Envelope{Type: "Bad Type", Version: 1})
 	if err == nil {
 		t.Fatal("Write() error = nil, want subject validation error")
+	}
+}
+
+// writeRaw stores a raw message in its own transaction and returns the outbox row id.
+func writeRaw(t *testing.T, pool *pgxpool.Pool, subject, payload string, commit bool) string {
+	t.Helper()
+	ctx := t.Context()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	id, err := outbox.WriteMessage(ctx, tx, subject, []byte(payload))
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("WriteMessage() error = %v", err)
+	}
+	if commit {
+		err = tx.Commit(ctx)
+	} else {
+		err = tx.Rollback(ctx)
+	}
+	if err != nil {
+		t.Fatalf("finish tx: %v", err)
+	}
+	return id
+}
+
+func recipientsMsgCount(t *testing.T, e *env) uint64 {
+	t.Helper()
+	info, err := e.recipients.Info(t.Context())
+	if err != nil {
+		t.Fatalf("recipients stream info: %v", err)
+	}
+	return info.State.Msgs
+}
+
+func TestRelay_PublishesEnvelopesAndRawMessages(t *testing.T) {
+	e := newEnv(t)
+	const subject = "recipients.0199f3a1-0000-7000-8000-000000000001"
+	// Written in one transaction, as the confirmer does: an envelope and two raw messages.
+	ctx := t.Context()
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	env1, err := events.New("proposal.confirmed", 1, "test", "corr-1", map[string]int{"n": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evID, err := outbox.Write(ctx, tx, env1)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	rawIDs := make([]string, 2)
+	payloads := []string{`{"batch_no": 1, "batch_count": 2}`, `{"batch_no": 2, "batch_count": 2}`}
+	for i, p := range payloads {
+		if rawIDs[i], err = outbox.WriteMessage(ctx, tx, subject, []byte(p)); err != nil {
+			t.Fatalf("WriteMessage() error = %v", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	startRelay(t, &outbox.Relay{Pool: e.pool, JS: e.js, Logger: discardLogger(), PollInterval: 100 * time.Millisecond})
+	eventually(t, 5*time.Second, "envelope and raw messages on their streams", func() bool {
+		return streamMsgCount(t, e) == 1 && recipientsMsgCount(t, e) == 2
+	})
+
+	// The envelope still gets its id added.
+	msg, err := e.stream.GetMsg(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetMsg() error = %v", err)
+	}
+	var got events.Envelope
+	if err := json.Unmarshal(msg.Data, &got); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	if got.ID != evID || msg.Header.Get(jetstream.MsgIDHeader) != evID {
+		t.Errorf("envelope id = %q, Nats-Msg-Id = %q, want both %q", got.ID, msg.Header.Get(jetstream.MsgIDHeader), evID)
+	}
+
+	// A raw message is the stored payload: no id added, Nats-Msg-Id is the outbox row id. Order is
+	// not part of the contract, so find each message by its batch number.
+	seen := map[int]bool{}
+	for seq := uint64(1); seq <= 2; seq++ {
+		msg, err := e.recipients.GetMsg(ctx, seq)
+		if err != nil {
+			t.Fatalf("GetMsg(%d) error = %v", seq, err)
+		}
+		if msg.Subject != subject {
+			t.Errorf("subject = %q, want %q", msg.Subject, subject)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(msg.Data, &body); err != nil {
+			t.Fatalf("unmarshal raw message %s: %v", msg.Data, err)
+		}
+		if _, hasID := body["id"]; hasID || len(body) != 2 {
+			t.Errorf("raw message %s: want exactly batch_no and batch_count, no id", msg.Data)
+		}
+		n := int(body["batch_no"].(float64))
+		seen[n] = true
+		if want := rawIDs[n-1]; msg.Header.Get(jetstream.MsgIDHeader) != want {
+			t.Errorf("batch %d Nats-Msg-Id = %q, want the outbox row id %q", n, msg.Header.Get(jetstream.MsgIDHeader), want)
+		}
+	}
+	if !seen[1] || !seen[2] {
+		t.Errorf("batches seen = %v, want 1 and 2", seen)
+	}
+	eventually(t, 5*time.Second, "all rows published", func() bool {
+		return isPublished(t, e, evID) && isPublished(t, e, rawIDs[0]) && isPublished(t, e, rawIDs[1])
+	})
+}
+
+func TestRelay_RawRepublishIsDeduplicated(t *testing.T) {
+	e := newEnv(t)
+	id := writeRaw(t, e.pool, "recipients.c1", `{"a":1}`, true)
+	r := &outbox.Relay{Pool: e.pool, JS: e.js, Logger: discardLogger(), PollInterval: 100 * time.Millisecond}
+
+	stop := startRelay(t, r)
+	eventually(t, 5*time.Second, "first publish", func() bool { return isPublished(t, e, id) })
+	stop()
+
+	if _, err := e.pool.Exec(t.Context(), `UPDATE outbox SET published_at = NULL`); err != nil {
+		t.Fatalf("reset published_at: %v", err)
+	}
+	startRelay(t, r)
+	eventually(t, 5*time.Second, "second publish", func() bool { return isPublished(t, e, id) })
+
+	if got := recipientsMsgCount(t, e); got != 1 {
+		t.Errorf("recipients messages = %d, want 1 (Nats-Msg-Id dedup)", got)
+	}
+}
+
+func TestWriteMessage_RolledBackPublishesNothing(t *testing.T) {
+	e := newEnv(t)
+	var logs logBuffer
+	startRelay(t, &outbox.Relay{Pool: e.pool, JS: e.js, Logger: logs.logger(), PollInterval: 100 * time.Millisecond})
+	writeRaw(t, e.pool, "recipients.c1", `{"a":1}`, false)
+	eventually(t, 5*time.Second, "relay polls", func() bool { return logs.count("outbox relay waiting") >= 4 })
+	if got := recipientsMsgCount(t, e); got != 0 {
+		t.Errorf("recipients messages = %d, want 0", got)
+	}
+}
+
+func TestWriteMessage_StoresThePayloadAsJSON(t *testing.T) {
+	e := newEnv(t)
+	id := writeRaw(t, e.pool, "recipients.c1", `{"b": 2,  "a": [1, 2]}`, true)
+	var subject, payload string
+	if err := e.pool.QueryRow(t.Context(), `SELECT subject, payload::text FROM outbox WHERE id = $1::uuid`, id).Scan(&subject, &payload); err != nil {
+		t.Fatalf("query outbox: %v", err)
+	}
+	if subject != "recipients.c1" || !jsonEqual(json.RawMessage(payload), `{"a":[1,2],"b":2}`) {
+		t.Errorf("stored subject %q payload %s", subject, payload)
 	}
 }
 

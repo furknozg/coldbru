@@ -1,9 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -211,6 +214,72 @@ func (h *Handler) regenerateCampaign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeView(w, r, http.StatusAccepted, id)
+}
+
+// confirm godoc
+//
+//	@Summary		Confirm a campaign
+//	@Description	Retries the confirmation of a campaign whose schedule step is approved but which is still a draft, for example after the automatic confirmation failed (a Customer outage). It fetches the recipients, assigns each person their channel(s) under the approved plan and, in one transaction, sets the campaign to `scheduled` and queues the confirmed event and the recipient batches for NATS. Returns the updated campaign.
+//	@Tags			campaigns
+//	@Produce		json
+//	@Param			id	path		string	true	"Campaign id"	format(uuid)
+//	@Success		200	{object}	flow.CampaignView
+//	@Failure		400	{object}	api.Problem	"id is not a UUID"
+//	@Failure		404	{object}	api.Problem
+//	@Failure		409	{object}	api.Problem	"campaign_not_drafting: already scheduled, cancelled or sent; schedule_not_approved; no_recipients: the plan reaches nobody now"
+//	@Failure		500	{object}	api.Problem
+//	@Failure		502	{object}	api.Problem	"confirm_failed: Customer or the database failed; nothing changed, try again"
+//	@Router			/campaigns/{id}/confirm [post]
+func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if err := h.flow.Confirm(r.Context(), id); err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusOK, id)
+}
+
+// cancel godoc
+//
+//	@Summary		Cancel a campaign
+//	@Description	Cancels a campaign that is a draft, scheduled or sending. A draft only changes status; a scheduled or sending campaign also queues the cancelled event so that Notification stops sending. The body, and the reason in it, are optional. Returns the updated campaign.
+//	@Tags			campaigns
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Campaign id"	format(uuid)
+//	@Param			request	body		api.CancelRequest	false	"The reason"
+//	@Success		200		{object}	flow.CampaignView
+//	@Failure		400		{object}	api.Problem	"id is not a UUID, or malformed JSON"
+//	@Failure		404		{object}	api.Problem
+//	@Failure		409		{object}	api.Problem	"campaign_not_cancellable: the campaign is completed or already cancelled"
+//	@Failure		413		{object}	api.Problem
+//	@Failure		415		{object}	api.Problem
+//	@Failure		422		{object}	api.Problem	"Reason longer than 1000 characters"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/campaigns/{id}/cancel [post]
+func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req CancelRequest
+	if !decodeOptional(w, r, &req) {
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if n := utf8.RuneCountInString(reason); n > MaxReasonChars {
+		fail(w, r, CodeInvalidRequest, "The request body does not match the expected shape.",
+			fmt.Sprintf("reason: must be at most %d characters (got %d)", MaxReasonChars, n))
+		return
+	}
+	if err := h.flow.Cancel(r.Context(), id, reason); err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusOK, id)
 }
 
 // writeView answers with the campaign view of id.

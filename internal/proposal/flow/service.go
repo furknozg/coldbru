@@ -5,8 +5,8 @@
 // Every action returns quickly. Generation runs in a goroutine per campaign, one job at a time,
 // ordered by a Postgres session advisory lock that is also held across replicas. State lives in
 // the database and changes in transactions that first lock the campaign row; progress goes to an
-// in-memory Hub as typed events. The package does not publish to NATS: approving the schedule
-// step calls a Confirmer (T-026).
+// in-memory Hub as typed events. Only Cancel writes to the outbox (the cancelled event of a
+// scheduled campaign, D-074); approving the schedule step calls a Confirmer, which writes the rest.
 package flow
 
 import (
@@ -53,7 +53,7 @@ type Deps struct {
 	// Content writes and checks the content step. It may be nil until T-024; the content step then
 	// fails with ErrNoContentGenerator.
 	Content ContentGenerator
-	// Confirmer is called when the schedule step is approved; nil means NopConfirmer.
+	// Confirmer is called when the schedule step is approved and by Confirm; nil means NopConfirmer.
 	Confirmer Confirmer
 	// Clock defaults to the system clock.
 	Clock Clock

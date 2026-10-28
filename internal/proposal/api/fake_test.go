@@ -37,6 +37,8 @@ type fakeFlow struct {
 	reopen        func(ctx context.Context, id uuid.UUID, kind string) (flow.StepInfo, error)
 	regenCampaign func(ctx context.Context, id uuid.UUID) error
 	regenStep     func(ctx context.Context, id uuid.UUID) error
+	confirm       func(ctx context.Context, id uuid.UUID) error
+	cancel        func(ctx context.Context, id uuid.UUID, reason string) error
 	ofVariant     func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	ofStep        func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 }
@@ -54,6 +56,22 @@ func (f *fakeFlow) calls() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.log...)
+}
+
+func (f *fakeFlow) Confirm(ctx context.Context, id uuid.UUID) error {
+	f.note("confirm " + id.String())
+	if f.confirm != nil {
+		return f.confirm(ctx, id)
+	}
+	return nil
+}
+
+func (f *fakeFlow) Cancel(ctx context.Context, id uuid.UUID, reason string) error {
+	f.note("cancel " + id.String() + " " + reason)
+	if f.cancel != nil {
+		return f.cancel(ctx, id, reason)
+	}
+	return nil
 }
 
 func (f *fakeFlow) Hub() *flow.Hub {
