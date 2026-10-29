@@ -87,6 +87,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-081 | Mock provider: Go cephe D-079 sözleşmesini uygular, e-postayı Mailpit'e, SMS'i MockServer'a iletir; %5 5xx, %2 429, %1 zaman aşımı, 50–300 ms; kanal başına 110/s; bellekte 24 sa idempotency; receipt yok | Gönderim | Kabul edildi |
 | D-082 | Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link | Takip ve altyapı | Kabul edildi |
 | D-083 | Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları | Takip ve altyapı | Kabul edildi |
+| D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -325,7 +326,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Elle yazılmış TS tipleri — reddedildi: Go ve TS tipleri zamanla ayrışır.
   - huma v2 — reddedildi: swag tercih edildi.
 - **Sonuçlar / bedel:** swag v2 hâlâ sürüm adayı; annotation sözdizimi ve çıktısı değişebilir, sürüm `go.mod`'da sabitlenmeli. v2'nin ürettiği OpenAPI 3 dosyasının openapi-typescript ile uyumu iskelette doğrulanacak; sorun çıkarsa D-016 yeniden açılır. Annotation'lar handler'la elle senkron tutulur; yanlış annotation yanlış tip üretir. SSE akışları (D-013) OpenAPI'de tam ifade edilemeyebilir; olay tipleri ayrıca belgelenmeli.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok. Sürümler 2026-10-27'de Go modül proxy'si ve npm registry'den okundu.
+- **Doğrulama:** Doğrulanmadı — henüz kod yok. Sürümler 2026-10-27'de Go modül proxy'si ve npm registry'den okundu. 2026-10-30'da (T-033, D-084): TS tipleri üç servisin spec'inden `web/src/api/<servis>/schema.d.ts` olarak üretilir ve `schema-freshness.spec.ts` ile güncel tutulur.
 
 ## D-017: Seed zaman damgaları yüklemede bugüne kaydırılır
 
@@ -1478,6 +1479,25 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Üç tablo ve iki indeks. Çağrı başına bir olay. Fiyat değişince yapılandırma güncellenir. Para birimi değişikliği D-071 ve D-080'deki ad ve alanları değiştirir; geliştirme veritabanlarındaki eski varyantların `estimated_cost_gbp` alanı yeni adla okunmaz (maliyet 0 görünür).
 - **Doğrulama:** 2026-10-29'da (T-032): `internal/analytics/store` (migration up/down/up, her CHECK, PK, upsert); `internal/analytics/intake` NATS + Postgres ile (completed ve yerine geçen tekrarı, aynı olay id'si etkisiz, token maliyeti, tekrar gelen `llm_call_id` ilk satırı korur, bilinmeyen model WARN, başka tip ve sürümler yok sayılır, bozuk olay `Term` ve geri alma, DeliverAll akışın başından başlar); `internal/analytics/api` üç rapor ucu gerçek HTTP ile (sayfalama, tamamlanmamış kampanya, onarım oranı); `internal/analytics/pricing` (cache token'ları, yarıya yukarı yuvarlama, `LLM_PRICES` geçersiz kılma). Proposal: `token_event_integration_test.go` her `llm_call` satırı için alan alan tek bir `token_completed` olayı doğrular. Canlı yığında analytics `healthy`, `analytics-events` tüketicisi çalışıyor, uçlar yanıt veriyor; kampanya açılmadı. `make test` geçti (50 Go paketi).
 - **Uygulama notu:** Fiyatlar tek bir `LLM_PRICES` JSON ortam değişkeniyle model ve alan başına geçersiz kılınır; maliyet `big.Rat` ile hesaplanır, çağrı başına 8 ondalığa yuvarlanır; bilinmeyen model 0 ve WARN. Liste `{items, limit, offset}`, `completed_at DESC` sıralı. `/llm-usage` sürümleri metin olarak sıralar (`1.10.0` `1.2.0`'dan önce). Problem tipleri `urn:coldbru:analytics:problem:<code>`.
+
+## D-084: Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-016 TS tiplerinin ve istemcinin openapi-typescript ve openapi-fetch ile spec'ten üretilmesini, D-012 global store olmamasını, D-013 ve D-072 SSE'yi belirledi. Proposal ile Notification'ın ikisi de `/campaigns/{id}/…` yollarını kullanıyor; yol öneki, tiplerin nasıl üretilip tutulacağı, SSE tüketimi ve hata biçimi açıktı (T-033). Spec'ler OpenAPI 3.1'dir.
+- **Karar:**
+  - Tarayıcı servislere `/api/proposal`, `/api/notification`, `/api/analytics` önekleriyle ulaşır. nginx (T-034) öneki sıyırıp servise iletir; geliştirmede Vite proxy aynısını yapar. Backend yolları değişmez. İstemci servis başına bir openapi-fetch örneğidir.
+  - `pnpm -C web generate:api` commit edilen `cmd/<servis>/apidocs/swagger.json` dosyalarından `web/src/api/<servis>/schema.d.ts` üretir (openapi-typescript). `make generate`'e eklenir, üretilen dosya commit edilir (D-051 deseni); bir test tiplerin spec'le güncel olduğunu doğrular.
+  - SSE: `useEventStream(url, handlers)` composable'ı EventSource açar, olay adlarını OpenAPI'deki olay kataloğu tiplerine eşler, kopunca tarayıcının kendi yeniden bağlanmasını kullanır (sunucu yeni snapshot verir, D-072) ve bileşen kalkınca kapatır.
+  - Hatalar: problem+json'dan kurulan tipli bir `ApiError` (status, code, detail, problems) ve composable'larda kullanılan bir `unwrap()` yardımcısı; ağ hatası ayrı bir türdür. Global store yoktur (D-012).
+- **Alternatifler:**
+  - Tek `/api` ve benzersizleşen backend yolları — reddedildi: Notification ve Analytics API'leri değişirdi.
+  - Çalışan servislerden spec çekmek — reddedildi: üretim yığının ayakta olmasına bağlı olurdu.
+  - fetch + ReadableStream — reddedildi: yeniden bağlanma ve SSE ayrıştırma elle yazılırdı.
+  - openapi-fetch'i sarmalamadan kullanmak — reddedildi: her çağıran hata biçimini kendisi ele alırdı.
+- **Sonuçlar / bedel:** Arayüz hangi servisin hangi ucu sunduğunu bilir. Go ve TS değişikliği birlikte commit edilmelidir. EventSource header gönderemez; kimlik doğrulama olmadığı için sorun değildir (D-072).
+- **Doğrulama:** 2026-10-30'da (T-033): `web/src/api/__tests__` (Vitest, 38 test): `ApiError`/`unwrap` problem+json, düz metin 500, ağ hatası; istemci çağrısı `/api/proposal/campaigns`'e gider; sahte EventSource ile `useEventStream` (tipli olay, yeniden bağlanma, URL değişimi, kaldırılınca kapanma); `schema-freshness.spec.ts` üretilen tiplerin spec'le bayt bayt aynı olduğunu doğrular; `events.spec.ts` olay adlarını tip düzeyinde sabitler. Vite proxy canlı yığına karşı denendi: `/api/<servis>/healthz` 200, önek sıyrılıyor, SSE tamponsuz (snapshot hemen, ping 15 sn'de). `make generate` ikinci çalıştırmada fark bırakmadı.
+- **Uygulama notu:** `openapi-fetch` 0.17.0 ve `openapi-typescript` 7.13.0 tam sürümle sabitlendi. Olay haritası üretilen `api.EventCatalog` tipinden doğrudan gelir. Üretilen şemalar eslint, oxlint ve prettier dışındadır. `unwrap` başarıyı `response.ok`'tan okur; yalnız `TypeError` `NetworkError` olur. Notification akışı `done`'dan sonra sunucu tarafından kapanır; tarayıcı yeniden bağlanmasın diye işleyici `close()` çağırmalıdır. `VITE_API_BASE` isteğe bağlı bir önektir; Vite proxy hedefleri sabittir.
 
 ---
 
