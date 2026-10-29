@@ -174,37 +174,49 @@ func TestPlanProblems(t *testing.T) {
 func TestScheduleProblems(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
-	at := func(d time.Duration) *time.Time { v := now.Add(d); return &v }
-	istanbul := time.FixedZone("+03", 3*3600)
-	inZone := func(d time.Duration) *time.Time { v := now.Add(d).In(istanbul); return &v }
-	entry := func(lang string, at *time.Time) llm.ScheduleEntry {
-		return llm.ScheduleEntry{Language: lang, SendAt: at}
+	istanbul, _ := time.LoadLocation("Europe/Istanbul")
+	london, _ := time.LoadLocation("Europe/London")
+	inIstanbul := func(d time.Duration) *time.Time { v := now.Add(d).In(istanbul); return &v }
+	inLondon := func(d time.Duration) *time.Time { v := now.Add(d).In(london); return &v }
+	const ist, lon = "Europe/Istanbul", "Europe/London"
+	entry := func(lang, tz string, at *time.Time) llm.ScheduleEntry {
+		return llm.ScheduleEntry{Language: lang, Timezone: tz, SendAt: at}
 	}
-	langs := []string{"tr", "en"}
+	pair := func(lang, tz string) llm.ScheduleLocale { return llm.ScheduleLocale{Language: lang, Timezone: tz} }
+	// The four pairs of the seed; "tr / Europe/London" and "en / Europe/Istanbul" are the minority.
+	four := []llm.ScheduleLocale{pair("tr", ist), pair("tr", lon), pair("en", ist), pair("en", lon)}
+	nulls := []llm.ScheduleEntry{entry("tr", ist, nil), entry("tr", lon, nil), entry("en", ist, nil), entry("en", lon, nil)}
+	with := func(i int, e llm.ScheduleEntry) []llm.ScheduleEntry {
+		out := append([]llm.ScheduleEntry(nil), nulls...)
+		out[i] = e
+		return out
+	}
 	tests := []struct {
 		name    string
 		entries []llm.ScheduleEntry
-		langs   []string
+		locales []llm.ScheduleLocale
 		want    []string
 	}{
-		{"null for both: send now", []llm.ScheduleEntry{entry("tr", nil), entry("en", nil)}, langs, nil},
-		{"inside the window", []llm.ScheduleEntry{entry("tr", at(24*time.Hour)), entry("en", at(26*time.Hour))}, langs, nil},
-		{"exactly now + 5 minutes", []llm.ScheduleEntry{entry("tr", at(5*time.Minute)), entry("en", nil)}, langs, nil},
-		{"exactly now + 30 days", []llm.ScheduleEntry{entry("tr", at(30*24*time.Hour)), entry("en", nil)}, langs, nil},
-		{"a second too soon", []llm.ScheduleEntry{entry("tr", at(5*time.Minute-time.Second)), entry("en", nil)}, langs, []string{"tr: send_at 2026-10-28T12:04:59Z is earlier than now + 5 minutes"}},
-		{"in the past", []llm.ScheduleEntry{entry("tr", at(-time.Hour)), entry("en", nil)}, langs, []string{"earlier than now + 5 minutes"}},
-		{"a second too late", []llm.ScheduleEntry{entry("tr", nil), entry("en", at(30*24*time.Hour+time.Second))}, langs, []string{"en: send_at 2026-11-27T12:00:01Z is later than now + 30 days"}},
-		{"the window is read in UTC whatever the offset", []llm.ScheduleEntry{entry("tr", inZone(6*time.Minute)), entry("en", inZone(4*time.Minute))}, langs, []string{"en: send_at"}},
-		{"a language is missing", []llm.ScheduleEntry{entry("tr", nil)}, langs, []string{`language "en" has no entry`}},
-		{"no entries", nil, langs, []string{`"tr" has no entry`, `"en" has no entry`}},
-		{"an unknown language", []llm.ScheduleEntry{entry("tr", nil), entry("en", nil), entry("de", nil)}, langs, []string{`language "de" is not in the audience`}},
-		{"a duplicate", []llm.ScheduleEntry{entry("tr", nil), entry("tr", nil), entry("en", nil)}, langs, []string{`language "tr" has more than one entry`}},
-		{"one language only", []llm.ScheduleEntry{entry("en", nil)}, []string{"en"}, nil},
+		{"null for every pair: send now", nulls, four, nil},
+		{"inside the window", with(0, entry("tr", ist, inIstanbul(24*time.Hour))), four, nil},
+		{"exactly now + 5 minutes", with(0, entry("tr", ist, inIstanbul(5*time.Minute))), four, nil},
+		{"exactly now + 30 days", with(3, entry("en", lon, inLondon(30*24*time.Hour))), four, nil},
+		{"a second too soon", with(0, entry("tr", ist, inIstanbul(5*time.Minute-time.Second))), four, []string{"tr / Europe/Istanbul: send_at 2026-10-28T15:04:59+03:00 is earlier than now + 5 minutes"}},
+		{"in the past", with(0, entry("tr", ist, inIstanbul(-time.Hour))), four, []string{"earlier than now + 5 minutes"}},
+		{"a second too late", with(3, entry("en", lon, inLondon(30*24*time.Hour+time.Second))), four, []string{"en / Europe/London: send_at 2026-11-27T12:00:01Z is later than now + 30 days"}},
+		{"the window is read in UTC whatever the offset", with(0, entry("tr", ist, inIstanbul(4*time.Minute))), four, []string{"tr / Europe/Istanbul: send_at"}},
+		{"a pair is missing", nulls[:3], four, []string{"locale en / Europe/London has no entry"}},
+		{"no entries", nil, four[:2], []string{"locale tr / Europe/Istanbul has no entry", "locale tr / Europe/London has no entry"}},
+		{"one entry per language is not enough", []llm.ScheduleEntry{entry("tr", ist, nil), entry("en", lon, nil)}, four, []string{"locale tr / Europe/London has no entry", "locale en / Europe/Istanbul has no entry"}},
+		{"an unknown pair", append(append([]llm.ScheduleEntry(nil), nulls...), entry("de", "Europe/Berlin", nil)), four, []string{"locale de / Europe/Berlin is not in the audience"}},
+		{"a known language in a zone that is not in the audience", []llm.ScheduleEntry{entry("tr", lon, nil)}, []llm.ScheduleLocale{pair("tr", ist)}, []string{"locale tr / Europe/London is not in the audience", "locale tr / Europe/Istanbul has no entry"}},
+		{"a duplicate", append(append([]llm.ScheduleEntry(nil), nulls...), entry("tr", ist, nil)), four, []string{"locale tr / Europe/Istanbul has more than one entry"}},
+		{"one pair only", []llm.ScheduleEntry{entry("en", ist, nil)}, []llm.ScheduleLocale{pair("en", ist)}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := ScheduleProblems(tt.entries, tt.langs, now)
+			got := ScheduleProblems(tt.entries, tt.locales, now)
 			if len(got) != len(tt.want) {
 				t.Fatalf("problems = %q, want %d", got, len(tt.want))
 			}
@@ -217,23 +229,96 @@ func TestScheduleProblems(t *testing.T) {
 	}
 }
 
-func TestExpectedSlots(t *testing.T) {
+// The offset of send_at must be the one the pair's zone has at that instant (D-076), daylight
+// saving included: Europe/London is +00:00 in winter and +01:00 in summer, Europe/Istanbul always
+// +03:00.
+func TestScheduleProblemsOffsets(t *testing.T) {
 	t.Parallel()
-	plan := &PlanContent{ByLanguage: []LanguageRecipients{{"en", 0, 4}, {"tr", 21, 9}, {"de", 0, 0}}}
+	// London changes to summer time on 2026-03-29 01:00 UTC. now is 2026-03-20, so 03-25 is
+	// winter time and 04-10 summer time, both inside the 30 day window.
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	parse := func(s string) *time.Time {
+		v, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &v
+	}
+	london := []llm.ScheduleLocale{{Language: "en", Timezone: "Europe/London"}}
+	istanbul := []llm.ScheduleLocale{{Language: "tr", Timezone: "Europe/Istanbul"}}
 	tests := []struct {
-		kind string
-		plan *PlanContent
-		want []Slot
+		name   string
+		entry  llm.ScheduleEntry
+		locale []llm.ScheduleLocale
+		want   string // substring of the single problem, "" for none
 	}{
-		{KindAudience, nil, []Slot{{}}},
-		{KindChannelPlan, nil, []Slot{{}}},
-		// Only (language, channel) pairs with recipients (D-010): en has no email, de nobody.
-		{KindContent, plan, []Slot{{"en", "sms"}, {"tr", "email"}, {"tr", "sms"}}},
-		// One slot per language that receives anything (D-009).
-		{KindSchedule, plan, []Slot{{Language: "en"}, {Language: "tr"}}},
+		{"london winter +00:00", llm.ScheduleEntry{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-03-25T09:00:00+00:00")}, london, ""},
+		{"london winter written as Z", llm.ScheduleEntry{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-03-25T09:00:00Z")}, london, ""},
+		{"london winter with the summer offset", llm.ScheduleEntry{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-03-25T09:00:00+01:00")}, london,
+			"en / Europe/London: send_at 2026-03-25T09:00:00+01:00 has the offset +01:00, but Europe/London is at +00:00 at that time (daylight saving included); write the same wall-clock time as 2026-03-25T09:00:00Z"},
+		{"london summer +01:00", llm.ScheduleEntry{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-04-10T09:00:00+01:00")}, london, ""},
+		{"london summer with the winter offset", llm.ScheduleEntry{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-04-10T09:00:00+00:00")}, london,
+			"has the offset +00:00, but Europe/London is at +01:00 at that time"},
+		{"istanbul +03:00", llm.ScheduleEntry{Language: "tr", Timezone: "Europe/Istanbul", SendAt: parse("2026-03-25T09:00:00+03:00")}, istanbul, ""},
+		{"istanbul in summer is still +03:00", llm.ScheduleEntry{Language: "tr", Timezone: "Europe/Istanbul", SendAt: parse("2026-04-10T09:00:00+03:00")}, istanbul, ""},
+		{"istanbul with London's offset", llm.ScheduleEntry{Language: "tr", Timezone: "Europe/Istanbul", SendAt: parse("2026-03-25T09:00:00+00:00")}, istanbul,
+			"has the offset +00:00, but Europe/Istanbul is at +03:00 at that time"},
+		{"a right instant with another zone's offset is wrong too", llm.ScheduleEntry{Language: "tr", Timezone: "Europe/Istanbul", SendAt: parse("2026-03-25T06:00:00Z")}, istanbul,
+			"has the offset +00:00, but Europe/Istanbul is at +03:00"},
 	}
 	for _, tt := range tests {
-		got, err := expectedSlots(tt.kind, tt.plan)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ScheduleProblems([]llm.ScheduleEntry{tt.entry}, tt.locale, now)
+			switch {
+			case tt.want == "" && len(got) != 0:
+				t.Errorf("problems = %q, want none", got)
+			case tt.want != "" && (len(got) != 1 || !strings.Contains(got[0], tt.want)):
+				t.Errorf("problems = %q, want one containing %q", got, tt.want)
+			}
+		})
+	}
+
+	// The changeover itself: 2026-03-29 01:00 UTC is when London moves to +01:00.
+	before := parse("2026-03-29T00:59:00+00:00")
+	after := parse("2026-03-29T02:00:00+01:00")
+	for _, at := range []*time.Time{before, after} {
+		if got := ScheduleProblems([]llm.ScheduleEntry{{Language: "en", Timezone: "Europe/London", SendAt: at}}, london, now); len(got) != 0 {
+			t.Errorf("%s around the changeover: %q", at.Format(time.RFC3339), got)
+		}
+	}
+	if got := ScheduleProblems([]llm.ScheduleEntry{{Language: "en", Timezone: "Europe/London", SendAt: parse("2026-03-29T02:00:00+00:00")}}, london, now); len(got) != 1 {
+		t.Errorf("02:00+00:00 on the changeover day is already summer time: %q", got)
+	}
+}
+
+func TestExpectedSlots(t *testing.T) {
+	t.Parallel()
+	plan := &PlanContent{
+		Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail,
+		ByLanguage: []LanguageRecipients{{"en", 0, 4}, {"tr", 21, 9}, {"de", 0, 0}},
+	}
+	// The sample brief's audience is all in Istanbul; the unreachable-only pair has no slot. The
+	// plan is primary_fallback with email primary: sms goes to the people who have only sms.
+	aud := &AudienceContent{ByLocale: []LocaleAudience{
+		{Language: "en", Timezone: "Europe/Istanbul", Count: 4, Coverage: Coverage{SMSOnly: 4}},
+		{Language: "en", Timezone: "Europe/London", Count: 0, Coverage: Coverage{Unreachable: 2}},
+		{Language: "tr", Timezone: "Europe/Istanbul", Count: 30, Coverage: Coverage{Both: 15, EmailOnly: 6, SMSOnly: 9}},
+		{Language: "tr", Timezone: "Europe/London", Count: 1, Coverage: Coverage{EmailOnly: 1}},
+	}}
+	tests := []struct {
+		kind string
+		want []Slot
+	}{
+		{KindAudience, []Slot{{}}},
+		{KindChannelPlan, []Slot{{}}},
+		// Only (language, channel) pairs with recipients (D-010): en has no email, de nobody.
+		{KindContent, []Slot{{"en", "sms", ""}, {"tr", "email", ""}, {"tr", "sms", ""}}},
+		// One slot per (language, timezone) pair that receives anything (D-076).
+		{KindSchedule, []Slot{{"en", "", "Europe/Istanbul"}, {"tr", "", "Europe/Istanbul"}, {"tr", "", "Europe/London"}}},
+	}
+	for _, tt := range tests {
+		got, err := expectedSlots(tt.kind, aud, plan)
 		if err != nil || len(got) != len(tt.want) {
 			t.Fatalf("%s: slots = %v, %v; want %v", tt.kind, got, err, tt.want)
 		}
@@ -244,15 +329,77 @@ func TestExpectedSlots(t *testing.T) {
 		}
 	}
 	for _, kind := range []string{KindContent, KindSchedule} {
-		if _, err := expectedSlots(kind, nil); err == nil {
+		if _, err := expectedSlots(kind, aud, nil); err == nil {
 			t.Errorf("%s without a plan was accepted", kind)
 		}
 	}
-	if _, err := expectedSlots("nope", nil); err == nil {
+	if _, err := expectedSlots(KindSchedule, nil, plan); err == nil {
+		t.Error("the schedule step without an audience was accepted")
+	}
+	if _, err := expectedSlots(KindSchedule, &AudienceContent{}, plan); err == nil || !strings.Contains(err.Error(), "by_locale") {
+		t.Errorf("an audience without by_locale: err = %v", err)
+	}
+	if _, err := expectedSlots("nope", aud, plan); err == nil {
 		t.Error("an unknown kind was accepted")
 	}
-	if got := scheduleLanguages([]Slot{{Language: "tr"}, {Language: "en"}}); len(got) != 2 || got[0] != "tr" || got[1] != "en" {
-		t.Errorf("scheduleLanguages = %v", got)
+}
+
+// The messages per (language, timezone) pair follow the per-language math of the plan (D-010,
+// D-076) and add up to the plan's totals.
+func TestMessagesByLocale(t *testing.T) {
+	t.Parallel()
+	aud := AudienceContent{ByLocale: []LocaleAudience{
+		{Language: "en", Timezone: "Europe/Istanbul", Coverage: Coverage{Both: 1, EmailOnly: 2, SMSOnly: 3, Unreachable: 4}},
+		{Language: "en", Timezone: "Europe/London", Coverage: Coverage{Unreachable: 5}},
+		{Language: "tr", Timezone: "Europe/Istanbul", Coverage: Coverage{Both: 10, EmailOnly: 6, SMSOnly: 7}},
+	}}
+	tests := []struct {
+		name string
+		plan PlanContent
+		want []LocaleMessages
+	}{
+		{"fallback email primary", PlanContent{Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail}, []LocaleMessages{
+			{"en", "Europe/Istanbul", 3, 3}, {"en", "Europe/London", 0, 0}, {"tr", "Europe/Istanbul", 16, 7}}},
+		{"single sms", PlanContent{Mode: llm.ModeSingle, Primary: llm.ChannelSMS}, []LocaleMessages{
+			{"en", "Europe/Istanbul", 0, 4}, {"en", "Europe/London", 0, 0}, {"tr", "Europe/Istanbul", 0, 17}}},
+		{"both", PlanContent{Mode: llm.ModeBoth, Primary: llm.ChannelEmail}, []LocaleMessages{
+			{"en", "Europe/Istanbul", 3, 4}, {"en", "Europe/London", 0, 0}, {"tr", "Europe/Istanbul", 16, 17}}},
+	}
+	for _, tt := range tests {
+		got, err := MessagesByLocale(tt.plan, aud)
+		if err != nil || len(got) != len(tt.want) {
+			t.Fatalf("%s: %v, %v", tt.name, got, err)
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("%s: pair %d = %+v, want %+v", tt.name, i, got[i], tt.want[i])
+			}
+		}
+		// Per-pair figures add up to the totals NewPlanContent computes from the whole coverage.
+		var email, sms int
+		for _, m := range got {
+			email, sms = email+m.Email, sms+m.SMS
+		}
+		var total Coverage
+		for _, l := range aud.ByLocale {
+			total.Both += l.Coverage.Both
+			total.EmailOnly += l.Coverage.EmailOnly
+			total.SMSOnly += l.Coverage.SMSOnly
+		}
+		if e, s, _ := MessagesFor(tt.plan.Mode, tt.plan.Primary, total); e != email || s != sms {
+			t.Errorf("%s: pairs sum to %d/%d, the whole audience gives %d/%d", tt.name, email, sms, e, s)
+		}
+	}
+	if _, err := MessagesByLocale(PlanContent{Mode: "x", Primary: llm.ChannelSMS}, aud); err == nil {
+		t.Error("an unknown mode was accepted")
+	}
+
+	// scheduleLocales hands the model the pair and its message count.
+	plan := PlanContent{Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail}
+	locales, err := scheduleLocales([]Slot{{Language: "tr", Timezone: "Europe/Istanbul"}, {Language: "en", Timezone: "Europe/Istanbul"}}, aud, plan)
+	want := []llm.ScheduleLocale{{Language: "tr", Timezone: "Europe/Istanbul", Recipients: 23}, {Language: "en", Timezone: "Europe/Istanbul", Recipients: 6}}
+	if err != nil || len(locales) != 2 || locales[0] != want[0] || locales[1] != want[1] {
+		t.Errorf("scheduleLocales = %+v, %v; want %+v", locales, err, want)
 	}
 }
 
@@ -262,7 +409,7 @@ func variant(status, lang, channel string) store.ProposalVariant {
 
 func TestStepCompleteAndMissing(t *testing.T) {
 	t.Parallel()
-	expected := []Slot{{"tr", "email"}, {"tr", "sms"}}
+	expected := []Slot{{"tr", "email", ""}, {"tr", "sms", ""}}
 	a := variant(VariantStatusApproved, "tr", "email")
 	b := variant(VariantStatusApproved, "tr", "sms")
 	d := variant(VariantStatusDraft, "tr", "sms")
@@ -275,8 +422,8 @@ func TestStepCompleteAndMissing(t *testing.T) {
 	}{
 		{"all approved", []store.ProposalVariant{a, b}, true, nil},
 		{"a draft is not enough", []store.ProposalVariant{a, d}, false, nil},
-		{"a rejected slot waits for its replacement", []store.ProposalVariant{a, r}, false, []Slot{{"tr", "sms"}}},
-		{"a slot with no variant yet is not done even when the others are approved", []store.ProposalVariant{a}, false, []Slot{{"tr", "sms"}}},
+		{"a rejected slot waits for its replacement", []store.ProposalVariant{a, r}, false, []Slot{{"tr", "sms", ""}}},
+		{"a slot with no variant yet is not done even when the others are approved", []store.ProposalVariant{a}, false, []Slot{{"tr", "sms", ""}}},
 		{"nothing yet", nil, false, expected},
 	}
 	for _, tt := range tests {

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"sort"
 	"time"
 
@@ -89,6 +91,7 @@ func New(d Deps) (*Confirmer, error) {
 
 // approved is what the approved steps of a campaign say, read in one consistent pass.
 type approved struct {
+	campaignID   uuid.UUID
 	scheduleStep uuid.UUID
 	audience     flow.AudienceContent
 	plan         flow.PlanContent
@@ -111,7 +114,7 @@ func load(ctx context.Context, q *store.Queries, campaignID uuid.UUID) (*approve
 	if !ok || sched.Status != flow.StepStatusApproved {
 		return nil, flow.ErrScheduleNotApproved
 	}
-	out := &approved{scheduleStep: sched.ID}
+	out := &approved{campaignID: campaignID, scheduleStep: sched.ID}
 	for _, kind := range []string{flow.KindAudience, flow.KindChannelPlan, flow.KindContent, flow.KindSchedule} {
 		st, ok := byKind[kind]
 		if !ok || st.Status != flow.StepStatusApproved {
@@ -137,7 +140,7 @@ func load(ctx context.Context, q *store.Queries, campaignID uuid.UUID) (*approve
 			case flow.KindSchedule:
 				var sc flow.ScheduleContent
 				err = json.Unmarshal(v.Content, &sc)
-				out.schedules = append(out.schedules, flow.ConfirmedSchedule{Language: v.Language.String, SendAt: sc.SendAt})
+				out.schedules = append(out.schedules, flow.ConfirmedSchedule{Language: v.Language.String, Timezone: v.Timezone.String, SendAt: sc.SendAt})
 			}
 			if err != nil {
 				return nil, fmt.Errorf("confirm: decode the approved %s variant: %w", kind, err)
@@ -148,7 +151,10 @@ func load(ctx context.Context, q *store.Queries, campaignID uuid.UUID) (*approve
 		a, b := out.messages[i], out.messages[j]
 		return a.Language < b.Language || a.Language == b.Language && a.Channel < b.Channel
 	})
-	sort.Slice(out.schedules, func(i, j int) bool { return out.schedules[i].Language < out.schedules[j].Language })
+	sort.Slice(out.schedules, func(i, j int) bool {
+		a, b := out.schedules[i], out.schedules[j]
+		return a.Language < b.Language || a.Language == b.Language && a.Timezone < b.Timezone
+	})
 	if len(out.messages) == 0 || len(out.schedules) == 0 {
 		return nil, errors.New("confirm: the approved steps hold no texts or no schedules")
 	}
@@ -163,9 +169,10 @@ type prepared struct {
 }
 
 // prepare fetches the audience from Customer and assigns channels under the approved plan. A
-// person is dropped when the approved texts or schedules do not cover their language and assigned
-// channel, which happens when the audience changed since the preview (D-039): the receiver could not
-// send them anything. No recipient left is flow.ErrNoRecipients.
+// person is dropped when the approved texts do not cover their language and assigned channel, or the
+// approved schedules their (language, timezone) pair (D-076), which happens when the audience
+// changed since the preview (D-039): the receiver could not send them anything. Every dropped
+// pair is logged once with the number of people. No recipient left is flow.ErrNoRecipients.
 func (c *Confirmer) prepare(ctx context.Context, a *approved) (*prepared, error) {
 	f, errs := compile.Compile(a.audience.DSL)
 	if len(errs) > 0 || f == nil {
@@ -175,16 +182,18 @@ func (c *Confirmer) prepare(ctx context.Context, a *approved) (*prepared, error)
 	for _, m := range a.messages {
 		haveMessage[[2]string{m.Language, m.Channel}] = true
 	}
-	haveSchedule := map[string]bool{}
+	haveSchedule := map[[2]string]bool{}
 	for _, s := range a.schedules {
-		haveSchedule[s.Language] = true
+		haveSchedule[[2]string{s.Language, s.Timezone}] = true
 	}
 	out := &prepared{}
+	droppedBy := map[string]int{}
 	err := c.cust.EachRecipientPage(ctx, f, func(page []customer.Recipient) error {
 		for _, r := range page {
 			for _, e := range Assign(a.plan.Mode, a.plan.Primary, r) {
-				if !haveMessage[[2]string{e.Language, e.Channel}] || !haveSchedule[e.Language] {
+				if !haveMessage[[2]string{e.Language, e.Channel}] || !haveSchedule[[2]string{e.Language, e.Timezone}] {
 					out.dropped++
+					droppedBy[e.Language+"/"+e.Timezone+"/"+e.Channel]++
 					continue
 				}
 				out.recipients = append(out.recipients, e)
@@ -194,6 +203,12 @@ func (c *Confirmer) prepare(ctx context.Context, a *approved) (*prepared, error)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("confirm: fetch the recipients: %w", err)
+	}
+	for _, k := range slices.Sorted(maps.Keys(droppedBy)) {
+		if c.log == nil {
+			break
+		}
+		c.log.WarnContext(ctx, "recipients dropped: no approved text or schedule covers them", "campaign", a.campaignID, "locale_channel", k, "recipients", droppedBy[k])
 	}
 	out.counts = Count(out.recipients)
 	if out.counts.Total == 0 {

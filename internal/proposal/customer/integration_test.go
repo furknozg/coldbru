@@ -111,20 +111,40 @@ func TestSampleBriefPreview(t *testing.T) {
 		t.Errorf("byLanguage counts add up to %d, want %d", sum, p.Count)
 	}
 
+	// byLocale adds up too, in order, and matches the recipients' own (language, timezone) (D-076).
+	var localeSum int
+	for i, l := range p.ByLocale {
+		localeSum += l.Count
+		if i > 0 && (p.ByLocale[i-1].Language > l.Language ||
+			(p.ByLocale[i-1].Language == l.Language && p.ByLocale[i-1].Timezone >= l.Timezone)) {
+			t.Errorf("byLocale is not ordered by language then timezone: %+v", p.ByLocale)
+		}
+	}
+	if localeSum != p.Count {
+		t.Errorf("byLocale counts add up to %d, want %d", localeSum, p.Count)
+	}
+
 	// maxFirstNameLength is the longest first name among the recipients, overall and per language (D-071).
 	all, err := c.AllRecipients(t.Context(), compileOK(t, sampleBrief))
 	if err != nil {
 		t.Fatalf("AllRecipients: %v", err)
 	}
 	perLang := map[string]int{}
+	perPair := map[[2]string]int{}
 	overall := 0
 	for _, r := range all {
+		perPair[[2]string{r.Language, r.Timezone}]++
 		n := utf8.RuneCountInString(r.FirstName)
 		perLang[r.Language] = max(perLang[r.Language], n)
 		overall = max(overall, n)
 	}
 	if p.MaxFirstNameLength != overall || overall == 0 {
 		t.Errorf("maxFirstNameLength = %d, longest recipient name = %d", p.MaxFirstNameLength, overall)
+	}
+	for _, l := range p.ByLocale {
+		if l.Timezone != "Europe/Istanbul" || perPair[[2]string{l.Language, l.Timezone}] != l.Count {
+			t.Errorf("byLocale pair %+v: the sample brief audience is all Europe/Istanbul; recipients per pair = %v", l, perPair)
+		}
 	}
 	for _, l := range p.ByLanguage {
 		if l.MaxFirstNameLength != perLang[l.Language] {

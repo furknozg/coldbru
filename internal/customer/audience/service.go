@@ -53,14 +53,14 @@ func (s *Service) withReadTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	return fn(tx)
 }
 
-// Preview counts the reachable audience of f and its channel coverage, in total
-// and per language, with one query.
+// Preview counts the reachable audience of f and its channel coverage, in total,
+// per language and per (language, timezone), with one query.
 func (s *Service) Preview(ctx context.Context, f *model.CustomerFilter) (*model.AudiencePreview, error) {
 	c, err := s.compiler.Compile(f)
 	if err != nil {
 		return nil, err
 	}
-	out := &model.AudiencePreview{Coverage: &model.ChannelCoverage{}, ByLanguage: []*model.LanguageCoverage{}}
+	out := &model.AudiencePreview{Coverage: &model.ChannelCoverage{}, ByLanguage: []*model.LanguageCoverage{}, ByLocale: []*model.LocaleCoverage{}}
 	err = s.withReadTx(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, previewSQL(c.Where), c.Args...)
 		if err != nil {
@@ -68,15 +68,31 @@ func (s *Service) Preview(ctx context.Context, f *model.CustomerFilter) (*model.
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var lang string
+			var lang, tz string
 			var both, emailOnly, smsOnly, none, maxName int
-			if err := rows.Scan(&lang, &both, &emailOnly, &smsOnly, &none, &maxName); err != nil {
+			if err := rows.Scan(&lang, &tz, &both, &emailOnly, &smsOnly, &none, &maxName); err != nil {
 				return fmt.Errorf("audience preview scan: %w", err)
 			}
 			cov := &model.ChannelCoverage{Both: both, EmailOnly: emailOnly, SmsOnly: smsOnly, Unreachable: none}
-			out.ByLanguage = append(out.ByLanguage, &model.LanguageCoverage{
-				Language: lang, Count: both + emailOnly + smsOnly, Coverage: cov, MaxFirstNameLength: maxName,
+			out.ByLocale = append(out.ByLocale, &model.LocaleCoverage{
+				Language: lang, Timezone: tz, Count: both + emailOnly + smsOnly, Coverage: cov, MaxFirstNameLength: maxName,
 			})
+			// Rows arrive ordered by language, so a language's pairs are adjacent: fold them
+			// into one byLanguage entry.
+			if n := len(out.ByLanguage); n > 0 && out.ByLanguage[n-1].Language == lang {
+				l := out.ByLanguage[n-1]
+				l.Count += both + emailOnly + smsOnly
+				l.Coverage.Both += both
+				l.Coverage.EmailOnly += emailOnly
+				l.Coverage.SmsOnly += smsOnly
+				l.Coverage.Unreachable += none
+				l.MaxFirstNameLength = max(l.MaxFirstNameLength, maxName)
+			} else {
+				lc := *cov
+				out.ByLanguage = append(out.ByLanguage, &model.LanguageCoverage{
+					Language: lang, Count: both + emailOnly + smsOnly, Coverage: &lc, MaxFirstNameLength: maxName,
+				})
+			}
 			out.MaxFirstNameLength = max(out.MaxFirstNameLength, maxName)
 			out.Count += both + emailOnly + smsOnly
 			out.Coverage.Both += both
@@ -124,7 +140,7 @@ func (s *Service) Recipients(ctx context.Context, f *model.CustomerFilter, first
 		defer rows.Close()
 		for rows.Next() {
 			var r model.Recipient
-			if err := rows.Scan(&r.CustomerID, &r.FirstName, &r.Language,
+			if err := rows.Scan(&r.CustomerID, &r.FirstName, &r.Language, &r.Timezone,
 				&r.EmailEligible, &r.SmsEligible, &r.Email, &r.Phone); err != nil {
 				return fmt.Errorf("audience recipients scan: %w", err)
 			}

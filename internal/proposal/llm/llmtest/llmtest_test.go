@@ -475,8 +475,8 @@ func TestPlanQueue(t *testing.T) {
 func TestScheduleQueue(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
-	bad := []llm.ScheduleEntry{{Language: "tr", Rationale: "x"}}
-	good := []llm.ScheduleEntry{{Language: "tr", SendAt: &at, Rationale: "x"}, {Language: "en", Rationale: "y"}}
+	bad := []llm.ScheduleEntry{{Language: "tr", Timezone: "Europe/Istanbul", Rationale: "x"}}
+	good := []llm.ScheduleEntry{{Language: "tr", Timezone: "Europe/Istanbul", SendAt: &at, Rationale: "x"}, {Language: "en", Timezone: "Europe/London", Rationale: "y"}}
 	validate := func(e []llm.ScheduleEntry) error {
 		if len(e) != 2 {
 			return llm.NewProblemsError([]string{"en is missing"})
@@ -485,17 +485,19 @@ func TestScheduleQueue(t *testing.T) {
 	}
 	s := llmtest.NewScripted().ProposeSchedules(bad, good)
 	col := &llm.Collector{}
-	in := llm.ScheduleInput{Brief: "b", Languages: []string{"tr", "en"}, Now: at}
+	in := llm.ScheduleInput{Brief: "b", Now: at, Locales: []llm.ScheduleLocale{
+		{Language: "tr", Timezone: "Europe/Istanbul", Recipients: 3}, {Language: "en", Timezone: "Europe/London", Recipients: 2},
+	}}
 	res, err := s.ProposeSchedule(llm.WithRecorder(t.Context(), col), in, validate)
 	if err != nil || res.Attempts != 2 || len(res.Entries) != 2 {
 		t.Fatalf("res = %+v, err = %v", res, err)
 	}
-	if got := s.ScheduleInputs(); len(got) != 1 || len(got[0].Languages) != 2 {
+	if got := s.ScheduleInputs(); len(got) != 1 || len(got[0].Locales) != 2 {
 		t.Errorf("inputs = %+v", got)
 	}
 	recs := col.Records()
 	if len(recs) != 2 || recs[0].Purpose != llm.PurposeSchedule || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Outcome != llm.OutcomeAccepted ||
-		!strings.Contains(string(recs[1].Response), "2026-11-02T10:00:00Z") {
+		!strings.Contains(string(recs[1].Response), "2026-11-02T10:00:00Z") || !strings.Contains(string(recs[1].Response), "Europe/Istanbul") {
 		t.Errorf("records = %+v", recs)
 	}
 

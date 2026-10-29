@@ -12,7 +12,7 @@ import (
 )
 
 func person(id string, email, sms bool) customer.Recipient {
-	r := customer.Recipient{CustomerID: id, FirstName: "Ada", Language: "tr", EmailEligible: email, SMSEligible: sms}
+	r := customer.Recipient{CustomerID: id, FirstName: "Ada", Language: "tr", Timezone: "Europe/London", EmailEligible: email, SMSEligible: sms}
 	if email {
 		r.Email = id + "@example.com"
 	}
@@ -23,7 +23,7 @@ func person(id string, email, sms bool) customer.Recipient {
 }
 
 func entry(id, channel, contact string) flow.BatchRecipient {
-	return flow.BatchRecipient{CustomerID: id, FirstName: "Ada", Language: "tr", Channel: channel, Contact: contact}
+	return flow.BatchRecipient{CustomerID: id, FirstName: "Ada", Language: "tr", Timezone: "Europe/London", Channel: channel, Contact: contact}
 }
 
 func TestAssign(t *testing.T) {

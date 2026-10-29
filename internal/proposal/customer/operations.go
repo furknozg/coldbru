@@ -18,13 +18,14 @@ const (
     maxFirstNameLength
     coverage { both emailOnly smsOnly unreachable }
     byLanguage { language count maxFirstNameLength coverage { both emailOnly smsOnly unreachable } }
+    byLocale { language timezone count maxFirstNameLength coverage { both emailOnly smsOnly unreachable } }
   }
 }`
 
 	recipientsOperation = "AudienceRecipients"
 	recipientsQuery     = `query AudienceRecipients($filter: CustomerFilter!, $first: Int!, $after: String) {
   audienceRecipients(filter: $filter, first: $first, after: $after) {
-    nodes { customerId firstName language emailEligible smsEligible email phone }
+    nodes { customerId firstName language timezone emailEligible smsEligible email phone }
     pageInfo { hasNextPage endCursor }
   }
 }`
@@ -51,12 +52,28 @@ type LanguageCoverage struct {
 	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
+// LocaleCoverage is the audience figures of one (language, timezone) pair; schedule slots follow
+// these pairs (D-076). Pairs whose customers are all unreachable are listed with Count 0.
+type LocaleCoverage struct {
+	Language string `json:"language"`
+	// Timezone is the IANA time zone of the customers, for example Europe/Istanbul.
+	Timezone string   `json:"timezone"`
+	Count    int      `json:"count"`
+	Coverage Coverage `json:"coverage"`
+	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
+	// customers of this pair; 0 when there are none.
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
+}
+
 // Preview is the size and channel reach of an audience. Count includes only customers reachable on
 // at least one channel; Coverage.Unreachable matched the filter but are not in Count (D-058).
 type Preview struct {
 	Count      int                `json:"count"`
 	Coverage   Coverage           `json:"coverage"`
 	ByLanguage []LanguageCoverage `json:"byLanguage"`
+	// ByLocale splits the same figures by language and time zone, ordered by language then time
+	// zone (D-076).
+	ByLocale []LocaleCoverage `json:"byLocale"`
 	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
 	// customers counted in Count; 0 when there are none (D-071).
 	MaxFirstNameLength int `json:"maxFirstNameLength"`
@@ -65,9 +82,11 @@ type Preview struct {
 // Recipient is one reachable customer. Email is set only when EmailEligible and Phone only when
 // SMSEligible (D-058).
 type Recipient struct {
-	CustomerID    string `json:"customerId"`
-	FirstName     string `json:"firstName"`
-	Language      string `json:"language"`
+	CustomerID string `json:"customerId"`
+	FirstName  string `json:"firstName"`
+	Language   string `json:"language"`
+	// Timezone is the IANA time zone of the customer (D-076).
+	Timezone      string `json:"timezone"`
 	EmailEligible bool   `json:"emailEligible"`
 	SMSEligible   bool   `json:"smsEligible"`
 	Email         string `json:"email"`

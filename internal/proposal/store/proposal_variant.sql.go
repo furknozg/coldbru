@@ -13,7 +13,7 @@ import (
 )
 
 const approveVariant = `-- name: ApproveVariant :one
-UPDATE proposal_variant SET status = 'approved', approved_at = now() WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+UPDATE proposal_variant SET status = 'approved', approved_at = now() WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone
 `
 
 func (q *Queries) ApproveVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
@@ -31,14 +31,15 @@ func (q *Queries) ApproveVariant(ctx context.Context, id uuid.UUID) (ProposalVar
 		&i.CreatedAt,
 		&i.ApprovedAt,
 		&i.RejectedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const createVariant = `-- name: CreateVariant :one
-INSERT INTO proposal_variant (step_id, kind, language, channel, content)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+INSERT INTO proposal_variant (step_id, kind, language, channel, timezone, content)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone
 `
 
 type CreateVariantParams struct {
@@ -46,6 +47,7 @@ type CreateVariantParams struct {
 	Kind     string
 	Language pgtype.Text
 	Channel  pgtype.Text
+	Timezone pgtype.Text
 	Content  []byte
 }
 
@@ -55,6 +57,7 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (P
 		arg.Kind,
 		arg.Language,
 		arg.Channel,
+		arg.Timezone,
 		arg.Content,
 	)
 	var i ProposalVariant
@@ -70,12 +73,13 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (P
 		&i.CreatedAt,
 		&i.ApprovedAt,
 		&i.RejectedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const getVariant = `-- name: GetVariant :one
-SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE id = $1
+SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone FROM proposal_variant WHERE id = $1
 `
 
 func (q *Queries) GetVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
@@ -93,12 +97,13 @@ func (q *Queries) GetVariant(ctx context.Context, id uuid.UUID) (ProposalVariant
 		&i.CreatedAt,
 		&i.ApprovedAt,
 		&i.RejectedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const listLiveVariants = `-- name: ListLiveVariants :many
-SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE step_id = $1 AND status <> 'superseded' ORDER BY id
+SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone FROM proposal_variant WHERE step_id = $1 AND status <> 'superseded' ORDER BY id
 `
 
 // The variants a marketer still sees in a step: everything except superseded (D-022).
@@ -123,6 +128,7 @@ func (q *Queries) ListLiveVariants(ctx context.Context, stepID uuid.UUID) ([]Pro
 			&i.CreatedAt,
 			&i.ApprovedAt,
 			&i.RejectedAt,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -135,7 +141,7 @@ func (q *Queries) ListLiveVariants(ctx context.Context, stepID uuid.UUID) ([]Pro
 }
 
 const listVariants = `-- name: ListVariants :many
-SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at FROM proposal_variant WHERE step_id = $1 ORDER BY id
+SELECT id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone FROM proposal_variant WHERE step_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListVariants(ctx context.Context, stepID uuid.UUID) ([]ProposalVariant, error) {
@@ -159,6 +165,7 @@ func (q *Queries) ListVariants(ctx context.Context, stepID uuid.UUID) ([]Proposa
 			&i.CreatedAt,
 			&i.ApprovedAt,
 			&i.RejectedAt,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -171,7 +178,7 @@ func (q *Queries) ListVariants(ctx context.Context, stepID uuid.UUID) ([]Proposa
 }
 
 const rejectVariant = `-- name: RejectVariant :one
-UPDATE proposal_variant SET status = 'rejected', rejected_at = now(), rejection_reason = $2 WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+UPDATE proposal_variant SET status = 'rejected', rejected_at = now(), rejection_reason = $2 WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone
 `
 
 type RejectVariantParams struct {
@@ -194,12 +201,13 @@ func (q *Queries) RejectVariant(ctx context.Context, arg RejectVariantParams) (P
 		&i.CreatedAt,
 		&i.ApprovedAt,
 		&i.RejectedAt,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const supersedeVariant = `-- name: SupersedeVariant :one
-UPDATE proposal_variant SET status = 'superseded' WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at
+UPDATE proposal_variant SET status = 'superseded' WHERE id = $1 RETURNING id, step_id, kind, language, channel, status, content, rejection_reason, created_at, approved_at, rejected_at, timezone
 `
 
 func (q *Queries) SupersedeVariant(ctx context.Context, id uuid.UUID) (ProposalVariant, error) {
@@ -217,6 +225,7 @@ func (q *Queries) SupersedeVariant(ctx context.Context, id uuid.UUID) (ProposalV
 		&i.CreatedAt,
 		&i.ApprovedAt,
 		&i.RejectedAt,
+		&i.Timezone,
 	)
 	return i, err
 }

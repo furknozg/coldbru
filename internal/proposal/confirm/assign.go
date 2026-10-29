@@ -57,7 +57,7 @@ func Assign(mode llm.PlanMode, primary llm.Channel, r customer.Recipient) []flow
 			contact = r.Email
 		}
 		out = append(out, flow.BatchRecipient{
-			CustomerID: r.CustomerID, FirstName: r.FirstName, Language: r.Language, Channel: string(c), Contact: contact,
+			CustomerID: r.CustomerID, FirstName: r.FirstName, Language: r.Language, Timezone: r.Timezone, Channel: string(c), Contact: contact,
 		})
 	}
 	return out

@@ -78,7 +78,9 @@ func writeJSON(w http.ResponseWriter, status int, body string) {
 
 const previewBody = `{"data":{"audiencePreview":{"count":46,"maxFirstNameLength":9,"coverage":{"both":20,"emailOnly":13,"smsOnly":13,"unreachable":3},
 "byLanguage":[{"language":"en","count":10,"maxFirstNameLength":9,"coverage":{"both":4,"emailOnly":3,"smsOnly":3,"unreachable":1}},
-{"language":"tr","count":36,"maxFirstNameLength":7,"coverage":{"both":16,"emailOnly":10,"smsOnly":10,"unreachable":2}}]}}}`
+{"language":"tr","count":36,"maxFirstNameLength":7,"coverage":{"both":16,"emailOnly":10,"smsOnly":10,"unreachable":2}}],
+"byLocale":[{"language":"en","timezone":"Europe/Istanbul","count":10,"maxFirstNameLength":9,"coverage":{"both":4,"emailOnly":3,"smsOnly":3,"unreachable":1}},
+{"language":"tr","timezone":"Europe/Istanbul","count":36,"maxFirstNameLength":7,"coverage":{"both":16,"emailOnly":10,"smsOnly":10,"unreachable":2}}]}}}`
 
 func TestQueriesMatchSchema(t *testing.T) {
 	validateQuery(t, previewQuery)
@@ -107,6 +109,10 @@ func TestPreviewDecodesAndSendsRequest(t *testing.T) {
 		ByLanguage: []LanguageCoverage{
 			{Language: "en", Count: 10, MaxFirstNameLength: 9, Coverage: Coverage{Both: 4, EmailOnly: 3, SmsOnly: 3, Unreachable: 1}},
 			{Language: "tr", Count: 36, MaxFirstNameLength: 7, Coverage: Coverage{Both: 16, EmailOnly: 10, SmsOnly: 10, Unreachable: 2}},
+		},
+		ByLocale: []LocaleCoverage{
+			{Language: "en", Timezone: "Europe/Istanbul", Count: 10, MaxFirstNameLength: 9, Coverage: Coverage{Both: 4, EmailOnly: 3, SmsOnly: 3, Unreachable: 1}},
+			{Language: "tr", Timezone: "Europe/Istanbul", Count: 36, MaxFirstNameLength: 7, Coverage: Coverage{Both: 16, EmailOnly: 10, SmsOnly: 10, Unreachable: 2}},
 		},
 	}
 	if !reflect.DeepEqual(p, want) {
@@ -140,7 +146,7 @@ func TestRecipientsRequestAndDecode(t *testing.T) {
 			t.Errorf("query/operation = %q / %q", req.Query, req.OperationName)
 		}
 		writeJSON(w, 200, `{"data":{"audienceRecipients":{"nodes":[
-{"customerId":"CUS-000001","firstName":"Ayşe","language":"tr","emailEligible":true,"smsEligible":false,"email":"a@example.com","phone":null}],
+{"customerId":"CUS-000001","firstName":"Ayşe","language":"tr","timezone":"Europe/Istanbul","emailEligible":true,"smsEligible":false,"email":"a@example.com","phone":null}],
 "pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}`)
 	})
 	f := mustFilter(t, `city === "İstanbul"`)
@@ -149,7 +155,7 @@ func TestRecipientsRequestAndDecode(t *testing.T) {
 		t.Fatalf("Recipients: %v", err)
 	}
 	want := &RecipientPage{
-		Nodes:       []Recipient{{CustomerID: "CUS-000001", FirstName: "Ayşe", Language: "tr", EmailEligible: true, Email: "a@example.com"}},
+		Nodes:       []Recipient{{CustomerID: "CUS-000001", FirstName: "Ayşe", Language: "tr", Timezone: "Europe/Istanbul", EmailEligible: true, Email: "a@example.com"}},
 		HasNextPage: true,
 		EndCursor:   "c1",
 	}

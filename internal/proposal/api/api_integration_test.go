@@ -413,11 +413,25 @@ func TestSampleBriefOverRESTAndSSE(t *testing.T) {
 	for _, tv := range texts {
 		s.approve(tv.ID)
 	}
-	langs := s.waitDrafts(info.ID, flow.KindSchedule, len(pc.ByLanguage))
+	// One schedule slot per (language, timezone) pair of the audience; the sample brief's audience
+	// is all in Istanbul, so there is one per language (D-076).
+	locales := 0
+	for _, l := range aud.ByLocale {
+		if l.Count > 0 {
+			locales++
+		}
+	}
+	langs := s.waitDrafts(info.ID, flow.KindSchedule, locales)
+	if len(langs) != locales || locales != len(pc.ByLanguage) {
+		t.Errorf("%d schedule drafts for %d pairs and %d languages", len(langs), locales, len(pc.ByLanguage))
+	}
 	for _, sv := range langs {
 		var sc flow.ScheduleContent
 		if err := json.Unmarshal(sv.Content, &sc); err != nil || sc.SendAt != nil || !strings.Contains(sc.Rationale, "mock") {
 			t.Errorf("schedule %s = %s (%v)", sv.Language, sv.Content, err)
+		}
+		if sv.Timezone != "Europe/Istanbul" {
+			t.Errorf("schedule %s timezone = %q over REST, want Europe/Istanbul", sv.Language, sv.Timezone)
 		}
 	}
 	var final flow.CampaignView
@@ -453,6 +467,26 @@ func TestSampleBriefOverRESTAndSSE(t *testing.T) {
 	}
 	if counts[flow.TypeStepOpened] < 3 || counts[flow.TypeStepApproved] != 4 || counts[flow.TypeContentDelta] < want || counts[flow.TypeVariantApproved] != 2+want+len(langs) {
 		t.Errorf("event counts = %v", counts)
+	}
+	// The schedule slots carry their timezone on the stream as well.
+	scheduleCreated := 0
+	for _, fr := range frames {
+		if fr.event != flow.TypeVariantCreated {
+			continue
+		}
+		var ev flow.VariantCreated
+		if err := json.Unmarshal([]byte(fr.data), &ev); err != nil {
+			t.Fatal(err)
+		}
+		if ev.Kind == flow.KindSchedule {
+			scheduleCreated++
+			if ev.Slot.Timezone != "Europe/Istanbul" || ev.Slot.Language == "" {
+				t.Errorf("variant_created schedule slot = %+v", ev.Slot)
+			}
+		}
+	}
+	if scheduleCreated != locales {
+		t.Errorf("%d schedule variant_created events, want %d", scheduleCreated, locales)
 	}
 	// The text of a content slot arrives in deltas of attempt 1 that join into the stored document.
 	var deltas strings.Builder

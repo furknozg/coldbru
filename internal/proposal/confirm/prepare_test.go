@@ -1,8 +1,12 @@
 package confirm
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/furknozg/coldbru/internal/proposal/compile"
@@ -28,8 +32,18 @@ func (f *fakeCustomer) EachRecipientPage(_ context.Context, _ *compile.Filter, f
 	return f.err
 }
 
+const (
+	istanbul = "Europe/Istanbul"
+	london   = "Europe/London"
+)
+
+// rec is a recipient living in Istanbul; recIn puts one in another zone.
 func rec(id, lang string, email, sms bool) customer.Recipient {
-	r := customer.Recipient{CustomerID: id, FirstName: "N" + id, Language: lang, EmailEligible: email, SMSEligible: sms}
+	return recIn(id, lang, istanbul, email, sms)
+}
+
+func recIn(id, lang, tz string, email, sms bool) customer.Recipient {
+	r := customer.Recipient{CustomerID: id, FirstName: "N" + id, Language: lang, Timezone: tz, EmailEligible: email, SMSEligible: sms}
 	if email {
 		r.Email = id + "@example.com"
 	}
@@ -46,7 +60,7 @@ func approvedFor(mode llm.PlanMode, primary llm.Channel) *approved {
 		messages: []flow.ConfirmedMessage{
 			{Language: "tr", Channel: "email"}, {Language: "tr", Channel: "sms"}, {Language: "en", Channel: "email"},
 		},
-		schedules: []flow.ConfirmedSchedule{{Language: "tr"}, {Language: "en"}},
+		schedules: []flow.ConfirmedSchedule{{Language: "tr", Timezone: istanbul}, {Language: "en", Timezone: istanbul}},
 	}
 }
 
@@ -66,6 +80,67 @@ func TestPrepare(t *testing.T) {
 	}
 	if p.recipients[0].CustomerID != "1" || p.recipients[3].CustomerID != "4" {
 		t.Errorf("order not kept across pages: %+v", p.recipients)
+	}
+	for _, r := range p.recipients {
+		if r.Timezone != istanbul {
+			t.Errorf("recipient %s has timezone %q, want the one Customer reported (D-076)", r.CustomerID, r.Timezone)
+		}
+	}
+}
+
+// A person whose (language, timezone) has no approved schedule is dropped and the pair is logged
+// with its head count, even when the language and the channel are covered (D-076, D-074).
+func TestPrepareDropsPeopleWhoseLocaleHasNoSchedule(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	c := &Confirmer{
+		log: slog.New(slog.NewTextHandler(&logs, nil)),
+		cust: &fakeCustomer{pages: [][]customer.Recipient{{
+			recIn("1", "tr", istanbul, true, false),
+			recIn("2", "tr", london, true, false), // a Turkish speaker in London: no (tr, London) schedule
+			recIn("3", "en", london, true, false), // English in London: no schedule either
+			recIn("4", "en", istanbul, true, false),
+			recIn("5", "tr", london, true, false),
+		}}},
+	}
+	p, err := c.prepare(t.Context(), approvedFor(llm.ModePrimaryFallback, llm.ChannelEmail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range p.recipients {
+		ids = append(ids, r.CustomerID)
+	}
+	if !slices.Equal(ids, []string{"1", "4"}) || p.dropped != 3 || p.counts.Total != 2 {
+		t.Errorf("recipients = %v dropped = %d counts = %+v, want 1 and 4 kept and 3 dropped", ids, p.dropped, p.counts)
+	}
+	got := logs.String()
+	for _, want := range []string{"level=WARN", "locale_channel=tr/Europe/London/email", "recipients=2", "locale_channel=en/Europe/London/email", "recipients=1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// With a schedule for both zones nobody is dropped and every recipient keeps its own zone.
+func TestPrepareKeepsEveryPairWithASchedule(t *testing.T) {
+	t.Parallel()
+	a := approvedFor(llm.ModePrimaryFallback, llm.ChannelEmail)
+	a.schedules = []flow.ConfirmedSchedule{
+		{Language: "tr", Timezone: istanbul}, {Language: "tr", Timezone: london},
+		{Language: "en", Timezone: istanbul}, {Language: "en", Timezone: london},
+	}
+	c := &Confirmer{cust: &fakeCustomer{pages: [][]customer.Recipient{{
+		recIn("1", "tr", london, true, false), recIn("2", "en", london, true, false), recIn("3", "tr", istanbul, true, false),
+	}}}}
+	p, err := c.prepare(t.Context(), a)
+	if err != nil || p.dropped != 0 || len(p.recipients) != 3 {
+		t.Fatalf("prepare = %+v, %v", p, err)
+	}
+	for i, tz := range []string{london, london, istanbul} {
+		if p.recipients[i].Timezone != tz {
+			t.Errorf("recipient %d timezone = %q, want %q", i, p.recipients[i].Timezone, tz)
+		}
 	}
 }
 

@@ -12,7 +12,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-006 | Tüm servisler arası mesajlaşma, iş kuyruğu ve zamanlama NATS JetStream; yayın transactional outbox ile | Gönderim | Kabul edildi |
 | D-007 | Customer Service GraphQL (gqlgen); LLM JS benzeri DSL yazar, Proposal GraphQL'e çevirir; MCP yok | LLM entegrasyonu | Kabul edildi; ayrıştırıcı kısmı yerini aldı → D-038 |
 | D-008 | Alıcı verisi zamanlamada NATS snapshot'ıyla taşınır; izin segment sorgusunda baştan uygulanır | Kitle ve izinler | Yerini aldı → D-010, D-011 |
-| D-009 | İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz | LLM entegrasyonu | Kabul edildi |
+| D-009 | İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz | LLM entegrasyonu | Kabul edildi; dil başına zamanlama kısmı yerini aldı → D-076 |
 | D-010 | Kanal planı ayrı onay adımı; snapshot kişi başına atanmış kanalı taşır | Kitle ve izinler | Kabul edildi |
 | D-011 | Gönderim anında GraphQL ile batch izin kontrolü; circuit breaker ile fail-closed | Kitle ve izinler | Kabul edildi |
 | D-012 | Frontend: Vue 3 + TypeScript, pnpm, Tailwind, shadcn-vue, Vue Router + composable'lar; kök dizinde `web/` | Takip ve altyapı | Kabul edildi |
@@ -37,7 +37,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-031 | Go servis altyapısı: chi v5 router, log/slog, Viper ile yapılandırma | Takip ve altyapı | Kabul edildi |
 | D-032 | Vue projesi create-vue ile kurulur; kod özellik klasörlerinde | Takip ve altyapı | Kabul edildi |
 | D-033 | Kampanya durumu kaba yaşam döngüsü; adım durumu ayrı | LLM entegrasyonu | Kabul edildi |
-| D-034 | Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK | LLM entegrasyonu | Kabul edildi |
+| D-034 | Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK | LLM entegrasyonu | Kabul edildi; zamanlama yuvası yerini aldı → D-076 |
 | D-035 | NATS olayları kendi JSON zarfıyla; konu evt.<servis>.<olay>.v1 | Gönderim | Kabul edildi |
 | D-036 | Canlı dashboard Notification'dan; kampanya özetleri Analytics'te | Takip ve altyapı | Kabul edildi |
 | D-037 | Vue: oxlint ESLint'in yanında kalır; Geist fontu pakete gömülür | Takip ve altyapı | Kabul edildi |
@@ -71,14 +71,15 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-065 | DSL ayrıştırıcısı: dar sözcük kuralları, ilk hata + satır/sütun, istemci sınırları, kanonik yazıcı, kesin hata kodları, nitelikli lambda alanları | LLM entegrasyonu | Kabul edildi |
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 | D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
-| D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070 |
+| D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070; canlı varyant yuvası unique'i yerini aldı → D-076 |
 | D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
-| D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi |
+| D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi; dil → saat dilimi eşlemesi yerini aldı → D-076 |
 | D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi |
 | D-072 | Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock | Takip ve altyapı | Kabul edildi |
 | D-073 | DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof | Test ve kapsam | Kabul edildi |
 | D-074 | Onay: alıcılar onay anında Customer'dan, saklanmaz; olay ve 500'lük RECIPIENTS batch'leri tek outbox transaction'ında; cancel ve confirm uçları | Gönderim | Kabul edildi |
 | D-075 | Zamanlama prompt'u schedule@1.1.0: brief'teki zaman tüm dillere; konum bazlı zamanlama T-043'te, T-027'den önce | LLM entegrasyonu | Kabul edildi |
+| D-076 | Konum bazlı zamanlama: (dil, saat dilimi) yuvaları, dim_customer.timezone, GraphQL byLocale + Recipient.timezone, migration 00004, schedule@2.0.0, olayda timezone | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -193,7 +194,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-009: İçerik ve zamanlama alıcının diline göre; tüm diller onaylanmadan teklif onaylanmaz
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; dil başına zamanlama kısmı yerini aldı → D-076 · 2026-10-29
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** Brief bonusu "kullanıcının diline göre içerik". `dim_customer.language` şu an `tr` ve `en` içeriyor. Kullanıcı ara adımlarda bağlam ekleyebilmeli.
 - **Karar:**
@@ -551,7 +552,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-034: Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; zamanlama yuvası yerini aldı → D-076 · 2026-10-29
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-022 dil ve kanalı olmayan adımların (kitle, kanal planı) varyant biçimini açık bırakmıştı.
 - **Karar:** `proposal_variant` tüm adımlar için tek tablodur. Kitle ve kanal planı adımları tek varyantlıdır (`language` ve `channel` NULL). Zamanlama adımı dil başına bir varyanttır (`channel` NULL, D-009). Metin adımı dil × kanal varyantıdır. `CHECK` kısıtları adım türüne göre hangi alanların dolu olacağını zorlar.
@@ -1105,7 +1106,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-068: proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration
 
-- **Durum:** Kabul edildi · 2026-10-28; `llm_call.purpose` listesi yerini aldı → D-070 · 2026-10-28
+- **Durum:** Kabul edildi · 2026-10-28; `llm_call.purpose` listesi yerini aldı → D-070 · 2026-10-28; canlı varyant yuvası unique'i yerini aldı → D-076 · 2026-10-29
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-022, D-033 ve D-034 tablo sınırlarını, adım türlerini ve durum değerlerini; D-030 UUIDv7 anahtarları; D-060 `llm_call`'ın prompt sürüm sütunlarını belirledi. Kolon listeleri, indeksler, kısıtların DB'de ne kadar zorlanacağı ve görevin kapsamı açıktı (T-021; kodlama kuralı 7). `outbox` ve `processed_event` zaten platform setindedir (D-054).
 - **Karar:**
@@ -1149,7 +1150,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-070: Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle
 
-- **Durum:** Kabul edildi · 2026-10-28
+- **Durum:** Kabul edildi · 2026-10-28; dil → saat dilimi eşlemesi yerini aldı → D-076 · 2026-10-29
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-009, D-010, D-022, D-033 ve D-034 adımları, varyantları ve durum makinelerini; D-069 segment ve ön eleme çağrılarını belirledi. Kanal planını ve zamanlamayı kimin önereceği, elle düzenleme, uzun LLM adımlarının nasıl çalışacağı ve metin adımının T-024 ile sınırı açıktı (T-023). Brief "pazarlamacı önizler, gerekirse düzenler ve onaylar" diyor.
 - **Karar:**
@@ -1287,6 +1288,32 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Konum bazlı zamanlamayı Notification'dan sonra veya T-026 içinde yapmak — reddedildi: Notification'ın şeması sonradan değişirdi / T-026 büyürdü.
 - **Sonuçlar / bedel:** Kısa ömürlü bir prompt sürümü ve önbelleğin bir kez soğuması. T-043'e kadar saat dilimi hâlâ dilden türetilir; İstanbul'daki `en` kitle Londra saatiyle zamanlanır. T-027 bir görev gecikir.
 - **Doğrulama:** 2026-10-28'de: `schedule@1.1.0` (`internal/proposal/prompts/schedule/system.txt`), kilit yeniden üretildi; `TestPlanAndSchedulePackages` yeni 3. kuralı ve gerekçe kuralını arar, eski "only for one language" ifadesinin kalmadığını doğrular; `make test` geçti. Gerçek modelle aynı brief yeniden denenmedi (ücretli çağrı).
+
+## D-076: Konum bazlı zamanlama: (dil, saat dilimi) yuvaları, dim_customer.timezone, GraphQL byLocale + Recipient.timezone, migration 00004, schedule@2.0.0, olayda timezone
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-075 zamanlamanın dil yerine konuma dayanmasını T-043'e bıraktı. D-009 dil başına ayrı gönderim zamanını seçmiş ve alıcının yerel saatini reddetmişti; D-070 saat dilimini dilden türetiyordu (tr → Europe/Istanbul, en → Europe/London); D-034 zamanlama varyantını dil başına tanımlıyordu. Seed'de her müşterinin `timezone` alanı doludur ve dil ile konum örtüşmez: Europe/Istanbul'da 557 `tr` + 53 `en`, Europe/London'da 377 `en` + 13 `tr` müşteri vardır. Kullanıcı brief bölge belirtiyorsa ona göre, belirtmiyorsa konum bazlı gerekçeyle zamanlama istedi.
+- **Karar:**
+  - Zamanlama varyantı kitlede alıcısı olan her (dil, saat dilimi) çifti için açılır. Metin yine dil × kanal başınadır.
+  - Konum `dim_customer.timezone` (IANA) alanından gelir.
+  - Customer GraphQL'e (D-058'e ekleme): `AudiencePreview.byLocale [{language, timezone, count, coverage, maxFirstNameLength}]` ve `Recipient.timezone`. `byLanguage` korunur.
+  - Migration `00004` (kodlama kuralı 7, kullanıcı onayladı): `proposal_variant.timezone text NULL`; CHECK: `schedule` türünde dolu, diğer türlerde NULL; canlı yuva unique'i `(step_id, language, channel, timezone) NULLS NOT DISTINCT` olur.
+  - `schedule@2.0.0` (çıktı şeması değiştiği için MAJOR, D-059): girdi kitledeki her (dil, saat dilimi) çifti, alıcı sayısı ve yerel "now"dur. Brief bir bölge, şehir veya ülke için zaman verirse yalnız o saat dilimindeki çiftlere uygulanır; genel bir zaman ("yarın sabah") her çiftte kendi yerel saatiyle aynı duvar saatidir; brief bir dil grubunu sınırlarsa yalnız o dilin çiftlerine uygulanır; zaman yoksa `null`. Kitlede olmayan bölgeler yok sayılır ve gerekçede belirtilir. Gerekçe brief'in dilindedir.
+  - `evt.proposal.confirmed.v1` `schedules[{language, timezone, send_at}]` olur ve batch alıcısı `timezone` alır (v1 içinde alan eklemesi, D-035). Zamanlaması olmayan (dil, saat dilimi) çiftine düşen alıcı D-074'teki gibi düşürülür ve loglanır. Notification'ın zamanlama konuları kampanya × dil × saat dilimi olur (T-028).
+  - Kullanıcı ayrıca onayladı: `00004` mevcut zamanlama satırlarını CHECK'ten önce eski D-070 eşlemesiyle doldurur (tr → Europe/Istanbul, en → Europe/London). Doğrulayıcı `send_at` ofsetinin o anda yuvanın saat dilimine uymasını ister (yaz saati dahil); yanlış ofset onarılacak bir sorun olarak modele geri verilir.
+  - Kullanıcı ayrıca onayladı: `00004` ek olarak `proposal_variant_timezone_check (timezone ~ '\S')` kısıtını açar (D-068'deki boş olmayan metin kuralıyla tutarlı). D-076'dan önce kaydedilmiş, `by_locale` taşımayan bir kitle varyantıyla zamanlama adımına gelinirse üretim görünür bir hatayla ("kitle adımını yeniden aç") başarısız olur.
+  - D-009'un dil başına zamanlama kısmı, D-070'in dil → saat dilimi eşlemesi ve D-034'ün zamanlama yuvası bu kararla yerini alır.
+- **Alternatifler:**
+  - Yalnız saat dilimi yuvası — reddedildi: dil grubuna özel zaman ifade edilemezdi. Ülke — reddedildi: çok saat dilimli ülkelerde yanlış.
+  - `country_code` → saat dilimi tablosu — reddedildi: müşterinin kayıtlı saat dilimini yok sayardı.
+  - Ayrı `byTimezone` — reddedildi: çift yuvalarının sayıları birleştirilemezdi.
+  - Saat dilimini yalnız `content`'te tutmak — reddedildi: aynı dilde iki saat dilimi mevcut unique index'e takılırdı.
+  - Genel zamanı brief dilinin saat diliminde tek an saymak — reddedildi: Londra'daki alıcıya sabah 7'de giderdi.
+  - `evt.proposal.confirmed.v2` — reddedildi: henüz tüketici yok.
+- **Sonuçlar / bedel:** Daha çok onay yuvası (seed'de en fazla 4). Bir migration ve index değişimi. Prompt'un MAJOR sürümü önbelleği bir kez soğutur. GraphQL'de iki alan ve SQL'de bir gruplama daha.
+- **Doğrulama:** 2026-10-29'da (T-043): Customer `locale_integration_test.go` örnek brief'te `byLocale` toplamının 46 olduğunu ve doğrudan SQL `group by` ile aynı olduğunu, `totalOrders >= 1` için dört çifti, `Recipient.timezone`'un saklı sütunla aynı olduğunu doğrular. Store `TestMigration00004_BackfillAndRoundTrip` ve timezone kısıt vakaları. Flow `locale_integration_test.go`: örnek brief'te yalnız (tr, Europe/Istanbul) ve (en, Europe/Istanbul) yuvaları; "yarın sabah" ikisinde 09:00+03:00; `totalOrders >= 1` dört yuva; yanlış Londra ofseti aynı konuşmada onarılır; yaz saati geçişi birim testinde. Confirm `locale_integration_test.go`: olay `schedules` ve batch alıcıları `timezone` taşır, çift başına sayılar planla aynıdır. `schedule@2.0.0` kilidi yeniden üretildi. Canlı yığında `00004` uygulandı (`goose_db_version` 4, sütun, index ve iki CHECK var); servis gerçek model modunda olduğu için kampanya açılmadı. `make test` geçti.
+- **Uygulama notu:** Customer tek SQL sorgusuyla (dil, saat dilimi) gruplar, `byLanguage` bu satırlardan toplanır. Yuva adı `tr@Europe/Istanbul` biçimindedir. Doğrulayıcı yalnız sayısal ofseti karşılaştırır (`Z`, +00:00 olan bölgede kabul). Saat dilimi verisi için `time/tzdata` gömülüdür. Prompt'a çift başına alıcı sayısı ve İstanbul/Londra ofset ipucu eklendi. Kanal planı içeriği `by_locale` almaz; çift başına alıcılar kitle ve plandan hesaplanır. Onayda düşürülen alıcılar (dil/saat dilimi/kanal) başına sayıyla loglanır.
 
 ---
 

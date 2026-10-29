@@ -347,14 +347,18 @@ func rec(purpose llm.Purpose, outcome llm.Outcome, attempt int, errText string) 
 	return r
 }
 
-// scheduleFor returns a valid schedule answer for the languages: the first at now + 24h in
-// Istanbul time, the others immediately.
-func (h *harness) scheduleFor(langs ...string) []llm.ScheduleEntry {
-	at := h.clock.Now().Add(24 * time.Hour).In(time.FixedZone("+03", 3*3600))
+// scheduleFor returns a valid schedule answer for the (language, timezone) pairs: the first at
+// now + 24h in its own zone, the others immediately.
+func (h *harness) scheduleFor(locales ...llm.ScheduleLocale) []llm.ScheduleEntry {
 	var out []llm.ScheduleEntry
-	for i, l := range langs {
-		e := llm.ScheduleEntry{Language: l, Rationale: "scripted"}
+	for i, l := range locales {
+		e := llm.ScheduleEntry{Language: l.Language, Timezone: l.Timezone, Rationale: "scripted"}
 		if i == 0 {
+			loc, err := time.LoadLocation(l.Timezone)
+			if err != nil {
+				h.t.Fatalf("LoadLocation(%s): %v", l.Timezone, err)
+			}
+			at := h.clock.Now().Add(24 * time.Hour).In(loc)
 			e.SendAt = &at
 		}
 		out = append(out, e)

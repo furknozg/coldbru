@@ -30,6 +30,23 @@ func langsOf(p *customer.Preview) []string {
 	return out
 }
 
+// localesOf lists the (language, timezone) pairs of the preview that have reachable customers, in
+// the order the flow derives schedule slots (language, then timezone), as the scripted schedule
+// answers and the expected input of the schedule call (D-076). With the plans these tests use every
+// such pair receives a message.
+func localesOf(p *customer.Preview) []llm.ScheduleLocale {
+	var out []llm.ScheduleLocale
+	for _, l := range p.ByLocale {
+		if l.Count > 0 {
+			out = append(out, llm.ScheduleLocale{Language: l.Language, Timezone: l.Timezone})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Language < out[j].Language || out[i].Language == out[j].Language && out[i].Timezone < out[j].Timezone
+	})
+	return out
+}
+
 func variantStatus(t *testing.T, h *harness, id uuid.UUID) string {
 	t.Helper()
 	var s string
@@ -68,7 +85,8 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 		t.Fatalf("the seed changed: the sample audience is %d with %+v, want 46 with 20/13/13/3", prev.Count, prev.Coverage)
 	}
 	langs := langsOf(prev)
-	h.llm.ProposeSchedules(h.scheduleFor(langs...))
+	locales := localesOf(prev)
+	h.llm.ProposeSchedules(h.scheduleFor(locales...))
 
 	camp, sub := h.startCampaign(sampleBrief)
 	h.idle()
@@ -155,21 +173,33 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 	}
 	h.mustApprove(contentStep.Variants[len(contentStep.Variants)-1])
 
-	// 4. Schedule: one variant per language.
+	// 4. Schedule: one variant per (language, timezone) pair (D-076). The sample audience is all in
+	// Istanbul, so the pairs are the languages in Europe/Istanbul.
 	h.idle()
 	schedStep := h.step(camp.ID, flow.KindSchedule)
-	if len(schedStep.Variants) != len(langs) {
-		t.Fatalf("schedule variants = %d, want one per language %v", len(schedStep.Variants), langs)
+	if len(schedStep.Variants) != len(locales) {
+		t.Fatalf("schedule variants = %d, want one per pair %v", len(schedStep.Variants), locales)
 	}
-	if in := h.llm.ScheduleInputs(); len(in) != 1 || strings.Join(in[0].Languages, ",") != strings.Join(langs, ",") || in[0].Brief != sampleBrief || !in[0].Now.Equal(h.clock.Now()) {
-		t.Errorf("schedule input = %+v", in)
+	for _, l := range locales {
+		if l.Timezone != "Europe/Istanbul" {
+			t.Errorf("sample brief pair %+v is not in Europe/Istanbul", l)
+		}
+	}
+	sin := h.llm.ScheduleInputs()
+	if len(sin) != 1 || sin[0].Brief != sampleBrief || !sin[0].Now.Equal(h.clock.Now()) || len(sin[0].Locales) != len(locales) {
+		t.Fatalf("schedule input = %+v", sin)
+	}
+	for i, l := range sin[0].Locales {
+		if l.Language != locales[i].Language || l.Timezone != locales[i].Timezone || l.Recipients <= 0 {
+			t.Errorf("schedule input locale %d = %+v, want %s / %s with recipients", i, l, locales[i].Language, locales[i].Timezone)
+		}
 	}
 	var withTime int
 	for _, sv := range schedStep.Variants {
 		var c flow.ScheduleContent
 		decodeInto(t, sv.Content, &c)
-		if sv.Language == "" || sv.Channel != "" {
-			t.Errorf("schedule variant slot = %q/%q", sv.Language, sv.Channel)
+		if sv.Language == "" || sv.Channel != "" || sv.Timezone != "Europe/Istanbul" {
+			t.Errorf("schedule variant slot = %q/%q/%q", sv.Language, sv.Channel, sv.Timezone)
 		}
 		if c.SendAt != nil {
 			withTime++
@@ -433,7 +463,7 @@ func TestRejectRegeneratesOnlyThatSlot(t *testing.T) {
 func TestAddContextRegeneratesUnapprovedAndKeepsApproved(t *testing.T) {
 	h := newHarness(t)
 	camp, _, prev := h.toContent(llm.ModePrimaryFallback, llm.ChannelEmail)
-	h.llm.ProposeSchedules(h.scheduleFor(langsOf(prev)...))
+	h.llm.ProposeSchedules(h.scheduleFor(localesOf(prev)...))
 	step := h.step(camp.ID, flow.KindContent)
 	if len(step.Variants) < 3 {
 		t.Fatalf("need at least three content slots, got %d", len(step.Variants))
@@ -661,7 +691,7 @@ func TestEditPlanContentAndSchedule(t *testing.T) {
 func TestEditScheduleValidatesTheWindow(t *testing.T) {
 	h := newHarness(t)
 	prev := h.scriptAudienceAndPlan(llm.ModePrimaryFallback, llm.ChannelEmail)
-	h.llm.ProposeSchedules(h.scheduleFor(langsOf(prev)...))
+	h.llm.ProposeSchedules(h.scheduleFor(localesOf(prev)...))
 	camp, _ := h.startCampaign(sampleBrief)
 	h.idle()
 	h.approveAll(camp.ID, flow.KindAudience)
@@ -672,12 +702,13 @@ func TestEditScheduleValidatesTheWindow(t *testing.T) {
 	at := func(d time.Duration) string { return now.Add(d).In(time.FixedZone("+03", 3*3600)).Format(time.RFC3339) }
 
 	for name, body := range map[string]string{
-		"in the past":        `{"send_at":"` + at(-time.Hour) + `"}`,
-		"too soon":           `{"send_at":"` + at(4*time.Minute) + `"}`,
-		"too far":            `{"send_at":"` + at(31*24*time.Hour) + `"}`,
-		"no offset":          `{"send_at":"2026-11-02T10:00:00"}`,
-		"not a time":         `{"send_at":"tomorrow"}`,
-		"send_at is missing": `{"rationale":"x"}`,
+		"in the past":                        `{"send_at":"` + at(-time.Hour) + `"}`,
+		"too soon":                           `{"send_at":"` + at(4*time.Minute) + `"}`,
+		"too far":                            `{"send_at":"` + at(31*24*time.Hour) + `"}`,
+		"london offset for an istanbul slot": `{"send_at":"` + now.Add(48*time.Hour).UTC().Format(time.RFC3339) + `"}`,
+		"no offset":                          `{"send_at":"2026-11-02T10:00:00"}`,
+		"not a time":                         `{"send_at":"tomorrow"}`,
+		"send_at is missing":                 `{"rationale":"x"}`,
 	} {
 		if _, err := h.svc.Edit(t.Context(), sv.ID, json.RawMessage(body)); !errors.Is(err, flow.ErrInvalidContent) {
 			t.Errorf("%s: err = %v, want ErrInvalidContent", name, err)
@@ -946,7 +977,7 @@ func TestConcurrentApprovalsOpenTheNextStepOnce(t *testing.T) {
 	t.Run("last variants of a step", func(t *testing.T) {
 		h := newHarness(t)
 		camp, sub, prev := h.toContent(llm.ModePrimaryFallback, llm.ChannelEmail)
-		h.llm.ProposeSchedules(h.scheduleFor(langsOf(prev)...))
+		h.llm.ProposeSchedules(h.scheduleFor(localesOf(prev)...))
 		step := h.step(camp.ID, flow.KindContent)
 		events(sub)
 
@@ -1175,7 +1206,7 @@ func TestErrorsOfTheActions(t *testing.T) {
 func TestConfirmerFailureIsReportedAndTheApprovalStands(t *testing.T) {
 	h := newHarness(t)
 	camp, _, prev := h.toContent(llm.ModePrimaryFallback, llm.ChannelEmail)
-	h.llm.ProposeSchedules(h.scheduleFor(langsOf(prev)...))
+	h.llm.ProposeSchedules(h.scheduleFor(localesOf(prev)...))
 	h.approveAll(camp.ID, flow.KindContent)
 	h.confirmer.Err = errors.New("outbox is down")
 	svs := h.step(camp.ID, flow.KindSchedule).Variants

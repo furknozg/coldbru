@@ -112,11 +112,11 @@ func (s *Service) Approve(ctx context.Context, variantID uuid.UUID) error {
 		}
 		t.emit(VariantApproved{Meta: s.meta(camp.ID), StepID: st.ID, VariantID: v.ID})
 
-		_, plan, err := priorContent(ctx, t.q, camp.ID, st.Kind)
+		aud, plan, err := priorContent(ctx, t.q, camp.ID, st.Kind)
 		if err != nil {
 			return err
 		}
-		expected, err := expectedSlots(st.Kind, plan)
+		expected, err := expectedSlots(st.Kind, aud, plan)
 		if err != nil {
 			return err
 		}
@@ -190,10 +190,11 @@ func (s *Service) Reject(ctx context.Context, variantID uuid.UUID, reason string
 // Edit replaces a draft variant by hand (D-070). The new content passes the validators the
 // generated content passes: an audience edit is a new DSL that is recompiled and recounted, a plan
 // edit a mode and primary checked against the audience, a schedule edit a send time inside the
-// window, and a content edit whatever the ContentGenerator accepts. It becomes a new draft variant
+// window with the right offset for the slot's time zone, and a content edit whatever the ContentGenerator accepts. It becomes a new draft variant
 // in the same slot and the old one is superseded. content is a JSON object: {"dsl": ...} for the
 // audience, {"mode", "primary", "rationale"} for the plan, {"send_at", "rationale"} for the
-// schedule, the generator's own shape for the content. Invalid content returns *InvalidContentError
+// schedule (the send time is read in the slot's time zone, D-076), the generator's own shape for
+// the content. Invalid content returns *InvalidContentError
 // (errors.Is ErrInvalidContent) and nothing changes.
 func (s *Service) Edit(ctx context.Context, variantID uuid.UUID, content json.RawMessage) (VariantView, error) {
 	v0, st0, err := s.lookup(ctx, variantID)
@@ -221,7 +222,7 @@ func (s *Service) Edit(ctx context.Context, variantID uuid.UUID, content json.Ra
 		}
 		t.emit(VariantSuperseded{Meta: s.meta(camp.ID), StepID: st.ID, VariantID: old.ID})
 		out, err = t.q.CreateVariant(ctx, store.CreateVariantParams{
-			StepID: st.ID, Kind: st.Kind, Language: old.Language, Channel: old.Channel, Content: built,
+			StepID: st.ID, Kind: st.Kind, Language: old.Language, Channel: old.Channel, Timezone: old.Timezone, Content: built,
 		})
 		if err != nil {
 			return err
@@ -318,8 +319,9 @@ func (s *Service) buildEdit(ctx context.Context, v store.ProposalVariant, st sto
 			}
 		}
 		sc.Rationale = in.Rationale
-		entry := llm.ScheduleEntry{Language: v.Language.String, SendAt: sc.SendAt}
-		if problems := ScheduleProblems([]llm.ScheduleEntry{entry}, []string{v.Language.String}, s.clock.Now()); len(problems) > 0 {
+		entry := llm.ScheduleEntry{Language: v.Language.String, Timezone: v.Timezone.String, SendAt: sc.SendAt}
+		locale := llm.ScheduleLocale{Language: entry.Language, Timezone: entry.Timezone}
+		if problems := ScheduleProblems([]llm.ScheduleEntry{entry}, []llm.ScheduleLocale{locale}, s.clock.Now()); len(problems) > 0 {
 			return nil, invalid(problems...)
 		}
 		return json.Marshal(sc)

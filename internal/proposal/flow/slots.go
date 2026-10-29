@@ -11,13 +11,16 @@ func sortSlots(s []Slot) {
 		if s[i].Language != s[j].Language {
 			return s[i].Language < s[j].Language
 		}
-		return s[i].Channel < s[j].Channel
+		if s[i].Channel != s[j].Channel {
+			return s[i].Channel < s[j].Channel
+		}
+		return s[i].Timezone < s[j].Timezone
 	})
 }
 
 // slotOf returns the slot a variant occupies.
 func slotOf(v store.ProposalVariant) Slot {
-	return Slot{Language: v.Language.String, Channel: v.Channel.String}
+	return Slot{Language: v.Language.String, Channel: v.Channel.String, Timezone: v.Timezone.String}
 }
 
 // filled is the set of slots that hold a draft or approved variant.

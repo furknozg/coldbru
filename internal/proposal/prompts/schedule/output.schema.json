@@ -3,24 +3,28 @@
   "properties": {
     "entries": {
       "type": "array",
-      "description": "Exactly one entry for each language of the input, in the order of the input.",
+      "description": "Exactly one entry for each locale (language and timezone pair) of the input, in the order of the input.",
       "items": {
         "type": "object",
         "properties": {
           "language": {
             "type": "string",
-            "description": "A language code copied from the input."
+            "description": "A language code copied unchanged from the input locale."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The IANA time zone copied unchanged from the same input locale, for example Europe/Istanbul."
           },
           "send_at": {
             "anyOf": [{"type": "string"}, {"type": "null"}],
-            "description": "RFC 3339 date and time with an explicit offset, for example 2026-11-02T10:00:00+03:00, in the time zone of the language; null to send immediately."
+            "description": "RFC 3339 date and time with an explicit offset, for example 2026-11-02T10:00:00+03:00, in the time zone of the locale; null to send immediately."
           },
           "rationale": {
             "type": "string",
             "description": "One short sentence, in the language of the brief, saying where the time comes from."
           }
         },
-        "required": ["language", "send_at", "rationale"],
+        "required": ["language", "timezone", "send_at", "rationale"],
         "additionalProperties": false
       }
     }
