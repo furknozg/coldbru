@@ -306,7 +306,7 @@ stateDiagram-v2
 
 `skipped_no_consent` kişi diğer kanala düşürülmez (D-011). Customer'a ulaşılamazsa satır `pending` kalır ve ertelenir; izni doğrulanmamış kimseye gönderim yapılmaz (fail-closed).
 
-Canlı dashboard bu tablonun `campaign_id, channel, status` kırılımındaki anlık sayımlarını SSE ile yayar (D-036).
+Canlı dashboard bu tablonun `campaign_id, channel, status` kırılımındaki anlık sayımlarını yayar (D-036): `GET /campaigns/{id}/deliveries` ve SSE `GET /campaigns/{id}/deliveries/events` (bağlanınca snapshot, sayılar değişince yeni snapshot, bitince `done`; 1 sn DB yoklaması, D-080). Kampanya, tüm zamanlamaları tetiklenip bekleyen veya gönderimdeki teslimatı kalmayınca 2 sn'lik denetleyiciyle `completed` olur ve kişisel veri temizlenir (D-077, D-080).
 
 ## 5. analytics_db
 
@@ -384,8 +384,8 @@ Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, 
 | `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, timezone, send_at}]` (`null` = hemen, D-076), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
 | `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason`; yalnız `scheduled` veya `sending` kampanyanın iptalinde (D-074) |
 | `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call` satırı: `id`, `campaign_id`, `model`, `purpose`, token sayıları |
-| `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `language`, `started_at` |
-| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, kanal ve durum sayıları, `sms_segments` |
+| `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `schedule_id`, `language`, `timezone`, `started_at`; her zamanlama tetiklenişinde (D-080) |
+| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, `completed_at`, `counts[{channel, status, count}]`, `sms_segments`, `estimated_cost_gbp`; kampanya başına bir kez (D-080) |
 
 Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, timezone, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
 

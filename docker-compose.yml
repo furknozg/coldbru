@@ -153,6 +153,8 @@ services:
       PROVIDER_BASE_URL: http://mockprovider:8080
       CUSTOMER_GRAPHQL_URL: http://customer:8080/graphql
       CUSTOMER_TOKEN: ${CUSTOMER_TOKEN_NOTIFICATION:-notification-dev-token}
+      SMS_SEGMENT_PRICE_GBP: ${SMS_SEGMENT_PRICE_GBP:-0.04}
+      EMAIL_PRICE_GBP: ${EMAIL_PRICE_GBP:-0.001}
     ports:
       - "${NOTIFICATION_HOST_PORT:-8082}:8080"
     depends_on:

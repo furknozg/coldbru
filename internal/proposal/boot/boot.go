@@ -1,5 +1,6 @@
-// Package boot wires the proposal service together (D-056, D-072): the Customer client, the LLM
-// chosen by LLM_MODE, the content generator, the flow, the event hub and the REST and SSE routes.
+// Package boot wires the proposal service together (D-056, D-072, D-080): the Customer client, the
+// LLM chosen by LLM_MODE, the content generator, the flow, the event hub, the consumer of
+// Notification's events and the REST and SSE routes.
 // cmd/proposal passes Setup to the platform skeleton (internal/platform/app).
 package boot
 
@@ -21,6 +22,7 @@ import (
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/llm/anthropic"
 	"github.com/furknozg/coldbru/internal/proposal/llm/mock"
+	"github.com/furknozg/coldbru/internal/proposal/progress"
 )
 
 // KeyLLMMode selects the model: auto, anthropic or mock (D-072).
@@ -130,6 +132,18 @@ func Setup(ctx context.Context, d *app.Deps) error {
 		return fmt.Errorf("flow: %w", err)
 	}
 	d.OnShutdown(svc.Close)
+
+	// Follows Notification: sending and completed (D-080). Registered after the flow's hook, so it
+	// stops first; it only writes to the database.
+	if d.JetStream == nil {
+		d.Logger.Warn("notification events not consumed: no NATS connection")
+	} else {
+		stopProgress, err := progress.Start(ctx, progress.Deps{JS: d.JetStream, Pool: d.Pool, Hub: hub, Logger: d.Logger})
+		if err != nil {
+			return fmt.Errorf("notification events: %w", err)
+		}
+		d.OnShutdown(stopProgress)
+	}
 
 	api.New(api.Config{Flow: svc, Logger: d.Logger, Shutdown: ctx}).Mount(d.Router)
 	d.Logger.Info("proposal routes mounted", "llm_mode", string(mode), "cta_url", contentCfg.CTAURL)

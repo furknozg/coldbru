@@ -25,7 +25,8 @@
 //     failed: a new message is written to the outbox and the old one acked, so the delivery waits
 //     for Customer however long it takes.
 //
-// The campaign is not completed here, nor are its personal data cleared: that is T-030. The one
+// The campaign is not completed here, nor are its personal data cleared: the completion checker
+// of package progress does that (D-080), woken by Deps.Nudge after each settled delivery. The one
 // exception is a campaign cancelled while a delivery is being sent; the delivery then loses its
 // personal data when it is settled (D-078).
 package sender
@@ -130,6 +131,10 @@ type Deps struct {
 	Burst int
 	// Lease is the lease of a claim; zero means LeaseDuration.
 	Lease time.Duration
+
+	// Nudge, if set, is called after every delivery the worker settled (sent, failed, skipped or
+	// cancelled), to wake the completion checker (D-080). It must not block.
+	Nudge func()
 }
 
 // Channels the worker serves.
@@ -163,6 +168,7 @@ type worker struct {
 	lease    time.Duration
 	workers  int
 	jobs     chan job
+	nudge    func()
 }
 
 // job is a delivery cleared for sending and the message that carries it.
@@ -221,7 +227,7 @@ func Start(ctx context.Context, d Deps) (stop func(context.Context) error, err e
 		workers = append(workers, &worker{
 			channel: ch, cons: cons, pool: d.Pool, q: store.New(d.Pool), log: logger.With("channel", ch),
 			provider: d.Provider, consent: d.Consent, gate: newGate(limit, burst), m: m,
-			backoff: backoff, lease: lease, workers: senders, jobs: make(chan job, BatchSize),
+			backoff: backoff, lease: lease, workers: senders, jobs: make(chan job, BatchSize), nudge: d.Nudge,
 		})
 		logger.Info("consumer started", "consumer", cfg.Durable, "stream", Stream, "filter", cfg.FilterSubject,
 			"max_ack_pending", cfg.MaxAckPending, "ack_wait", cfg.AckWait.String(), "max_deliver", cfg.MaxDeliver,
@@ -362,7 +368,7 @@ func (w *worker) handleBatch(ctx context.Context, msgs []jetstream.Msg) {
 				continue
 			}
 			if n == 1 {
-				w.m.final(w.channel, "cancelled")
+				w.final("cancelled")
 			}
 			w.log.Info("delivery of a cancelled campaign dropped", "delivery_id", e.id, "campaign_id", row.CampaignID)
 			w.ack(e.msg, e.id)
@@ -400,7 +406,7 @@ func (w *worker) handleBatch(ctx context.Context, msgs []jetstream.Msg) {
 				continue
 			}
 			if n == 1 {
-				w.m.final(w.channel, "skipped_no_consent")
+				w.final("skipped_no_consent")
 				w.log.Info("delivery skipped, no consent", "delivery_id", j.row.ID, "campaign_id", j.row.CampaignID)
 			}
 			w.ack(j.msg, j.row.ID)
@@ -511,6 +517,15 @@ func (w *worker) send(ctx context.Context, j job) {
 	}
 }
 
+// final counts a delivery that reached a final status and nudges the completion checker, which
+// decides whether that was the last one (D-080).
+func (w *worker) final(status string) {
+	w.m.final(w.channel, status)
+	if w.nudge != nil {
+		w.nudge()
+	}
+}
+
 // sent records the provider's acceptance. Personal data stay until the campaign ends (D-077).
 func (w *worker) sent(ctx context.Context, log *slog.Logger, j job, attempts int32, messageID string) {
 	n, err := settle(ctx, func() (int64, error) {
@@ -523,7 +538,7 @@ func (w *worker) sent(ctx context.Context, log *slog.Logger, j job, attempts int
 		return
 	}
 	if n == 1 {
-		w.m.final(w.channel, "sent")
+		w.final("sent")
 	} else {
 		log.Warn("delivery no longer ours when marking it sent", "attempts", attempts)
 	}
@@ -541,7 +556,7 @@ func (w *worker) fail(ctx context.Context, log *slog.Logger, j job, attempts int
 		return
 	}
 	if n == 1 {
-		w.m.final(w.channel, "failed")
+		w.final("failed")
 		log.Warn("delivery failed", "attempts", attempts, "reason", reason)
 	}
 	w.ack(j.msg, j.row.ID)
@@ -574,7 +589,7 @@ func (w *worker) retry(ctx context.Context, log *slog.Logger, j job, attempts in
 		w.nak(j.msg, j.row.ID, delay)
 	case status == "cancelled":
 		// The campaign was cancelled while the message was out: the delivery ended, with its personal data cleared.
-		w.m.final(w.channel, "cancelled")
+		w.final("cancelled")
 		w.ack(j.msg, j.row.ID)
 	default:
 		log.Info("delivery will be retried", "delivery", j.n, "delay", delay.String(), "reason", cause.Error())
