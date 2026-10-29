@@ -7,6 +7,9 @@
 # The five Go services (customer, proposal, notification, analytics, mockprovider) are built from the
 # root Dockerfile (SERVICE build arg) and wait for postgres / nats-init (D-056). Host ports: proposal 8081,
 # notification 8082, analytics 8083, mockprovider 8084; customer is reachable only inside the compose network.
+# mockprovider (D-081) hands the email it accepts to mailpit over SMTP (inbox UI: http://localhost:8025) and the SMS to
+# mockserver over HTTP (dashboard: http://localhost:1080/mockserver/dashboard; its /sms expectation comes from
+# infra/mockserver/initializer.json). Fault rates and the rate limit are MOCK_* variables of the mockprovider service.
 # API_DOCS_ENABLED (default true here, false in code) serves /docs and /openapi.json on the four REST services (D-057).
 # proposal picks its model by LLM_MODE (auto|anthropic|mock, default auto): with an empty ANTHROPIC_API_KEY it runs on
 # the built-in mock, so the stack works without a key (D-072). /readyz shows the mode.
@@ -196,6 +199,31 @@ services:
       retries: 12
       start_period: 10s
 
+  # Email inbox of the mock provider (D-081). v1.31.5 is past GHSA-FPXJ-M5Q8-FPHW (fixed in 1.30.0).
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_HOST_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # SMS inbox of the mock provider (D-081). The image has no shell or curl; its own built-in HEALTHCHECK
+  # (a java command) is used as is.
+  mockserver:
+    image: mockserver/mockserver:8.0.0
+    restart: unless-stopped
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/initializer.json
+    ports:
+      - "${MOCKSERVER_HOST_PORT:-1080}:1080"
+    volumes:
+      - ./infra/mockserver/initializer.json:/config/initializer.json:ro
+
   mockprovider:
     build:
       context: .
@@ -207,8 +235,25 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
+      MAILPIT_SMTP_ADDR: mailpit:1025
+      MOCKSERVER_URL: http://mockserver:1080
+      MOCK_EMAIL_FROM: ${MOCK_EMAIL_FROM:-campaigns@coldbru.test}
+      MOCK_ERROR_RATE: ${MOCK_ERROR_RATE:-0.05}
+      MOCK_RATE_429: ${MOCK_RATE_429:-0.02}
+      MOCK_TIMEOUT_RATE: ${MOCK_TIMEOUT_RATE:-0.01}
+      MOCK_TIMEOUT_DELAY: ${MOCK_TIMEOUT_DELAY:-12s}
+      MOCK_LATENCY_MIN: ${MOCK_LATENCY_MIN:-50ms}
+      MOCK_LATENCY_MAX: ${MOCK_LATENCY_MAX:-300ms}
+      MOCK_RATE_LIMIT: ${MOCK_RATE_LIMIT:-110}
+      MOCK_SEED: ${MOCK_SEED:-}
+      MOCK_IDEMPOTENCY_TTL: ${MOCK_IDEMPOTENCY_TTL:-24h}
     ports:
       - "${MOCKPROVIDER_HOST_PORT:-8084}:8080"
+    depends_on:
+      mailpit:
+        condition: service_healthy
+      mockserver:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/app", "-healthcheck"]
       interval: 5s

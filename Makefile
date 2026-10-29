@@ -47,14 +47,15 @@ generate-sqlc:
 
 # swag parses the service main package plus internal/platform/health (the shared platform endpoints)
 # and, for proposal, its handler package and the flow package whose types the handlers return (D-072),
-# and, for notification, its live delivery handler package (D-080).
+# and, for notification, its live delivery handler package (D-080), and, for mockprovider, its handler
+# package (D-081).
 # Add a service-specific handler package to the case below when it has annotations.
 generate-openapi:
 	@for s in $(API_SPEC_SERVICES); do \
 	  echo "swag init: cmd/$$s"; \
 	  mkdir -p cmd/$$s/apidocs; \
 	  dirs="cmd/$$s,internal/platform/health"; \
-	  case "$$s" in proposal) dirs="$$dirs,internal/proposal/api,internal/proposal/flow";; notification) dirs="$$dirs,internal/notification/api";; esac; \
+	  case "$$s" in proposal) dirs="$$dirs,internal/proposal/api,internal/proposal/flow";; notification) dirs="$$dirs,internal/notification/api";; mockprovider) dirs="$$dirs,internal/mockprovider";; esac; \
 	  go tool swag init --quiet -g main.go -d "$$dirs" --parseInternal --v3.1 \
 	    --outputTypes json -o cmd/$$s/apidocs || exit 1; \
 	done
