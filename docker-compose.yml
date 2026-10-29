@@ -13,6 +13,10 @@
 # API_DOCS_ENABLED (default true here, false in code) serves /docs and /openapi.json on the four REST services (D-057).
 # proposal picks its model by LLM_MODE (auto|anthropic|mock, default auto): with an empty ANTHROPIC_API_KEY it runs on
 # the built-in mock, so the stack works without a key (D-072). /readyz shows the mode.
+# web (D-085) is the single entry point for the browser: http://localhost:8080 (WEB_HOST_PORT). It is built from
+# web/Dockerfile (Vue build -> nginx) and serves the SPA plus /api/proposal/, /api/notification/ and /api/analytics/
+# (prefix stripped, SSE unbuffered; config in web/nginx.conf). Customer is not routed. The service host ports above
+# stay for development and Scalar /docs.
 # Rebuild from scratch after schema/stub changes:  docker compose down -v && docker compose up -d
 name: coldbru
 
@@ -261,6 +265,28 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+  # Browser entry point (D-085): SPA + /api/<service>/ gateway. Config: web/nginx.conf.
+  web:
+    build:
+      context: ./web
+    image: coldbru-web:dev
+    restart: unless-stopped
+    ports:
+      - "${WEB_HOST_PORT:-8080}:80"
+    depends_on:
+      proposal:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
 volumes:
   pgdata:
