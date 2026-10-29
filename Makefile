@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-graphql generate-catalog generate-prompts consent
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts consent
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -37,8 +37,9 @@ API_SPEC_SERVICES := proposal notification analytics mockprovider
 # Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051), then regenerates the
 # OpenAPI 3.1 spec of each service in API_SPEC_SERVICES into cmd/<svc>/apidocs/swagger.json (D-057),
 # gqlgen the Customer GraphQL server code from its schema (D-058), and the Proposal filter catalog
-# from that schema plus its metadata (D-044, D-066), and the prompt lock file (D-059).
-generate: generate-sqlc generate-openapi generate-graphql generate-catalog generate-prompts
+# from that schema plus its metadata (D-044, D-066), the prompt lock file (D-059), and the web
+# TypeScript API types from the specs (D-084).
+generate: generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts
 
 generate-sqlc:
 	@dirs=$$(find internal -name sqlc.yaml -exec dirname {} \;); \
@@ -59,6 +60,13 @@ generate-openapi:
 	  go tool swag init --quiet -g main.go -d "$$dirs" --parseInternal --v3.1 \
 	    --outputTypes json -o cmd/$$s/apidocs || exit 1; \
 	done
+
+# openapi-typescript turns the committed specs of proposal, notification and analytics into
+# web/src/api/<svc>/schema.d.ts (D-084). Runs after generate-openapi; a web test fails when a
+# committed schema.d.ts is stale.
+generate-web-api:
+	@echo "openapi-typescript: web/src/api"
+	@pnpm --silent -C web generate:api
 
 # gqlgen reads schema.graphqls and writes generated/, model/models_gen.go and the resolver
 # stubs next to the config; paths in gqlgen.yml are relative to it, hence the cd (D-058).
