@@ -6,13 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/furknozg/coldbru/internal/notification/progress"
 	"github.com/furknozg/coldbru/internal/notification/store"
 	"github.com/furknozg/coldbru/internal/platform/consumer"
+	"github.com/furknozg/coldbru/internal/platform/events"
+	"github.com/furknozg/coldbru/internal/platform/outbox"
 )
 
 // enqueueSends writes one outbox message per pending delivery of a schedule ($1): subject
@@ -39,8 +43,9 @@ type Schedules struct {
 //   - Schedule already fired: nothing is written (the status is the dedup key).
 //   - Fewer recipient batches than the campaign announced: RetryLater.
 //   - Otherwise the schedule becomes fired, the campaign sending (if it was still scheduled) and
-//     every pending delivery of the schedule gets a message for the SEND stream. The deliveries stay
-//     pending; the send worker moves them.
+//     every pending delivery of the schedule gets a message for the SEND stream, and
+//     evt.notification.started.v1 goes to the outbox (D-080), all in the same transaction. The
+//     deliveries stay pending; the send worker moves them.
 //   - Undecodable payload or unknown schedule: Malformed.
 func (h *Schedules) Handle(ctx context.Context, tx pgx.Tx, msg jetstream.Msg) error {
 	var p FirePayload
@@ -109,6 +114,17 @@ func (h *Schedules) Handle(ctx context.Context, tx pgx.Tx, msg jetstream.Msg) er
 	tag, err := tx.Exec(ctx, enqueueSends, scheduleID, SendSubjectPrefix)
 	if err != nil {
 		return fmt.Errorf("enqueue sends: %w", err)
+	}
+	started, err := events.New(progress.EventTypeStarted, progress.EventVersion, progress.EventProducer, p.CampaignID,
+		progress.StartedData{
+			CampaignID: p.CampaignID, ScheduleID: p.ScheduleID, Language: s.Language, Timezone: s.Timezone,
+			StartedAt: time.Now().UTC(),
+		})
+	if err != nil {
+		return fmt.Errorf("build started event: %w", err)
+	}
+	if _, err := outbox.Write(ctx, tx, started); err != nil {
+		return fmt.Errorf("write started event: %w", err)
 	}
 	h.Logger.InfoContext(ctx, "schedule fired",
 		slog.String("campaign_id", p.CampaignID), slog.String("schedule_id", p.ScheduleID),

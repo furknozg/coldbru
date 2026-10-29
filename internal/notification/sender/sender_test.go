@@ -381,3 +381,24 @@ func TestTruncate(t *testing.T) {
 		t.Errorf("truncate() = %d bytes, valid = %v", len(got), utf8.ValidString(got))
 	}
 }
+
+func TestFinalCountsTheDeliveryAndNudges(t *testing.T) {
+	t.Parallel()
+	reg := prometheus.NewRegistry()
+	var nudges atomic.Int32
+	w := &worker{channel: "sms", m: newMetrics(reg), nudge: func() { nudges.Add(1) }}
+	w.final("sent")
+	w.final("failed")
+	if got := nudges.Load(); got != 2 {
+		t.Errorf("nudges = %d, want 2", got)
+	}
+	if got := testutil.ToFloat64(w.m.deliveries.WithLabelValues("sms", "sent")); got != 1 {
+		t.Errorf("sent counter = %v, want 1", got)
+	}
+	// Without a nudge function a settled delivery is still counted.
+	w = &worker{channel: "email", m: newMetrics(prometheus.NewRegistry())}
+	w.final("sent")
+	if got := testutil.ToFloat64(w.m.deliveries.WithLabelValues("email", "sent")); got != 1 {
+		t.Errorf("sent counter without nudge = %v, want 1", got)
+	}
+}

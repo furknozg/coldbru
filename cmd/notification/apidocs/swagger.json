@@ -1,6 +1,170 @@
 {
     "components": {
         "schemas": {
+            "api.ChannelCount": {
+                "properties": {
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "count": {
+                        "example": 1200,
+                        "type": "integer"
+                    },
+                    "status": {
+                        "enum": [
+                            "pending",
+                            "sending",
+                            "sent",
+                            "failed",
+                            "skipped_no_consent",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "channel",
+                    "count",
+                    "status"
+                ],
+                "type": "object"
+            },
+            "api.DeliverySummary": {
+                "properties": {
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "counts": {
+                        "description": "Counts has one entry per (channel, status) that has at least one delivery, ordered by channel\nand status.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.ChannelCount"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "description": "Status is the campaign status in Notification (not Proposal's): scheduled until the first\nschedule fires, sending, then completed, or cancelled.",
+                        "enum": [
+                            "scheduled",
+                            "sending",
+                            "completed",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    },
+                    "total": {
+                        "description": "Total is the sum of Counts.",
+                        "example": 2400,
+                        "type": "integer"
+                    },
+                    "updated_at": {
+                        "description": "UpdatedAt is the time the counts were read.",
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "counts",
+                    "status",
+                    "total",
+                    "updated_at"
+                ],
+                "type": "object"
+            },
+            "api.DoneEvent": {
+                "properties": {
+                    "status": {
+                        "enum": [
+                            "completed",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "status"
+                ],
+                "type": "object"
+            },
+            "api.EventCatalog": {
+                "properties": {
+                    "done": {
+                        "$ref": "#/components/schemas/api.DoneEvent"
+                    },
+                    "ping": {
+                        "$ref": "#/components/schemas/api.PingEvent"
+                    },
+                    "snapshot": {
+                        "$ref": "#/components/schemas/api.DeliverySummary"
+                    }
+                },
+                "required": [
+                    "done",
+                    "ping",
+                    "snapshot"
+                ],
+                "type": "object"
+            },
+            "api.PingEvent": {
+                "properties": {
+                    "at": {
+                        "description": "At is the time the ping was sent.",
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at"
+                ],
+                "type": "object"
+            },
+            "api.Problem": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the stable machine-readable name of the problem.",
+                        "example": "not_found",
+                        "type": "string"
+                    },
+                    "detail": {
+                        "description": "Detail explains this occurrence. It never contains internal details.",
+                        "example": "No such campaign.",
+                        "type": "string"
+                    },
+                    "instance": {
+                        "description": "Instance is the path of the request.",
+                        "example": "/campaigns/019a0e6e-0000-7000-8000-000000000001/deliveries",
+                        "type": "string"
+                    },
+                    "status": {
+                        "description": "Status is the HTTP status code.",
+                        "example": 404,
+                        "type": "integer"
+                    },
+                    "title": {
+                        "description": "Title is a short, fixed summary of the problem type.",
+                        "example": "Not found",
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Type identifies the problem type: urn:coldbru:notification:problem:\u003ccode\u003e.",
+                        "example": "urn:coldbru:notification:problem:not_found",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "status",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
             "health.CheckResult": {
                 "properties": {
                     "detail": {
@@ -49,7 +213,7 @@
         }
     },
     "info": {
-        "description": "REST API of the notification service: message delivery.",
+        "description": "REST API of the notification service: the live delivery counts of a campaign, as a snapshot and as a Server-Sent Events stream. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.",
         "title": "Coldbru Notification API",
         "version": "0.1.0"
     },
@@ -58,6 +222,132 @@
         "url": ""
     },
     "paths": {
+        "/campaigns/{id}/deliveries": {
+            "get": {
+                "description": "The current number of deliveries of the campaign per channel and status, read from the database at the moment of the request (D-036, D-080). `status` is the campaign status in Notification. Use GET /campaigns/{id}/deliveries/events to follow the counts live.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.DeliverySummary"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "No such campaign"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Delivery counts of a campaign",
+                "tags": [
+                    "deliveries"
+                ]
+            }
+        },
+        "/campaigns/{id}/deliveries/events": {
+            "get": {
+                "description": "Opens a text/event-stream. The first event is `snapshot`: the same JSON as GET /campaigns/{id}/deliveries. The server then reads the counts every second and sends a new `snapshot` only when the status or a count changed. A `ping` event is sent every 15 seconds.\n\nWhen the campaign is `completed` or `cancelled`, the server sends the final `snapshot` followed by `done` ({\"status\"}) and closes the stream; a campaign that is already finished when the client connects gets its snapshot and `done` at once. There is no replay: a client that reconnects gets a new snapshot. A snapshot replaces the client's state.\n\nThe response is not JSON; the schema below only documents the data of each event.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.EventCatalog"
+                                }
+                            }
+                        },
+                        "description": "Stream of events; each event's data is the property of the same name"
+                    },
+                    "400": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "No such campaign (answered before the stream starts)"
+                    },
+                    "500": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Live delivery counts of a campaign (Server-Sent Events)",
+                "tags": [
+                    "deliveries"
+                ]
+            }
+        },
         "/healthz": {
             "get": {
                 "description": "Answers 200 while the process is running. Checks no dependency.",

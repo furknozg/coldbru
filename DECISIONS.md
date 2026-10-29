@@ -83,6 +83,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-077 | notification_db şeması: locale_schedule, message, delivery'de schedule_id/message_id FK, recipient_batch + batch_count, CHECK'ler ve iki indeks, kampanya bitince PII temizliği | Gönderim | Kabul edildi |
 | D-078 | Notification tüketicileri: outbox'a headers, sched.<id> → fire.<id>, iş anahtarıyla idempotent ham tüketici, tetiklenmede SEND kuyruğu, iptalde durum + PII temizliği | Gönderim | Kabul edildi |
 | D-079 | Gönderim worker'ları: provider sözleşmesi, 5 deneme 2 sn ×2 1 dk tavan, 30 sn lease, x/time/rate 100/s burst 10, 100'lük izin kontrolü, gobreaker 5/30 sn/1, SMS'te ad kısaltma | Gönderim | Kabul edildi |
+| D-080 | Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -551,7 +552,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kampanya durumu adımı yansıtır (`awaiting_audience` …) — reddedildi: aynı bilgi iki yerde tutulur.
   - Kampanya durumu saklanmaz, sorguyla türetilir — reddedildi: teslimat durumu başka serviste, servisler arası sorgu gerekirdi.
 - **Sonuçlar / bedel:** `scheduled → sending → completed` geçişleri Notification'dan gelen olaylarla Proposal'da güncellenir; arada eventual-consistency penceresi vardır. Bu olayların adları ve içerikleri `docs/domain-model.md`'de taslaktır.
-- **Doğrulama:** 2026-10-28'de (T-023, D-070): adım sırası ve `open → approved → superseded` geçişleri `internal/proposal/flow`'da; `TestSampleBriefEndToEnd`, `TestConcurrentApprovalsOpenTheNextStepOnce`, `TestReopenSupersedesTheStepAndEveryLaterOne`. Kampanya `drafting → cancelled` (ön eleme) burada. T-026'da (D-074) `drafting → scheduled` onayda ve `drafting | scheduled | sending → cancelled` iptalde doğrulandı; `sending` ve `completed` Notification olaylarıyla gelecek.
+- **Doğrulama:** 2026-10-28'de (T-023, D-070): adım sırası ve `open → approved → superseded` geçişleri `internal/proposal/flow`'da; `TestSampleBriefEndToEnd`, `TestConcurrentApprovalsOpenTheNextStepOnce`, `TestReopenSupersedesTheStepAndEveryLaterOne`. Kampanya `drafting → cancelled` (ön eleme) burada. T-026'da (D-074) `drafting → scheduled` onayda ve `drafting | scheduled | sending → cancelled` iptalde, T-030'da (D-080) `scheduled → sending → completed` Notification olaylarıyla doğrulandı.
 
 ## D-034: Tüm adımlar tek varyant tablosunda; adım türüne göre CHECK
 
@@ -587,7 +588,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Dashboard tamamen Analytics'ten, teslimat başına durum olayı — reddedildi: olay hacmi teslimat sayısı kadar.
   - Analytics yalnız token ve maliyet — reddedildi: Analytics'in rolü daralır.
 - **Sonuçlar / bedel:** Aynı sayılar iki serviste farklı gecikmeyle görünebilir: Notification'da anlık, Analytics'te olay geldikten sonra. nginx'in SSE yolunu Notification'a yönlendirmesi gerekir.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok.
+- **Doğrulama:** Notification tarafı 2026-10-29'da (T-030, D-080): canlı sayımlar `delivery` tablosundan REST ve SSE ile; Analytics özetleri T-032'de.
 
 ## D-037: Vue: oxlint ESLint'in yanında kalır; Geist fontu pakete gömülür
 
@@ -1393,6 +1394,25 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Uzun bir provider kesintisinde mesajlar yaklaşık 30 sn içinde `failed` olur. Provider'ın idempotency'sine güvenilir. Çoklu replikada limit replika sayısıyla çarpılır. İzin kontrolü ile gönderim arasında en fazla bir batch süresi pencere kalır. Yeni bağımlılıklar: `golang.org/x/time`, `github.com/sony/gobreaker/v2`. Bazı alıcılarda ad kısaltılır. T-030'a kadar kampanya `sending`'de kalır.
 - **Doğrulama:** 2026-10-29'da (T-029): `internal/notification/sender` integration testleri (gerçek Customer handler'ı ve seed'li Postgres, NATS, `httptest` provider): her teslimat bir kez ve teslimat id'si `Idempotency-Key` olarak gönderilir; 503, 503, 202 → `sent`, 3 deneme; 400 → hemen `failed`; sürekli 503 → 5 teslimden sonra `failed`; 429 + `Retry-After` kanalı durdurur; başlatmadan sonra izni geri çekilen alıcı `skipped_no_consent`, diğerleri gönderilir; Customer 5 teslimden uzun kapalıyken hiçbir şey gönderilmez, mesajlar yeniden kuyruğa alınır ve Customer dönünce her teslimat bir kez gönderilir; aynı teslimat için tekrar gelen mesaj tek provider çağrısı yapar; süresi dolan lease yeniden alınır; gönderim sürerken gelen iptal hemen işler ve `sending` satırının kişisel verisi worker bitirince temizlenir. Hız: 300 SMS ilk istekten sona 2,9 sn (~104/s), hiçbir 1 sn'lik pencerede 115'ten fazla istek yok. Birim: provider yanıt sınıfları ve `Retry-After`, breaker döngüsü, SMS'te ad kısaltma (160 sınırı, Türkçe karakter, emoji). `make test` geçti (41 Go paketi).
 - **Uygulama notu:** Tüketiciler `notification-send-sms` ve `notification-send-email` (SEND, `MaxDeliver` 5, AckWait 45 sn, en fazla 300 bekleyen ack); kanal başına 1 çekici ve 16 gönderici; limiter beklemesi lease'ten önce yapılır. Sonlandırma sorguları `attempts` ile çitlenir, devralınmış bir lease hiçbir şeyi değiştirmez; kampanya satırı `FOR SHARE` ile okunur, böylece eşzamanlı bir iptal ile sonlandırma kişisel veriyi kaçırmaz. Ad sığmazsa SMS metni toplanır ("Merhaba , x" → "Merhaba, x"). Notification'ın havuzu compose'da `pool_max_conns=16`'dır. Yeni bağımlılık sürümleri: `github.com/sony/gobreaker/v2` v2.4.0, `golang.org/x/time` v0.16.0. Canlı yığında SEND tüketicileri çalışıyor; mock provider sözleşmeyi henüz uygulamadığı için (T-031) canlı gönderim denenmedi.
+
+## D-080: Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-033 kampanya durumunu `scheduled → sending → completed` olarak, Notification olaylarıyla güncellenecek biçimde; D-036 canlı gönderim durumunu Notification'dan SSE ile, kaynağı `delivery` sayımları olarak belirledi. D-077 kampanya bitince kişisel verinin temizlenmesini, D-079 tamamlanmanın T-030'da olmasını kararlaştırdı. Tamamlanmanın nasıl algılanacağı, `evt.notification.started/completed` içerikleri, Proposal'ın bunları tüketip tüketmeyeceği ve canlı SSE'nin mekanizması açıktı (T-030).
+- **Karar:**
+  - Tamamlanma: Notification'da her 2 sn'de bir (ve bir teslimat sonlandırıldıktan sonra) çalışan bir denetleyici, `sending` bir kampanyada tüm zamanlamalar `fired` ve hiç `pending`/`sending` teslimat yoksa tek transaction'da kampanyayı `completed` yapar (`completed_at`), kişisel veriyi temizler (D-077) ve `evt.notification.completed.v1`'i outbox ile yazar.
+  - `evt.notification.started.v1 {campaign_id, schedule_id, language, timezone, started_at}` her tetiklenmede (D-076). `evt.notification.completed.v1 {campaign_id, completed_at, counts[{channel, status, count}], sms_segments, estimated_cost_gbp}`; segment ve maliyet onaylı metnin ölçümlerinden (D-071) hesaplanır, şema değişmez.
+  - Proposal `evt.notification.>` için bir EVENTS tüketicisi açar (`processed_event`): ilk `started` kampanyayı `sending`, `completed` kampanyayı `completed` yapar; iptal edilmiş kampanyada olay yok sayılır. Flow hub'ına `campaign_status` olayı eklenir (SSE, D-072'ye ekleme).
+  - Canlı durum: Notification'da `GET /campaigns/{id}/deliveries` (anlık sayımlar) ve `GET /campaigns/{id}/deliveries/events` (SSE: bağlanınca snapshot, sayılar değiştikçe yeni snapshot, 15 sn ping, kampanya bitince `completed` olayı ve kapanış). Kaynak her istemci için 1 sn'lik DB yoklamasıdır ve dashboard indeksini (D-077) kullanır. Kimlik doğrulama yoktur (D-072). Kullanıcı bu soruda tercih belirtmedi; önerilen seçenek uygulandı.
+- **Alternatifler:**
+  - Her teslimat sonlandırmasında tamamlanma — reddedildi: eşzamanlı son teslimatlarda kimse tamamlamayabilirdi.
+  - Teslimat başına gerçek segment saklamak — reddedildi: `delivery.segments` için migration gerekirdi.
+  - Proposal'ın tüketmemesi — reddedildi: D-033'teki `sending` ve `completed` geçişleri yapılmazdı.
+  - LISTEN/NOTIFY trigger'ı — reddedildi: trigger ve 100/s'de bildirim fırtınası. Süreç içi hub — reddedildi: tek replika varsayımı.
+- **Sonuçlar / bedel:** Tamamlanma en fazla yaklaşık 2 sn gecikir. Gerçek adla değişen segment sayısı olayda tahmindir. Proposal'a bir tüketici eklenir. İzleyen istemci başına saniyede bir sorgu.
+- **Doğrulama:** 2026-10-29'da (T-030): `internal/notification/sender/completion_integration_test.go` (intake + sender + httptest provider): tetiklenmede EVENTS'e `evt.notification.started.v1`; tüm teslimatlar gönderilince kampanya son gönderimden yaklaşık 240 ms sonra `completed`, kişisel veri temizlenir, sayımlar, `sms_segments` ve maliyet doğru tek bir `completed` olayı yazılır; iptal edilmiş kampanya tamamlanmaz. `internal/notification/api` testleri: SSE önce snapshot, değişiklikte yeni snapshot, bitince `done` ve kapanış, bilinmeyen kampanya 404. `internal/proposal/progress` integration testleri: `started` sonra `completed` kampanyayı `sending` ve `completed` yapar, hub `campaign_status` olayları çıkar, tekrarlar etkisiz, iptal edilmiş kampanyada yok sayılır. Canlı yığında notification ve proposal `healthy`, `/openapi.json` iki yeni ucu listeler, rastgele id 404 problem+json, `proposal-notification-events` tüketicisi çalışıyor; kampanya açılmadı. `make test` geçti.
+- **Uygulama notu:** Denetleyici 2 sn'de bir ve her sonlandırmadan sonra (en az 250 ms arayla) çalışır. REST/SSE gövdesindeki `updated_at` sayımların okunduğu andır; `status` Notification'ın `send_campaign.status`'üdür. Zaten bitmiş kampanyaya bağlanan istemci hemen `snapshot` + `done` alır. Proposal'da hub olayları commit'ten sonra yayınlanır. `started` her tetiklenmede gelir, Proposal ikinci ve sonrakileri yok sayar. nginx'te `/campaigns/{id}/deliveries*` yolunun Notification'a yönlendirilmesi T-034'tedir.
 
 ---
 

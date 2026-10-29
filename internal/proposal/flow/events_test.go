@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -231,5 +232,21 @@ func TestDeltaSinkMarksRepairAttempts(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("event %d = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestCampaignStatusEvent(t *testing.T) {
+	t.Parallel()
+	c := uuid.New()
+	e := CampaignStatus{Meta: Meta{CampaignID: c, At: time.Unix(0, 0).UTC()}, Status: CampaignStatusSending}
+	if e.Type() != "campaign_status" || e.Campaign() != c {
+		t.Errorf("event = %s of %s", e.Type(), e.Campaign())
+	}
+	raw, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"campaign_id":"` + c.String() + `","at":"1970-01-01T00:00:00Z","status":"sending"}`; string(raw) != want {
+		t.Errorf("json = %s, want %s", raw, want)
 	}
 }

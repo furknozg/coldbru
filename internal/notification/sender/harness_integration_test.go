@@ -37,6 +37,7 @@ import (
 	"github.com/furknozg/coldbru/internal/customer/pgtest"
 	nconsent "github.com/furknozg/coldbru/internal/notification/consent"
 	"github.com/furknozg/coldbru/internal/notification/intake"
+	"github.com/furknozg/coldbru/internal/notification/progress"
 	"github.com/furknozg/coldbru/internal/notification/provider"
 	"github.com/furknozg/coldbru/internal/notification/sender"
 	"github.com/furknozg/coldbru/internal/notification/store"
@@ -381,6 +382,7 @@ func newCustomerStub(t *testing.T) *customerStub {
 // envOptions are what a test changes about the service it runs.
 type envOptions struct {
 	deferSender bool
+	checker     bool
 	backoff     consumer.Backoff
 	workers     int
 	lease       time.Duration
@@ -389,7 +391,11 @@ type envOptions struct {
 
 type envOption func(*envOptions)
 
-func withDeferredSender() envOption            { return func(o *envOptions) { o.deferSender = true } }
+func withDeferredSender() envOption { return func(o *envOptions) { o.deferSender = true } }
+
+// withChecker runs the completion checker with its production interval (D-080) and gives the send
+// workers its Nudge.
+func withChecker() envOption                   { return func(o *envOptions) { o.checker = true } }
 func withBackoff(b consumer.Backoff) envOption { return func(o *envOptions) { o.backoff = b } }
 func withWorkers(n int) envOption              { return func(o *envOptions) { o.workers = n } }
 func withBreaker(maxFailures uint32, openFor time.Duration) envOption {
@@ -415,6 +421,7 @@ type env struct {
 	opts     envOptions
 	logger   *slog.Logger
 	stopSend func(context.Context) error
+	checker  *progress.Checker
 }
 
 func newEnv(t *testing.T, opts ...envOption) *env {
@@ -475,10 +482,24 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	if err != nil {
 		t.Fatalf("intake.Start() error = %v", err)
 	}
+	var stopChecker func(context.Context) error
+	if o.checker {
+		e.checker, err = progress.New(progress.Config{Pool: pool, Logger: logger, Prices: testPrices})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stopChecker = e.checker.Start(ctx)
+	}
 	t.Cleanup(func() {
-		// Send workers first, then the intake consumers, then the relay, as boot.Setup does.
+		// The checker and the send workers first, then the intake consumers, then the relay, as
+		// boot.Setup does.
 		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
+		if stopChecker != nil {
+			if err := stopChecker(cctx); err != nil {
+				t.Errorf("stop completion checker: %v", err)
+			}
+		}
 		if e.stopSend != nil {
 			if err := e.stopSend(cctx); err != nil {
 				t.Errorf("stop send workers: %v", err)
@@ -504,10 +525,14 @@ func (e *env) startSender() {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	stop, err := sender.Start(e.t.Context(), sender.Deps{
+	deps := sender.Deps{
 		JS: e.js, Pool: e.pool, Logger: e.logger, Provider: pc, Consent: e.consent, Registerer: e.reg,
 		Backoff: e.opts.backoff, Workers: e.opts.workers, Lease: e.opts.lease,
-	})
+	}
+	if e.checker != nil {
+		deps.Nudge = e.checker.Nudge
+	}
+	stop, err := sender.Start(e.t.Context(), deps)
 	if err != nil {
 		e.t.Fatalf("sender.Start() error = %v", err)
 	}
@@ -680,15 +705,21 @@ var emailBlocks = content.EmailContent{
 	CTALabel:   "Alışverişe dön",
 }
 
+// testPrices are the demo prices of D-071.
+var testPrices = content.Prices{SMSSegment: 40_000, Email: 1_000}
+
 func newCampaignID() string { return uuid.Must(uuid.NewV7()).String() }
 
 // campaignOf publishes the confirmed event (one immediate Turkish schedule, an sms and an email
 // message) and the recipient batches of the sms and email recipients: the same messages Proposal
 // publishes when the marketer confirms. The schedule fires as soon as the batches are in, and the
 // deliveries are queued on SEND.
-func (e *env) campaignOf(id string, sms, email []cust) {
+func (e *env) campaignOf(id string, sms, email []cust) { e.campaignWith(id, sms, email, 0) }
+
+// campaignWith is campaignOf with the segment count the approved SMS message carries (D-071).
+func (e *env) campaignWith(id string, sms, email []cust, smsSegments int) {
 	e.t.Helper()
-	smsContent, err := json.Marshal(content.SMSContent{Text: smsTemplate})
+	smsContent, err := json.Marshal(content.SMSContent{Text: smsTemplate, Segments: smsSegments})
 	if err != nil {
 		e.t.Fatal(err)
 	}

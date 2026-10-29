@@ -16,7 +16,7 @@ var openAPISpec []byte
 
 // @title			Coldbru Notification API
 // @version		0.1.0
-// @description	REST API of the notification service: message delivery.
+// @description	REST API of the notification service: the live delivery counts of a campaign, as a snapshot and as a Server-Sent Events stream. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.
 // @BasePath		/
 func main() {
 	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "notification", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true, Setup: boot.Setup})

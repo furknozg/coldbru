@@ -33,6 +33,7 @@ type EventCatalog struct {
 	ScreenResult      flow.ScreenResult      `json:"screen_result" validate:"required"`
 	CampaignCancelled flow.CampaignCancelled `json:"campaign_cancelled" validate:"required"`
 	CampaignConfirmed flow.CampaignConfirmed `json:"campaign_confirmed" validate:"required"`
+	CampaignStatus    flow.CampaignStatus    `json:"campaign_status" validate:"required"`
 	StepOpened        flow.StepOpened        `json:"step_opened" validate:"required"`
 	StepApproved      flow.StepApproved      `json:"step_approved" validate:"required"`
 	StepSuperseded    flow.StepSuperseded    `json:"step_superseded" validate:"required"`
@@ -57,7 +58,7 @@ type EventCatalog struct {
 //	@Description
 //	@Description	Events of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.
 //	@Description
-//	@Description	Lifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches) and `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer).
+//	@Description	Lifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).
 //	@Description
 //	@Description	The response is not JSON; the schema below only documents the data of each event.
 //	@Tags			events

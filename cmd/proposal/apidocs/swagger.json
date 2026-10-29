@@ -88,6 +88,9 @@
                     "campaign_confirmed": {
                         "$ref": "#/components/schemas/flow.CampaignConfirmed"
                     },
+                    "campaign_status": {
+                        "$ref": "#/components/schemas/flow.CampaignStatus"
+                    },
                     "content_delta": {
                         "$ref": "#/components/schemas/flow.ContentDelta"
                     },
@@ -137,6 +140,7 @@
                 "required": [
                     "campaign_cancelled",
                     "campaign_confirmed",
+                    "campaign_status",
                     "content_delta",
                     "content_reset",
                     "context_added",
@@ -331,6 +335,31 @@
                     "id",
                     "status",
                     "updated_at"
+                ],
+                "type": "object"
+            },
+            "flow.CampaignStatus": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "sending",
+                            "completed"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "status"
                 ],
                 "type": "object"
             },
@@ -1704,7 +1733,7 @@
         },
         "/campaigns/{id}/events": {
             "get": {
-                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nLifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches) and `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer).\n\nThe response is not JSON; the schema below only documents the data of each event.",
+                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nLifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).\n\nThe response is not JSON; the schema below only documents the data of each event.",
                 "parameters": [
                     {
                         "description": "Campaign id",

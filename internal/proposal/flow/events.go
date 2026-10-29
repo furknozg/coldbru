@@ -55,6 +55,12 @@ type (
 		RecipientCounts  Recipients `json:"recipient_counts" validate:"required"`
 		RecipientBatches int        `json:"recipient_batches" validate:"required"`
 	}
+	// CampaignStatus: the campaign status changed because Notification reported progress
+	// (D-080): `sending` when the first schedule fired, `completed` when every delivery is final.
+	CampaignStatus struct {
+		Meta
+		Status string `json:"status" validate:"required" enums:"sending,completed"`
+	}
 	// StepOpened: a step opened, version 1 or a new version after a reopen.
 	StepOpened struct {
 		Meta
@@ -154,6 +160,7 @@ const (
 	TypeScreenResult      = "screen_result"
 	TypeCampaignCancelled = "campaign_cancelled"
 	TypeCampaignConfirmed = "campaign_confirmed"
+	TypeCampaignStatus    = "campaign_status"
 	TypeStepOpened        = "step_opened"
 	TypeStepApproved      = "step_approved"
 	TypeStepSuperseded    = "step_superseded"
@@ -172,6 +179,7 @@ const (
 func (ScreenResult) Type() string      { return TypeScreenResult }
 func (CampaignCancelled) Type() string { return TypeCampaignCancelled }
 func (CampaignConfirmed) Type() string { return TypeCampaignConfirmed }
+func (CampaignStatus) Type() string    { return TypeCampaignStatus }
 func (StepOpened) Type() string        { return TypeStepOpened }
 func (StepApproved) Type() string      { return TypeStepApproved }
 func (StepSuperseded) Type() string    { return TypeStepSuperseded }
