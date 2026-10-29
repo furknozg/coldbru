@@ -89,6 +89,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-083 | Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları | Takip ve altyapı | Kabul edildi |
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 | D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
+| D-086 | Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1518,6 +1519,22 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** İlk build'de node imajı indirilir. Yeni bir `Location` biçimi eklenirse `proxy_redirect` kuralı da eklenmelidir. Normal JSON yanıtları da tamponsuz geçer. T-044 nginx dosyasına tekrar dokunur.
 - **Doğrulama:** 2026-10-30'da (T-034): canlı yığında `web` `healthy`; `localhost:8080/` ve `/campaigns/x` index.html döner (no-cache), hash'li asset'ler `immutable`; `/api/{proposal,notification,analytics}/healthz` 200, `/api/customer/healthz` nginx 404; 404 problem+json geçer; Proposal SSE'de snapshot hemen, ping 15 sn sonra (tamponsuz, gzip yok); Notification SSE'de snapshot + done. `Location` düzeltmesi, Proposal gerçek model modunda olduğu için kampanya açılmadan, stub bir upstream ile doğrulandı: `Location: /api/proposal/campaigns/abc-123`, upstream öneksiz yolu ve sorgu dizesini aldı. `docker compose restart proposal` sonrası nginx yeniden yüklemeden 2 sn'de toparlandı. `make test` geçti.
 - **Uygulama notu:** İmajlar `node:24.22.0-alpine` ve `nginx:1.30.5-alpine`; pnpm `12.8.1` Dockerfile'da corepack ile sabitlenir (`package.json`'da `packageManager` yok). Yapılandırma `web/nginx.conf`; Docker DNS'i `resolver 127.0.0.11` ve değişkenli `proxy_pass` ile, önek `rewrite` ile sıyrılır. `absolute_redirect off` (yoksa nginx `Location`'a host portsuz mutlak URL yazıyordu). Bilinmeyen `/api/` yolları SPA'ya düşmez, nginx HTML 404'ü döner. `X-Request-Id` çağıranınki yoksa nginx'in `$request_id`'si. İmaj build'i `pnpm build` (tip denetimi dahil) çalıştırır.
+
+## D-086: Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** shadcn-vue kurulumu (D-012) nötr gri temayla geldi. Kullanıcı arayüz renklerinin `web/public/logo.png`'deki kahverengi, beyaz, siyah ile `#F7F1DE`, `#B0BA99`, `#9D6638`, `#4E220F` destek renklerinden alınmasını, uygulamanın büyük bölümünde dinlenme durumundaki zeminin beyaz kalmasını istedi.
+- **Karar:**
+  - `web/src/assets/main.css` `:root`'ta marka değişkenleri: `--brand-ink #111111`, `--brand-espresso #4e220f`, `--brand-caramel #9d6638`, `--brand-sage #b0ba99`, `--brand-cream #f7f1de`; `@theme`'de `ink`, `espresso`, `caramel`, `sage`, `cream` Tailwind renkleri olarak açılır.
+  - `background`, `card`, `popover`, `sidebar`, `secondary` beyaz; metin `ink`. `primary` ve `ring` karamel (üstünde beyaz metin). `accent` ve `sidebar-accent` krem + espresso metin, yani krem yalnız hover/aktif/seçili durumlarda görünür. `muted` `#faf7ee`, `muted-foreground` `#6b5d52`, `border`/`input` `#e9e2d0`. Grafikler karamel, adaçayı, espresso, `#d8c9a3`, ink. `destructive` shadcn kırmızısı kalır.
+  - `.dark` aynı paletin koyu karşılığıdır (zemin `#17100c`, metin krem, primary `#c08a5a`); şu an tema anahtarı yok.
+- **Alternatifler:**
+  - Krem zemin — reddedildi: kullanıcı dinlenme durumunda beyaz zemin istedi.
+  - Adaçayını odak halkası yapmak — reddedildi: `outline-ring/50` ile beyaz üstünde zor görünür.
+  - Logo kahvesini (`#7f4a2a` civarı) primary yapmak — reddedildi: kullanıcının verdiği `#9D6638` beyazla AA'yı zaten geçiyor.
+- **Sonuçlar / bedel:** Token'lar oklch yerine hex/`var()`; shadcn CLI teması yeniden yazarsa bu blok elle korunmalı. Karamel üstünde beyaz metin 4,78:1 ile AA'yı ancak geçer; küçük ince metinde karamel yerine espresso tercih edilmeli. Koyu tema görsel olarak denenmedi.
+- **Doğrulama:** 2026-10-30: `pnpm build` ve `pnpm lint` geçti. Kontrast: beyaz/karamel 4,78, krem/espresso 11,92, beyaz/`#6b5d52` 6,34, beyaz/ink 18,88. Arayüzde henüz yalnız `App.vue` başlığı olduğundan bileşen üstünde görsel kontrol yapılmadı.
 
 ---
 
