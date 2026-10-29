@@ -407,7 +407,7 @@ func TestSampleBriefOverRESTAndSSE(t *testing.T) {
 			t.Errorf("%s/%s content = %s: want the hand-written text with the name variable", tv.Language, tv.Channel, tv.Content)
 		}
 	}
-	if cost := s.view(info.ID).Cost; cost.TotalGBP == "" || cost.TotalGBP == "0.0000" {
+	if cost := s.view(info.ID).Cost; cost.TotalUSD == "" || cost.TotalUSD == "0.0000" {
 		t.Errorf("cost = %+v", cost)
 	}
 	for _, tv := range texts {

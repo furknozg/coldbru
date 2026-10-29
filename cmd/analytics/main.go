@@ -4,6 +4,8 @@ package main
 import (
 	_ "embed"
 
+	"github.com/furknozg/coldbru/internal/analytics/boot"
+	"github.com/furknozg/coldbru/internal/analytics/store"
 	"github.com/furknozg/coldbru/internal/platform/app"
 )
 
@@ -14,8 +16,8 @@ var openAPISpec []byte
 
 // @title			Coldbru Analytics API
 // @version		0.1.0
-// @description	REST API of the analytics service: campaign delivery analytics.
+// @description	REST API of the analytics service: completed campaign summaries with delivery counts and costs, and LLM usage per campaign and per prompt version. Money is a decimal string in US dollars. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.
 // @BasePath		/
 func main() {
-	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "analytics", Database: true, PlatformMigrations: true, NATS: true})
+	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "analytics", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true, Setup: boot.Setup})
 }

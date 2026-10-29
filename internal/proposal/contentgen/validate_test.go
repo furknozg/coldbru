@@ -15,14 +15,14 @@ func TestValidateRecomputesMeasurements(t *testing.T) {
 	t.Parallel()
 	g := newGenerator(llmtest.NewScripted())
 	// A stored variant echoed back by the UI with stale numbers: they are recomputed.
-	stale := `{"text":"Hello {{first_name}}!","encoding":"ucs2","segments":9,"rendered_length":1,"estimated_cost_gbp":"99.0000"}`
+	stale := `{"text":"Hello {{first_name}}!","encoding":"ucs2","segments":9,"rendered_length":1,"estimated_cost_usd":"99.0000"}`
 	raw, err := g.Validate(request("en", "sms", 10), json.RawMessage(stale))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got content.SMSContent
 	decode(t, raw, &got)
-	want := content.SMSContent{Text: "Hello {{first_name}}!", Encoding: content.GSM7, Segments: 1, RenderedLength: len("Hello ") + 7 + len("!"), EstimatedCostGBP: "0.4000"}
+	want := content.SMSContent{Text: "Hello {{first_name}}!", Encoding: content.GSM7, Segments: 1, RenderedLength: len("Hello ") + 7 + len("!"), EstimatedCostUSD: "0.4000"}
 	if got != want {
 		t.Errorf("Validate = %+v, want %+v", got, want)
 	}
@@ -32,7 +32,7 @@ func TestValidateRecomputesMeasurements(t *testing.T) {
 		t.Fatal(err)
 	}
 	decode(t, raw, &got)
-	if got.Encoding != content.UCS2 || got.Segments != 1 || got.EstimatedCostGBP != "1.3200" {
+	if got.Encoding != content.UCS2 || got.Segments != 1 || got.EstimatedCostUSD != "1.3200" {
 		t.Errorf("Validate = %+v", got)
 	}
 }
@@ -41,7 +41,7 @@ func TestValidateEmail(t *testing.T) {
 	t.Parallel()
 	g := newGenerator(llmtest.NewScripted())
 	edit := emailMap("Selam {{first_name}}")
-	edit["estimated_cost_gbp"] = "0.0000"
+	edit["estimated_cost_usd"] = "0.0000"
 	edit["max_rendered_lengths"] = map[string]int{"subject": 1}
 	b, _ := json.Marshal(edit)
 	raw, err := g.Validate(request("tr", "email", 33), b)
@@ -50,7 +50,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 	var got content.EmailContent
 	decode(t, raw, &got)
-	if got.EstimatedCostGBP != "0.0330" || got.MaxRenderedLengths.Subject != len("Selam ")+9 {
+	if got.EstimatedCostUSD != "0.0330" || got.MaxRenderedLengths.Subject != len("Selam ")+9 {
 		t.Errorf("Validate = %+v", got)
 	}
 }

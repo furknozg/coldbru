@@ -1,6 +1,333 @@
 {
     "components": {
         "schemas": {
+            "api.CampaignList": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/api.CampaignListItem"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "limit": {
+                        "description": "Limit and Offset echo the page that was asked for. A page with fewer than Limit items is the last.",
+                        "example": 20,
+                        "type": "integer"
+                    },
+                    "offset": {
+                        "example": 0,
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "items",
+                    "limit",
+                    "offset"
+                ],
+                "type": "object"
+            },
+            "api.CampaignListItem": {
+                "properties": {
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "completed_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "delivery_cost_usd": {
+                        "description": "DeliveryCostUSD is the estimated cost of the deliveries in US dollars, six decimals.",
+                        "example": "96.000000",
+                        "type": "string"
+                    },
+                    "llm_cost_usd": {
+                        "description": "LLMCostUSD is the cost of the model calls of the campaign in US dollars, eight decimals.",
+                        "example": "0.01234500",
+                        "type": "string"
+                    },
+                    "sms_segments": {
+                        "description": "SMSSegments is the estimated number of SMS segments sent (D-071).",
+                        "example": 2400,
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "completed_at",
+                    "delivery_cost_usd",
+                    "llm_cost_usd",
+                    "sms_segments"
+                ],
+                "type": "object"
+            },
+            "api.CampaignReport": {
+                "properties": {
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "completed_at": {
+                        "description": "CompletedAt is null until the campaign is completed.",
+                        "format": "date-time",
+                        "type": "string",
+                        "x-nullable": true
+                    },
+                    "deliveries": {
+                        "description": "Deliveries has one entry per (channel, status) with at least one delivery, ordered by channel and status.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.DeliveryCount"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "delivery_cost_usd": {
+                        "example": "96.000000",
+                        "type": "string"
+                    },
+                    "llm": {
+                        "$ref": "#/components/schemas/api.LLMSummary"
+                    },
+                    "sms_segments": {
+                        "example": 2400,
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "completed_at",
+                    "deliveries",
+                    "delivery_cost_usd",
+                    "llm",
+                    "sms_segments"
+                ],
+                "type": "object"
+            },
+            "api.DeliveryCount": {
+                "properties": {
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "count": {
+                        "example": 1200,
+                        "type": "integer"
+                    },
+                    "status": {
+                        "enum": [
+                            "pending",
+                            "sending",
+                            "sent",
+                            "failed",
+                            "skipped_no_consent",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "channel",
+                    "count",
+                    "status"
+                ],
+                "type": "object"
+            },
+            "api.LLMSummary": {
+                "properties": {
+                    "by_purpose": {
+                        "items": {
+                            "$ref": "#/components/schemas/api.PurposeUsage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "description": "CostUSD is the sum of the cost of the calls in US dollars, eight decimals.",
+                        "example": "0.01234500",
+                        "type": "string"
+                    },
+                    "tokens": {
+                        "$ref": "#/components/schemas/api.Tokens"
+                    }
+                },
+                "required": [
+                    "by_purpose",
+                    "calls",
+                    "cost_usd",
+                    "tokens"
+                ],
+                "type": "object"
+            },
+            "api.Problem": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the stable machine-readable name of the problem.",
+                        "example": "not_found",
+                        "type": "string"
+                    },
+                    "detail": {
+                        "description": "Detail explains this occurrence. It never contains internal details.",
+                        "example": "No such campaign.",
+                        "type": "string"
+                    },
+                    "instance": {
+                        "description": "Instance is the path of the request.",
+                        "example": "/campaigns/019a0e6e-0000-7000-8000-000000000001/summary",
+                        "type": "string"
+                    },
+                    "problems": {
+                        "description": "Problems lists the individual validation messages of an invalid request.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "description": "Status is the HTTP status code.",
+                        "example": 404,
+                        "type": "integer"
+                    },
+                    "title": {
+                        "description": "Title is a short, fixed summary of the problem type.",
+                        "example": "Not found",
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Type identifies the problem type: urn:coldbru:analytics:problem:\u003ccode\u003e.",
+                        "example": "urn:coldbru:analytics:problem:not_found",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "status",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "api.PromptVersionUsage": {
+                "properties": {
+                    "accepted": {
+                        "description": "Accepted, ValidationFailed, Refusal and APIError count the calls by outcome; they add up to Calls.",
+                        "type": "integer"
+                    },
+                    "api_error": {
+                        "type": "integer"
+                    },
+                    "avg_latency_ms": {
+                        "description": "AvgLatencyMs is the mean latency of the calls, one decimal.",
+                        "example": 812.5,
+                        "type": "number"
+                    },
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "description": "CostUSD is the cost of the calls in US dollars, eight decimals.",
+                        "example": "0.01234500",
+                        "type": "string"
+                    },
+                    "prompt_name": {
+                        "example": "content",
+                        "type": "string"
+                    },
+                    "prompt_version": {
+                        "example": "1.2.0",
+                        "type": "string"
+                    },
+                    "refusal": {
+                        "type": "integer"
+                    },
+                    "repair_rate": {
+                        "description": "RepairRate is validation_failed divided by calls, 0 to 1, four decimals: the share of calls\nwhose output had to be repaired or was dropped.",
+                        "example": 0.0625,
+                        "type": "number"
+                    },
+                    "validation_failed": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "accepted",
+                    "api_error",
+                    "avg_latency_ms",
+                    "calls",
+                    "cost_usd",
+                    "prompt_name",
+                    "prompt_version",
+                    "refusal",
+                    "repair_rate",
+                    "validation_failed"
+                ],
+                "type": "object"
+            },
+            "api.PurposeUsage": {
+                "properties": {
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "example": "0.00420000",
+                        "type": "string"
+                    },
+                    "input_tokens": {
+                        "type": "integer"
+                    },
+                    "output_tokens": {
+                        "type": "integer"
+                    },
+                    "purpose": {
+                        "enum": [
+                            "screen",
+                            "segment",
+                            "content",
+                            "channel_plan",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "calls",
+                    "cost_usd",
+                    "input_tokens",
+                    "output_tokens",
+                    "purpose"
+                ],
+                "type": "object"
+            },
+            "api.Tokens": {
+                "properties": {
+                    "cache_creation": {
+                        "type": "integer"
+                    },
+                    "cache_read": {
+                        "type": "integer"
+                    },
+                    "input": {
+                        "type": "integer"
+                    },
+                    "output": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "cache_creation",
+                    "cache_read",
+                    "input",
+                    "output"
+                ],
+                "type": "object"
+            },
             "health.CheckResult": {
                 "properties": {
                     "detail": {
@@ -49,7 +376,7 @@
         }
     },
     "info": {
-        "description": "REST API of the analytics service: campaign delivery analytics.",
+        "description": "REST API of the analytics service: completed campaign summaries with delivery counts and costs, and LLM usage per campaign and per prompt version. Money is a decimal string in US dollars. There is no authentication in the demo (D-072). Errors are RFC 9457 application/problem+json.",
         "title": "Coldbru Analytics API",
         "version": "0.1.0"
     },
@@ -58,6 +385,134 @@
         "url": ""
     },
     "paths": {
+        "/campaigns": {
+            "get": {
+                "description": "Returns one page of completed campaign summaries, the most recently completed first (D-083). A campaign appears once its completed event has been processed.",
+                "parameters": [
+                    {
+                        "description": "Page size, 1 to 100",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "default": 20,
+                            "maximum": 100,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Campaigns to skip",
+                        "in": "query",
+                        "name": "offset",
+                        "schema": {
+                            "default": 0,
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.CampaignList"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "limit or offset out of range"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "List completed campaigns",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
+        "/campaigns/{id}/summary": {
+            "get": {
+                "description": "Delivery counts per channel and status, SMS segments, the delivery cost estimate and the LLM usage of the campaign (D-083). A campaign with LLM usage whose completed event has not arrived has `completed_at` null and no deliveries. Money is a decimal string in US dollars.",
+                "parameters": [
+                    {
+                        "description": "Campaign id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.CampaignReport"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Analytics knows nothing of the campaign"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Summary of a campaign",
+                "tags": [
+                    "campaigns"
+                ]
+            }
+        },
         "/healthz": {
             "get": {
                 "description": "Answers 200 while the process is running. Checks no dependency.",
@@ -76,6 +531,64 @@
                 "summary": "Liveness probe",
                 "tags": [
                     "platform"
+                ]
+            }
+        },
+        "/llm-usage": {
+            "get": {
+                "description": "One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text).",
+                "parameters": [
+                    {
+                        "description": "How to group the calls",
+                        "in": "query",
+                        "name": "group",
+                        "schema": {
+                            "default": "prompt_version",
+                            "enum": [
+                                "prompt_version"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/api.PromptVersionUsage"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "unsupported group"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "LLM usage per prompt version",
+                "tags": [
+                    "llm-usage"
                 ]
             }
         },

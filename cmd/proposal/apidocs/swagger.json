@@ -520,20 +520,20 @@
             },
             "flow.CostSummary": {
                 "properties": {
-                    "email_gbp": {
+                    "email_usd": {
                         "type": "string"
                     },
-                    "sms_gbp": {
+                    "sms_usd": {
                         "type": "string"
                     },
-                    "total_gbp": {
+                    "total_usd": {
                         "type": "string"
                     }
                 },
                 "required": [
-                    "email_gbp",
-                    "sms_gbp",
-                    "total_gbp"
+                    "email_usd",
+                    "sms_usd",
+                    "total_usd"
                 ],
                 "type": "object"
             },

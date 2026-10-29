@@ -339,30 +339,30 @@ func TestCostOf(t *testing.T) {
 		return VariantView{Status: status, Channel: channel, Content: json.RawMessage(content)}
 	}
 	steps := []StepView{
-		{StepInfo: StepInfo{Kind: KindAudience}, Variants: []VariantView{v(VariantStatusApproved, "", `{"estimated_cost_gbp":"500.0000"}`)}},
+		{StepInfo: StepInfo{Kind: KindAudience}, Variants: []VariantView{v(VariantStatusApproved, "", `{"estimated_cost_usd":"500.0000"}`)}},
 		{StepInfo: StepInfo{Kind: KindContent}, Variants: []VariantView{
-			v(VariantStatusDraft, "sms", `{"text":"a","estimated_cost_gbp":"1.3200"}`),
-			v(VariantStatusApproved, "sms", `{"estimated_cost_gbp":"2.6400"}`),
-			v(VariantStatusRejected, "sms", `{"estimated_cost_gbp":"100.0000"}`),
-			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.0330"}`),
-			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.0001"}`),
+			v(VariantStatusDraft, "sms", `{"text":"a","estimated_cost_usd":"1.3200"}`),
+			v(VariantStatusApproved, "sms", `{"estimated_cost_usd":"2.6400"}`),
+			v(VariantStatusRejected, "sms", `{"estimated_cost_usd":"100.0000"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_usd":"0.0330"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_usd":"0.0001"}`),
 			v(VariantStatusDraft, "email", `{"text":"fake content without an estimate"}`),
-			v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"not money"}`),
+			v(VariantStatusDraft, "email", `{"estimated_cost_usd":"not money"}`),
 			v(VariantStatusDraft, "email", `not json`),
-			v(VariantStatusDraft, "push", `{"estimated_cost_gbp":"7.0000"}`),
+			v(VariantStatusDraft, "push", `{"estimated_cost_usd":"7.0000"}`),
 		}},
 	}
-	want := CostSummary{SMSGBP: "3.9600", EmailGBP: "0.0331", TotalGBP: "3.9931"}
+	want := CostSummary{SMSUSD: "3.9600", EmailUSD: "0.0331", TotalUSD: "3.9931"}
 	if got := costOf(steps); got != want {
 		t.Errorf("costOf = %+v, want %+v", got, want)
 	}
-	if got := costOf(nil); got != (CostSummary{SMSGBP: "0.0000", EmailGBP: "0.0000", TotalGBP: "0.0000"}) {
+	if got := costOf(nil); got != (CostSummary{SMSUSD: "0.0000", EmailUSD: "0.0000", TotalUSD: "0.0000"}) {
 		t.Errorf("costOf(nil) = %+v", got)
 	}
 	// 0.1 + 0.2 style sums do not drift.
 	more := []StepView{{StepInfo: StepInfo{Kind: KindContent}, Variants: []VariantView{
-		v(VariantStatusDraft, "sms", `{"estimated_cost_gbp":"0.1000"}`), v(VariantStatusDraft, "email", `{"estimated_cost_gbp":"0.2000"}`)}}}
-	if got := costOf(more); got.TotalGBP != "0.3000" {
-		t.Errorf("total = %s", got.TotalGBP)
+		v(VariantStatusDraft, "sms", `{"estimated_cost_usd":"0.1000"}`), v(VariantStatusDraft, "email", `{"estimated_cost_usd":"0.2000"}`)}}}
+	if got := costOf(more); got.TotalUSD != "0.3000" {
+		t.Errorf("total = %s", got.TotalUSD)
 	}
 }

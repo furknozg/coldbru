@@ -456,9 +456,12 @@ func (s *system) waitSubject(stream jetstream.Stream, subject string, n int) {
 	}
 }
 
+// outboxRows counts the outbox rows of the confirmation: total leaves out the token_completed events
+// that every model call of the flow writes for Analytics (D-083); unpublished counts every row.
 func (s *system) outboxRows() (total, unpublished int) {
 	s.t.Helper()
-	if err := s.pool.QueryRow(s.t.Context(), `SELECT count(*), count(*) FILTER (WHERE published_at IS NULL) FROM outbox`).Scan(&total, &unpublished); err != nil {
+	if err := s.pool.QueryRow(s.t.Context(), `SELECT count(*) FILTER (WHERE subject <> 'evt.proposal.token_completed.v1'),
+		count(*) FILTER (WHERE published_at IS NULL) FROM outbox`).Scan(&total, &unpublished); err != nil {
 		s.t.Fatalf("count outbox: %v", err)
 	}
 	return total, unpublished
@@ -863,8 +866,14 @@ func TestCancelDraftingCampaignPublishesNothing(t *testing.T) {
 	if total, _ := s.outboxRows(); total != 0 {
 		t.Errorf("outbox rows = %d, want 0", total)
 	}
-	if info, err := s.events.Info(t.Context()); err != nil || info.State.Msgs != 0 {
-		t.Errorf("EVENTS = %+v (%v), want empty", info.State, err)
+	stream, err := s.events.Info(t.Context(), jetstream.WithSubjectFilter(">"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for subject := range stream.State.Subjects {
+		if subject != "evt.proposal.token_completed.v1" {
+			t.Errorf("EVENTS holds %q, want nothing but token_completed events", subject)
+		}
 	}
 	code, raw := s.approve(draft.ID)
 	assertProblem(t, code, raw, 409, api.CodeCampaignNotDrafting)

@@ -119,15 +119,15 @@ func TestBuildSMSAndEmail(t *testing.T) {
 		t.Fatal(problems)
 	}
 	// "Merhaba " 8 + 8 + ", sepetini unutma!" 18 = 34 characters, GSM-7 in one segment.
-	if sms.Encoding != GSM7 || sms.Segments != 1 || sms.RenderedLength != 34 || sms.EstimatedCostGBP != "1.3200" {
+	if sms.Encoding != GSM7 || sms.Segments != 1 || sms.RenderedLength != 34 || sms.EstimatedCostUSD != "1.3200" {
 		t.Errorf("sms = %+v", sms)
 	}
 	tr, _ := BuildSMS("Şimdi sepete dön {{first_name}}", 8, 10, prices)
-	if tr.Encoding != UCS2 || tr.Segments != 1 || tr.EstimatedCostGBP != "0.4000" {
+	if tr.Encoding != UCS2 || tr.Segments != 1 || tr.EstimatedCostUSD != "0.4000" {
 		t.Errorf("tr = %+v", tr)
 	}
 	long, _ := BuildSMS(strings.Repeat("ş", 100), 0, 10, prices)
-	if long.Segments != 2 || long.EstimatedCostGBP != "0.8000" {
+	if long.Segments != 2 || long.EstimatedCostUSD != "0.8000" {
 		t.Errorf("long = %+v, want 2 segments x 10 x 0.04", long)
 	}
 	if got, p := BuildSMS(strings.Repeat("a", 161), 0, 10, prices); len(p) == 0 || got != (SMSContent{}) {
@@ -138,7 +138,7 @@ func TestBuildSMSAndEmail(t *testing.T) {
 	if len(problems) > 0 {
 		t.Fatal(problems)
 	}
-	if email.EstimatedCostGBP != "0.0330" || email.MaxRenderedLengths.Subject != 33 || email.Email().Subject != validEmail().Subject {
+	if email.EstimatedCostUSD != "0.0330" || email.MaxRenderedLengths.Subject != 33 || email.Email().Subject != validEmail().Subject {
 		t.Errorf("email = %+v", email)
 	}
 	if got, p := BuildEmail(Email{}, 10, 33, prices); len(p) == 0 || got.Subject != "" {

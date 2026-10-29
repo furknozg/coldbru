@@ -220,11 +220,11 @@ type computed struct {
 	Encoding         json.RawMessage `json:"encoding"`
 	Segments         json.RawMessage `json:"segments"`
 	RenderedLength   json.RawMessage `json:"rendered_length"`
-	EstimatedCostGBP json.RawMessage `json:"estimated_cost_gbp"`
+	EstimatedCostUSD json.RawMessage `json:"estimated_cost_usd"`
 }
 
 func (c computed) present() bool {
-	return c.Encoding != nil || c.Segments != nil || c.RenderedLength != nil || c.EstimatedCostGBP != nil
+	return c.Encoding != nil || c.Segments != nil || c.RenderedLength != nil || c.EstimatedCostUSD != nil
 }
 
 // build decodes one channel object, validates it and returns the content to store. A model answer

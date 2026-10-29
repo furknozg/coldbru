@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Money is an amount of pounds sterling in micro-pounds (1e-6 GBP), an integer, so that prices,
+// Money is an amount of US dollars in micro-dollars (1e-6 USD), an integer, so that prices,
 // products and sums are exact and never drift the way float64 does (D-071). It is shown rounded
 // half up to four decimals, the precision of the stored estimates; prices may have up to six.
 type Money int64
@@ -31,7 +31,7 @@ func ParseMoney(s string) (Money, error) {
 	return Money(whole*1_000_000 + frac), nil
 }
 
-// String is the amount in pounds with four decimals, rounded half up: Money(33000) is "0.0330".
+// String is the amount in dollars with four decimals, rounded half up: Money(33000) is "0.0330".
 func (m Money) String() string {
 	if m < 0 {
 		return "-" + (-m).String()

@@ -197,8 +197,8 @@ func TestSetupFailsOnInvalidConfiguration(t *testing.T) {
 		{"no customer settings", config(), []string{"CUSTOMER_GRAPHQL_URL", "CUSTOMER_TOKEN"}},
 		{"no customer token", config("CUSTOMER_GRAPHQL_URL", "http://customer:8080/graphql"), []string{"CUSTOMER_TOKEN"}},
 		{"bad cta url", validConfig("CAMPAIGN_CTA_URL", "ftp://x"), []string{"CAMPAIGN_CTA_URL"}},
-		{"bad sms price", validConfig("SMS_SEGMENT_PRICE_GBP", "cheap"), []string{"SMS_SEGMENT_PRICE_GBP"}},
-		{"bad email price", validConfig("EMAIL_PRICE_GBP", "-1"), []string{"EMAIL_PRICE_GBP"}},
+		{"bad sms price", validConfig("SMS_SEGMENT_PRICE_USD", "cheap"), []string{"SMS_SEGMENT_PRICE_USD"}},
+		{"bad email price", validConfig("EMAIL_PRICE_USD", "-1"), []string{"EMAIL_PRICE_USD"}},
 		{"bad llm mode", validConfig(boot.KeyLLMMode, "gpt"), []string{"LLM_MODE"}},
 		{"anthropic without a key", validConfig(boot.KeyLLMMode, "anthropic"), []string{"ANTHROPIC_API_KEY"}},
 	}

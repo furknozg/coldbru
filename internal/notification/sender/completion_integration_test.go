@@ -108,7 +108,7 @@ func TestCompletionEndToEnd(t *testing.T) {
 	}
 	wantCounts := []progress.Count{{Channel: "email", Status: "sent", Count: 2}, {Channel: "sms", Status: "sent", Count: 3}}
 	if env.Producer != "notification" || env.CorrelationID != id || env.Type != "notification.completed" || env.Version != 1 ||
-		cd.CampaignID != id || cd.CompletedAt.IsZero() || cd.SMSSegments != 6 || cd.EstimatedCostGBP != "0.2420" ||
+		cd.CampaignID != id || cd.CompletedAt.IsZero() || cd.SMSSegments != 6 || cd.EstimatedCostUSD != "0.2420" ||
 		len(cd.Counts) != 2 || cd.Counts[0] != wantCounts[0] || cd.Counts[1] != wantCounts[1] {
 		t.Errorf("completed envelope = %+v, data = %+v", env, cd)
 	}
@@ -152,8 +152,8 @@ func TestCompletionCountsEveryFinalStatus(t *testing.T) {
 		}
 	}
 	// Only the sent SMS count as segments and only the sent email is priced: 2 x 1 x 0.04 + 1 x 0.001.
-	if cd.SMSSegments != 2 || cd.EstimatedCostGBP != "0.0810" {
-		t.Errorf("sms_segments = %d, estimated_cost_gbp = %s", cd.SMSSegments, cd.EstimatedCostGBP)
+	if cd.SMSSegments != 2 || cd.EstimatedCostUSD != "0.0810" {
+		t.Errorf("sms_segments = %d, estimated_cost_usd = %s", cd.SMSSegments, cd.EstimatedCostUSD)
 	}
 	if n := e.piiRows(id); n != 0 {
 		t.Errorf("%d deliveries still hold personal data", n)

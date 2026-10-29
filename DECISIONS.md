@@ -74,7 +74,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070; canlı varyant yuvası unique'i yerini aldı → D-076 |
 | D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
 | D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi; dil → saat dilimi eşlemesi yerini aldı → D-076 |
-| D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi |
+| D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi; SMS'te link yasağı ve 160 bütçesi yerini aldı → D-082; maliyet para birimi yerini aldı → D-083 |
 | D-072 | Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock | Takip ve altyapı | Kabul edildi |
 | D-073 | DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof | Test ve kapsam | Kabul edildi |
 | D-074 | Onay: alıcılar onay anında Customer'dan, saklanmaz; olay ve 500'lük RECIPIENTS batch'leri tek outbox transaction'ında; cancel ve confirm uçları | Gönderim | Kabul edildi |
@@ -83,8 +83,10 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-077 | notification_db şeması: locale_schedule, message, delivery'de schedule_id/message_id FK, recipient_batch + batch_count, CHECK'ler ve iki indeks, kampanya bitince PII temizliği | Gönderim | Kabul edildi |
 | D-078 | Notification tüketicileri: outbox'a headers, sched.<id> → fire.<id>, iş anahtarıyla idempotent ham tüketici, tetiklenmede SEND kuyruğu, iptalde durum + PII temizliği | Gönderim | Kabul edildi |
 | D-079 | Gönderim worker'ları: provider sözleşmesi, 5 deneme 2 sn ×2 1 dk tavan, 30 sn lease, x/time/rate 100/s burst 10, 100'lük izin kontrolü, gobreaker 5/30 sn/1, SMS'te ad kısaltma | Gönderim | Kabul edildi |
-| D-080 | Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE | Takip ve altyapı | Kabul edildi |
+| D-080 | Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE | Takip ve altyapı | Kabul edildi; completed olayının maliyet alanı yerini aldı → D-083 |
 | D-081 | Mock provider: Go cephe D-079 sözleşmesini uygular, e-postayı Mailpit'e, SMS'i MockServer'a iletir; %5 5xx, %2 429, %1 zaman aşımı, 50–300 ms; kanal başına 110/s; bellekte 24 sa idempotency; receipt yok | Gönderim | Kabul edildi |
+| D-082 | Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link | Takip ve altyapı | Kabul edildi |
+| D-083 | Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -589,7 +591,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Dashboard tamamen Analytics'ten, teslimat başına durum olayı — reddedildi: olay hacmi teslimat sayısı kadar.
   - Analytics yalnız token ve maliyet — reddedildi: Analytics'in rolü daralır.
 - **Sonuçlar / bedel:** Aynı sayılar iki serviste farklı gecikmeyle görünebilir: Notification'da anlık, Analytics'te olay geldikten sonra. nginx'in SSE yolunu Notification'a yönlendirmesi gerekir.
-- **Doğrulama:** Notification tarafı 2026-10-29'da (T-030, D-080): canlı sayımlar `delivery` tablosundan REST ve SSE ile; Analytics özetleri T-032'de.
+- **Doğrulama:** Notification tarafı 2026-10-29'da (T-030, D-080): canlı sayımlar `delivery` tablosundan REST ve SSE ile; Analytics özetleri 2026-10-29'da (T-032, D-083): `notification.completed` ve `proposal.token_completed` olaylarından kampanya özeti ve LLM kullanımı.
 
 ## D-037: Vue: oxlint ESLint'in yanında kalır; Geist fontu pakete gömülür
 
@@ -954,7 +956,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Sürümü yalnız `llm_call`'da tutmak — reddedildi: sürüm başına maliyet ve onarım oranı Analytics'te görülsün.
   - `prompt_snapshot`'ı baştan eklemek — reddedildi: tablo ve migration gerekir, git yeterli.
 - **Sonuçlar / bedel:** `llm_call` satırları biraz büyür. Analytics bilinmeyen alanları yok saymalıdır. Prompt metni git dışında saklanmadığı için eski bir sürümü görmek repo erişimi ister.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok (T-021, T-022, T-032).
+- **Doğrulama:** Doğrulanmadı — henüz kod yok (T-021, T-022, T-032). 2026-10-29'da (T-032, D-083): `evt.proposal.token_completed.v1` `prompt_name` ve `prompt_version` taşır, Analytics `llm_usage`'a sürümle yazar ve `/llm-usage?group=prompt_version` sürüm başına maliyet ve onarım oranı verir.
 
 ## D-061: Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama
 
@@ -1185,7 +1187,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-071: Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA
 
-- **Durum:** Kabul edildi · 2026-10-28
+- **Durum:** Kabul edildi · 2026-10-28; SMS'te link yasağı ve 160 karakter bütçesi yerini aldı → D-082 · 2026-10-29; maliyet para birimi yerini aldı → D-083 · 2026-10-29
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** Brief SMS'i 160, e-posta konusunu 80 karakterle sınırlıyor ve `{{first_name}}` gibi değişkenler istiyor. D-028 ölçümün en uzun adla yapılmasını, kodlama, segment ve maliyetin gösterilmesini; D-069 metin çağrısının parametrelerini ve doğrulama fonksiyonunu; D-070 `ContentGenerator` arayüzünü belirledi. HTML e-posta biçimi, değişken listesi, en uzun adın kaynağı, onarım, fiyat, e-posta blok sınırları ve `content` prompt'unun sorumlulukları açıktı (T-024).
 - **Karar:**
@@ -1398,7 +1400,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-080: Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE
 
-- **Durum:** Kabul edildi · 2026-10-29
+- **Durum:** Kabul edildi · 2026-10-29; completed olayının maliyet alanı yerini aldı → D-083 · 2026-10-29
 - **Alan:** Takip ve altyapı
 - **Bağlam:** D-033 kampanya durumunu `scheduled → sending → completed` olarak, Notification olaylarıyla güncellenecek biçimde; D-036 canlı gönderim durumunu Notification'dan SSE ile, kaynağı `delivery` sayımları olarak belirledi. D-077 kampanya bitince kişisel verinin temizlenmesini, D-079 tamamlanmanın T-030'da olmasını kararlaştırdı. Tamamlanmanın nasıl algılanacağı, `evt.notification.started/completed` içerikleri, Proposal'ın bunları tüketip tüketmeyeceği ve canlı SSE'nin mekanizması açıktı (T-030).
 - **Karar:**
@@ -1436,6 +1438,46 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Compose'a iki konteyner (Mailpit, MockServer) eklenir. Oranlar ölçülmüş değil, seçilmiş değerlerdir. Mock yeniden başlarsa idempotency deposu boşalır. Gerçek teslim durumu yoktur.
 - **Doğrulama:** 2026-10-29'da (T-031): `internal/mockprovider` birim testleri (aynı anahtar ve gövdeyle tekrar aynı `message_id` ve tek iletim; farklı gövdeyle 422; sahte saatle TTL; 110/s'de 429 + `Retry-After: 1`; sabit tohumla hata sayıları; zaman aşımında yanıt beklerken tekrar saklanmış 202'yi alır; 25 eşzamanlı istek tek iletim; Türkçe konulu MIME); sözleşme testi: Notification'ın gerçek `provider.Client`'ı her yanıt sınıfını alır; integration `TestInboxesReceiveWhatTheMockAccepts` gerçek Mailpit ve MockServer'la. İlk canlı uçtan uca gönderim (Proposal geçici olarak mock LLM modunda, sonra eski moduna döndürüldü): örnek brief kampanyası `completed`, 48 teslimat (e-posta 35, SMS 13 `sent`, 0 `failed`; compose veritabanı uzun süredir açık olduğu için kitle 48'di, D-017 kayması); mock metrikleri e-postada 1 enjekte 5xx, 3 hız sınırı 429'u, 1 zaman aşımı ve onun 1 tekrarı, SMS'te 1 enjekte 5xx — hepsi yeniden denenip gönderildi; Mailpit'te 35 e-posta, MockServer'da 13 SMS. `make test` geçti.
 - **Uygulama notu:** İmajlar `axllent/mailpit:v1.31.5` (GHSA-FPXJ-M5Q8-FPHW 1.30.0'da kapandı) ve `mockserver/mockserver:8.0.0`; ikisi de yayından en az iki hafta sonra seçildi. Mailpit arayüzü `${MAILPIT_UI_HOST_PORT:-8025}`, MockServer `${MOCKSERVER_HOST_PORT:-1080}`. Idempotency anahtarları kanal başınadır; gövde karşılaştırması kanonik JSON'un sha256'sıyla yapılır; kayıtlı anahtar doğrulama, hız sınırı, hata ve gecikmeden önce tekrar oynatılır. Anahtar başına bir kilit eşzamanlı tekrarları bekletir. 400 geçersiz anahtar veya JSON, 413 1 MiB üstü, 422 alan doğrulaması veya farklı gövdeli anahtar. Hız sınırı 429'larının bir kısmı Notification'ın 16 göndericisinin burst hizalanmasından gelir; yeniden deneme bunları kapatır.
+
+## D-082: Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kullanıcı T-032'yi başlatırken başarı metriği olarak tıklanma oranının (CTR) izlenmesini önerdi; örnek olarak linkin bir proxy'de aynalanıp hem asıl adrese hem bir izleyiciye gitmesini (nginx mirror) verdi. D-071 CTA URL'sini yapılandırmadan alıyor, HTML'i gönderimde Notification çiziyor ve SMS'te URL'yi yasaklıyordu. Kullanıcı tıklama takibini T-032'den ayrı, yeni bir görev (T-044) olarak istedi.
+- **Karar:**
+  - E-postadaki CTA linki `…/r/<token>` olur. Token HMAC ile imzalanır ve `delivery_id` ile `campaign_id` taşır. Analytics tıklamayı yazar ve 302 ile kampanyanın `cta_url`'ine (`utm`'li) yönlendirir; hedef linkten değil kampanyadan gelir, açık yönlendirme yoktur. Analytics hata verirse nginx `error_page` ile kampanyanın varsayılan sayfasına yönlendirir (T-034).
+  - CTR = tekil tıklayan / gönderilen. Teslimat başına ilk tıklama tekil sayılır, sonrakiler toplam tıklamaya eklenir. Rapor dil ve saat dilimi kırılımı verir. Bot ve önizleme istekleri basit bir User-Agent kuralıyla ayıklanır.
+  - SMS'e kod kısa bir izleme linki ekler (yaklaşık 25 karakter). Modelin yazdığı metinde URL yasağı sürer; SMS metin bütçesi link uzunluğu kadar küçülür ve `content` prompt'u buna göre güncellenir. SMS CTR'si de raporlanır.
+  - Uygulama T-044'tedir; T-032 Analytics'i tıklamasız kurar.
+- **Alternatifler:**
+  - Tıklamayı T-032'ye almak — reddedildi: kullanıcı ayrı görev istedi.
+  - Yalnız nginx mirror — reddedildi: hedef URL linkte taşınmalı, imza nginx'te doğrulanamaz, açık yönlendirme riski. Yalnız Analytics ucu — reddedildi: Analytics kapalıyken link çalışmazdı.
+  - Yalnız toplam tıklama — reddedildi: tekil CTR hesaplanamazdı.
+  - SMS'te takip olmaması — reddedildi: SMS kampanyalarının başarısı ölçülmezdi.
+- **Sonuçlar / bedel:** Token teslimat id'sini taşır (takma adlı kişisel veri). İki yönlendirme yolu ve T-034'te ek nginx ayarı. D-071'in SMS kuralı değişir: SMS metin bütçesi küçülür, `content` prompt'unun sürümü artar, UCS-2'de segment sayısı artabilir.
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (T-044).
+
+## D-083: Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-018 Analytics'i, D-036 kampanya özetlerinin ve token/maliyetin orada tutulmasını, D-060 `evt.proposal.token_completed.v1`'e prompt sürümünü ve Analytics `llm_usage`'a `prompt_version` sütununu, D-080 `evt.notification.completed.v1`'in içeriğini belirledi. Proposal token olayını henüz yayınlamıyordu. Şema, olayın sıklığı ve içeriği, fiyatlar ve rapor uçları açıktı (T-032; kodlama kuralı 7). D-073 Sonnet 5.5 cache okuma fiyatında çelişki not etmişti.
+- **Karar:**
+  - `analytics_db` (normalize): `campaign_summary(campaign_id PK, completed_at, sms_segments, delivery_cost_usd)`, `campaign_delivery_count(campaign_id, channel, status, count)` PK `(campaign_id, channel, status)`, `llm_usage(llm_call_id PK, campaign_id, purpose, model, prompt_name, prompt_version, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, outcome, latency_ms, cost_usd, created_at)`; indeksler `llm_usage (campaign_id)` ve `llm_usage (prompt_name, prompt_version)`; platform seti (`processed_event`).
+  - Proposal her `llm_call` satırıyla aynı transaction'da outbox'a `evt.proposal.token_completed.v1 {llm_call_id, campaign_id, step_id, purpose, model, prompt_name, prompt_version, tokens{input, output, cache_read, cache_creation}, outcome, latency_ms, created_at}` yazar. Analytics `llm_call_id` ile idempotenttir; başarısız denemelerin maliyeti de görünür.
+  - Maliyet Analytics'te, model başına yapılandırılabilir fiyatla hesaplanır. Varsayılanlar MTok başına USD: Sonnet 5.5 giriş 2, çıktı 10, cache yazma 2.5, cache okuma 0.20; Haiku 5.5 giriş 0.10, çıktı 0.50, yazma 0.125, okuma 0.01; mock 0. Sonnet cache okuma için yerel belge (0.20) ile fiyat sayfası (0.10) çelişir; yüksek olan varsayılandır ve ortam değişkeniyle değişir.
+  - Rapor API'si: `GET /campaigns` (tamamlanmış kampanya özetleri, sayfalı), `GET /campaigns/{id}/summary` (teslimat sayıları, SMS segmenti, teslimat ve LLM maliyeti, amaç başına token), `GET /llm-usage?group=prompt_version` (sürüm başına çağrı, onarım oranı, ortalama gecikme, maliyet; D-060). Hatalar problem+json, belgeler swag.
+  - Kullanıcı ayrıca onayladı: maliyet sütunları `numeric(14,6)` (toplamlar) ve `numeric(14,8)` (çağrı başına); durum ve sayı CHECK'leri; tablolar arasında FK yoktur, çünkü token olayı kampanya tamamlanmadan gelir. Kampanyanın LLM maliyeti saklanmaz, raporda `SUM(llm_usage.cost_usd)` ile hesaplanır. Onarım oranı = `validation_failed / çağrı` (prompt sürümü başına).
+  - Kullanıcı ayrıca onayladı: bozuk olaylar (geçersiz uuid, negatif sayı, bilinmeyen durum, biçimsiz maliyet) D-078'deki gibi ERROR ile `Term` edilir. Ad değişikliğinden önce eski `estimated_cost_gbp` alanıyla yayınlanmış geliştirme olayının düşürülmesi kabul edildi.
+  - Para birimi (kullanıcı onayladı): tüm maliyetler USD'dir; fiyatlar şimdilik keyfidir. Teslimat fiyatları da USD'ye geçer: D-071'deki `SMS_SEGMENT_PRICE_GBP`/`EMAIL_PRICE_GBP` → `SMS_SEGMENT_PRICE_USD`/`EMAIL_PRICE_USD`, varyant içeriğindeki `estimated_cost_gbp` → `estimated_cost_usd`, Proposal maliyet özeti `*_usd`, D-080 `evt.notification.completed.v1` alanı `estimated_cost_usd` (henüz dış tüketici olmadığı için v1 içinde ad değişikliği). Müşteri verisindeki GBP alanları (`totalSpendGbp` vb.) değişmez.
+- **Alternatifler:**
+  - JSON belge — reddedildi: kanal/durum kırılımı ve sürüm başına maliyet sorguları zorlaşırdı.
+  - Kampanya onayında toplu token olayı — reddedildi: iptal edilen veya onaylanmayan kampanyaların maliyeti ve sürüm kırılımı kaybolurdu.
+  - Sonnet cache okumada 0.10 — reddedildi: yerel belge doğruysa maliyet düşük görünürdü.
+  - Yalnız kampanya özeti — reddedildi: prompt sürümü karşılaştırması yalnız SQL ile yapılabilirdi.
+- **Sonuçlar / bedel:** Üç tablo ve iki indeks. Çağrı başına bir olay. Fiyat değişince yapılandırma güncellenir. Para birimi değişikliği D-071 ve D-080'deki ad ve alanları değiştirir; geliştirme veritabanlarındaki eski varyantların `estimated_cost_gbp` alanı yeni adla okunmaz (maliyet 0 görünür).
+- **Doğrulama:** 2026-10-29'da (T-032): `internal/analytics/store` (migration up/down/up, her CHECK, PK, upsert); `internal/analytics/intake` NATS + Postgres ile (completed ve yerine geçen tekrarı, aynı olay id'si etkisiz, token maliyeti, tekrar gelen `llm_call_id` ilk satırı korur, bilinmeyen model WARN, başka tip ve sürümler yok sayılır, bozuk olay `Term` ve geri alma, DeliverAll akışın başından başlar); `internal/analytics/api` üç rapor ucu gerçek HTTP ile (sayfalama, tamamlanmamış kampanya, onarım oranı); `internal/analytics/pricing` (cache token'ları, yarıya yukarı yuvarlama, `LLM_PRICES` geçersiz kılma). Proposal: `token_event_integration_test.go` her `llm_call` satırı için alan alan tek bir `token_completed` olayı doğrular. Canlı yığında analytics `healthy`, `analytics-events` tüketicisi çalışıyor, uçlar yanıt veriyor; kampanya açılmadı. `make test` geçti (50 Go paketi).
+- **Uygulama notu:** Fiyatlar tek bir `LLM_PRICES` JSON ortam değişkeniyle model ve alan başına geçersiz kılınır; maliyet `big.Rat` ile hesaplanır, çağrı başına 8 ondalığa yuvarlanır; bilinmeyen model 0 ve WARN. Liste `{items, limit, offset}`, `completed_at DESC` sıralı. `/llm-usage` sürümleri metin olarak sıralar (`1.10.0` `1.2.0`'dan önce). Problem tipleri `urn:coldbru:analytics:problem:<code>`.
 
 ---
 

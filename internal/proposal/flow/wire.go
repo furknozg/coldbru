@@ -13,6 +13,7 @@ const (
 	EventProducer           = "proposal"
 	EventTypeConfirmed      = "proposal.confirmed"
 	EventTypeCancelled      = "proposal.cancelled"
+	EventTypeTokenCompleted = "proposal.token_completed"
 	EventVersion            = 1
 	RecipientsSubjectPrefix = "recipients." // + campaign id
 )
@@ -52,6 +53,31 @@ type ConfirmedData struct {
 type CancelledData struct {
 	CampaignID string `json:"campaign_id"`
 	Reason     string `json:"reason"`
+}
+
+// TokenCounts are the token usage of one model call (D-083).
+type TokenCounts struct {
+	Input         int64 `json:"input"`
+	Output        int64 `json:"output"`
+	CacheRead     int64 `json:"cache_read"`
+	CacheCreation int64 `json:"cache_creation"`
+}
+
+// TokenCompletedData is the data of evt.proposal.token_completed.v1: one per llm_call row, written
+// in the same transaction as the row (D-083). Analytics prices the tokens by model and keeps one
+// llm_usage row per LLMCallID. StepID is nil for a call that belongs to no step (the screen).
+type TokenCompletedData struct {
+	LLMCallID     string      `json:"llm_call_id"`
+	CampaignID    string      `json:"campaign_id"`
+	StepID        *string     `json:"step_id"`
+	Purpose       string      `json:"purpose"`
+	Model         string      `json:"model"`
+	PromptName    string      `json:"prompt_name"`
+	PromptVersion string      `json:"prompt_version"`
+	Tokens        TokenCounts `json:"tokens"`
+	Outcome       string      `json:"outcome"`
+	LatencyMs     int64       `json:"latency_ms"`
+	CreatedAt     time.Time   `json:"created_at"`
 }
 
 // BatchRecipient is one person on one channel. Contact is the email address for channel "email"

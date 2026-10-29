@@ -9,7 +9,7 @@ type SMSContent struct {
 	Encoding         Encoding `json:"encoding"`
 	Segments         int      `json:"segments"`
 	RenderedLength   int      `json:"rendered_length"`
-	EstimatedCostGBP string   `json:"estimated_cost_gbp"`
+	EstimatedCostUSD string   `json:"estimated_cost_usd"`
 }
 
 // EmailContent is the content of an email variant as it is stored. HTML is not stored: RenderEmail
@@ -21,7 +21,7 @@ type EmailContent struct {
 	Paragraphs         []string     `json:"paragraphs"`
 	CTALabel           string       `json:"cta_label"`
 	MaxRenderedLengths EmailLengths `json:"max_rendered_lengths"`
-	EstimatedCostGBP   string       `json:"estimated_cost_gbp"`
+	EstimatedCostUSD   string       `json:"estimated_cost_usd"`
 }
 
 // Email returns the blocks of the stored content.
@@ -39,7 +39,7 @@ func BuildSMS(text string, maxNameLength, recipients int, p Prices) (SMSContent,
 	}
 	return SMSContent{
 		Text: text, Encoding: info.Encoding, Segments: info.Segments, RenderedLength: info.Length,
-		EstimatedCostGBP: p.EstimateSMS(info.Segments, recipients).String(),
+		EstimatedCostUSD: p.EstimateSMS(info.Segments, recipients).String(),
 	}, nil
 }
 
@@ -51,6 +51,6 @@ func BuildEmail(e Email, maxNameLength, recipients int, p Prices) (EmailContent,
 	}
 	return EmailContent{
 		Subject: e.Subject, Preheader: e.Preheader, Headline: e.Headline, Paragraphs: e.Paragraphs, CTALabel: e.CTALabel,
-		MaxRenderedLengths: lens, EstimatedCostGBP: p.EstimateEmail(recipients).String(),
+		MaxRenderedLengths: lens, EstimatedCostUSD: p.EstimateEmail(recipients).String(),
 	}, nil
 }
