@@ -180,24 +180,25 @@ func (m *LLM) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInput, v
 	return llm.ChannelPlanResult{Plan: plan, Attempts: 1}, nil
 }
 
-// ProposeSchedule proposes "send immediately" for every language.
+// ProposeSchedule proposes "send immediately" for every (language, timezone) pair (D-076).
 func (m *LLM) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, validate func([]llm.ScheduleEntry) error) (llm.ScheduleResult, error) {
 	if err := cancelled(ctx, llm.PurposeSchedule); err != nil {
 		return llm.ScheduleResult{}, err
 	}
 	started := time.Now()
 	pkg := prompts.Schedule()
-	entries := make([]llm.ScheduleEntry, len(in.Languages))
+	entries := make([]llm.ScheduleEntry, len(in.Locales))
 	type item struct {
 		Language  string  `json:"language"`
+		Timezone  string  `json:"timezone"`
 		SendAt    *string `json:"send_at"`
 		Rationale string  `json:"rationale"`
 	}
-	items := make([]item, len(in.Languages))
-	for i, lang := range in.Languages {
+	items := make([]item, len(in.Locales))
+	for i, loc := range in.Locales {
 		why := regenerated(in.ContextNotes, mockTag+" Bu bir mock yanıt (mock response): hemen gönder.")
-		entries[i] = llm.ScheduleEntry{Language: lang, Rationale: why}
-		items[i] = item{Language: lang, Rationale: why}
+		entries[i] = llm.ScheduleEntry{Language: loc.Language, Timezone: loc.Timezone, Rationale: why}
+		items[i] = item{Language: loc.Language, Timezone: loc.Timezone, Rationale: why}
 	}
 	out := marshal(struct {
 		Entries []item `json:"entries"`

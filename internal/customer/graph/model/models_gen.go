@@ -13,6 +13,9 @@ type AudiencePreview struct {
 	Coverage *ChannelCoverage `json:"coverage"`
 	// The same figures split by language (D-009).
 	ByLanguage []*LanguageCoverage `json:"byLanguage"`
+	// The same figures split by language and time zone, ordered by language then time zone. A pair
+	// whose customers are all unreachable is listed with `count` 0, like `byLanguage` (D-076).
+	ByLocale []*LocaleCoverage `json:"byLocale"`
 	// Longest `firstName`, in Unicode characters (char_length), among the reachable customers
 	// counted in `count`; 0 when there are none (D-071, D-028).
 	MaxFirstNameLength int `json:"maxFirstNameLength"`
@@ -198,6 +201,21 @@ type LanguageCoverage struct {
 	MaxFirstNameLength int `json:"maxFirstNameLength"`
 }
 
+// Audience figures for one (language, timezone) pair. Schedule slots follow these pairs
+// (D-076): `timezone` is the IANA `dim_customer.timezone` of the customers.
+type LocaleCoverage struct {
+	// Language code of the customers, for example tr or en.
+	Language string `json:"language"`
+	// IANA time zone of the customers, for example Europe/Istanbul.
+	Timezone string `json:"timezone"`
+	// Reachable customers with this language and time zone.
+	Count    int              `json:"count"`
+	Coverage *ChannelCoverage `json:"coverage"`
+	// Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+	// counted in `count` for this pair; 0 when there are none.
+	MaxFirstNameLength int `json:"maxFirstNameLength"`
+}
+
 type Mutation struct {
 }
 
@@ -242,9 +260,11 @@ type Query struct {
 // A reachable customer. `email` is returned only when `emailEligible`, `phone` only when
 // `smsEligible` (D-058).
 type Recipient struct {
-	CustomerID    string  `json:"customerId"`
-	FirstName     string  `json:"firstName"`
-	Language      string  `json:"language"`
+	CustomerID string `json:"customerId"`
+	FirstName  string `json:"firstName"`
+	Language   string `json:"language"`
+	// IANA time zone of the customer (D-076).
+	Timezone      string  `json:"timezone"`
 	EmailEligible bool    `json:"emailEligible"`
 	SmsEligible   bool    `json:"smsEligible"`
 	Email         *string `json:"email,omitempty"`

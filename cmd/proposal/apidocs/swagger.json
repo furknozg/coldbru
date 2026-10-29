@@ -668,6 +668,10 @@
                     },
                     "language": {
                         "type": "string"
+                    },
+                    "timezone": {
+                        "description": "Timezone is the IANA time zone of a schedule slot, for example Europe/Istanbul; empty for\nevery other step.",
+                        "type": "string"
                     }
                 },
                 "type": "object"
@@ -1092,6 +1096,10 @@
                     },
                     "step_id": {
                         "format": "uuid",
+                        "type": "string"
+                    },
+                    "timezone": {
+                        "description": "schedule variants only (D-076)",
                         "type": "string"
                     }
                 },

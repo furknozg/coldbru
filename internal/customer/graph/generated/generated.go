@@ -41,6 +41,7 @@ type DirectiveRoot struct {
 type ComplexityRoot struct {
 	AudiencePreview struct {
 		ByLanguage         func(childComplexity int) int
+		ByLocale           func(childComplexity int) int
 		Count              func(childComplexity int) int
 		Coverage           func(childComplexity int) int
 		MaxFirstNameLength func(childComplexity int) int
@@ -67,6 +68,14 @@ type ComplexityRoot struct {
 		MaxFirstNameLength func(childComplexity int) int
 	}
 
+	LocaleCoverage struct {
+		Count              func(childComplexity int) int
+		Coverage           func(childComplexity int) int
+		Language           func(childComplexity int) int
+		MaxFirstNameLength func(childComplexity int) int
+		Timezone           func(childComplexity int) int
+	}
+
 	Mutation struct {
 		UpdateConsent func(childComplexity int, input model.UpdateConsentInput) int
 	}
@@ -90,6 +99,7 @@ type ComplexityRoot struct {
 		Language      func(childComplexity int) int
 		Phone         func(childComplexity int) int
 		SmsEligible   func(childComplexity int) int
+		Timezone      func(childComplexity int) int
 	}
 
 	RecipientConnection struct {
@@ -135,6 +145,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AudiencePreview.ByLanguage(childComplexity), true
+	case "AudiencePreview.byLocale":
+		if e.ComplexityRoot.AudiencePreview.ByLocale == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AudiencePreview.ByLocale(childComplexity), true
 	case "AudiencePreview.count":
 		if e.ComplexityRoot.AudiencePreview.Count == nil {
 			break
@@ -228,6 +244,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.LanguageCoverage.MaxFirstNameLength(childComplexity), true
+
+	case "LocaleCoverage.count":
+		if e.ComplexityRoot.LocaleCoverage.Count == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LocaleCoverage.Count(childComplexity), true
+	case "LocaleCoverage.coverage":
+		if e.ComplexityRoot.LocaleCoverage.Coverage == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LocaleCoverage.Coverage(childComplexity), true
+	case "LocaleCoverage.language":
+		if e.ComplexityRoot.LocaleCoverage.Language == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LocaleCoverage.Language(childComplexity), true
+	case "LocaleCoverage.maxFirstNameLength":
+		if e.ComplexityRoot.LocaleCoverage.MaxFirstNameLength == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LocaleCoverage.MaxFirstNameLength(childComplexity), true
+	case "LocaleCoverage.timezone":
+		if e.ComplexityRoot.LocaleCoverage.Timezone == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LocaleCoverage.Timezone(childComplexity), true
 
 	case "Mutation.updateConsent":
 		if e.ComplexityRoot.Mutation.UpdateConsent == nil {
@@ -330,6 +377,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Recipient.SmsEligible(childComplexity), true
+	case "Recipient.timezone":
+		if e.ComplexityRoot.Recipient.Timezone == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Recipient.Timezone(childComplexity), true
 
 	case "RecipientConnection.nodes":
 		if e.ComplexityRoot.RecipientConnection.Nodes == nil {
@@ -750,6 +803,25 @@ type LanguageCoverage {
   maxFirstNameLength: Int!
 }
 
+"""
+Audience figures for one (language, timezone) pair. Schedule slots follow these pairs
+(D-076): ` + "`" + `timezone` + "`" + ` is the IANA ` + "`" + `dim_customer.timezone` + "`" + ` of the customers.
+"""
+type LocaleCoverage {
+  "Language code of the customers, for example tr or en."
+  language: String!
+  "IANA time zone of the customers, for example Europe/Istanbul."
+  timezone: String!
+  "Reachable customers with this language and time zone."
+  count: Int!
+  coverage: ChannelCoverage!
+  """
+  Longest ` + "`" + `firstName` + "`" + `, in Unicode characters (char_length), among the reachable customers
+  counted in ` + "`" + `count` + "`" + ` for this pair; 0 when there are none.
+  """
+  maxFirstNameLength: Int!
+}
+
 """Size and channel reach of an audience (D-058, D-010)."""
 type AudiencePreview {
   "Customers that match the filter and are reachable on at least one channel."
@@ -757,6 +829,11 @@ type AudiencePreview {
   coverage: ChannelCoverage!
   "The same figures split by language (D-009)."
   byLanguage: [LanguageCoverage!]!
+  """
+  The same figures split by language and time zone, ordered by language then time zone. A pair
+  whose customers are all unreachable is listed with ` + "`" + `count` + "`" + ` 0, like ` + "`" + `byLanguage` + "`" + ` (D-076).
+  """
+  byLocale: [LocaleCoverage!]!
   """
   Longest ` + "`" + `firstName` + "`" + `, in Unicode characters (char_length), among the reachable customers
   counted in ` + "`" + `count` + "`" + `; 0 when there are none (D-071, D-028).
@@ -772,6 +849,8 @@ type Recipient {
   customerId: ID!
   firstName: String!
   language: String!
+  "IANA time zone of the customer (D-076)."
+  timezone: String!
   emailEligible: Boolean!
   smsEligible: Boolean!
   email: String
@@ -858,6 +937,8 @@ func (ec *executionContext) childFields_AudiencePreview(ctx context.Context, fie
 		return ec.fieldContext_AudiencePreview_coverage(ctx, field)
 	case "byLanguage":
 		return ec.fieldContext_AudiencePreview_byLanguage(ctx, field)
+	case "byLocale":
+		return ec.fieldContext_AudiencePreview_byLocale(ctx, field)
 	case "maxFirstNameLength":
 		return ec.fieldContext_AudiencePreview_maxFirstNameLength(ctx, field)
 	}
@@ -906,6 +987,22 @@ func (ec *executionContext) childFields_LanguageCoverage(ctx context.Context, fi
 	return nil, fmt.Errorf("no field named %q was found under type LanguageCoverage", field.Name)
 }
 
+func (ec *executionContext) childFields_LocaleCoverage(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "language":
+		return ec.fieldContext_LocaleCoverage_language(ctx, field)
+	case "timezone":
+		return ec.fieldContext_LocaleCoverage_timezone(ctx, field)
+	case "count":
+		return ec.fieldContext_LocaleCoverage_count(ctx, field)
+	case "coverage":
+		return ec.fieldContext_LocaleCoverage_coverage(ctx, field)
+	case "maxFirstNameLength":
+		return ec.fieldContext_LocaleCoverage_maxFirstNameLength(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type LocaleCoverage", field.Name)
+}
+
 func (ec *executionContext) childFields_PageInfo(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "hasNextPage":
@@ -924,6 +1021,8 @@ func (ec *executionContext) childFields_Recipient(ctx context.Context, field gra
 		return ec.fieldContext_Recipient_firstName(ctx, field)
 	case "language":
 		return ec.fieldContext_Recipient_language(ctx, field)
+	case "timezone":
+		return ec.fieldContext_Recipient_timezone(ctx, field)
 	case "emailEligible":
 		return ec.fieldContext_Recipient_emailEligible(ctx, field)
 	case "smsEligible":
@@ -1317,6 +1416,38 @@ func (ec *executionContext) fieldContext_AudiencePreview_byLanguage(_ context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _AudiencePreview_byLocale(ctx context.Context, field graphql.CollectedField, obj *model.AudiencePreview) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AudiencePreview_byLocale(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ByLocale, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.LocaleCoverage) graphql.Marshaler {
+			return ec.marshalNLocaleCoverage2ᚕᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐLocaleCoverageᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AudiencePreview_byLocale(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AudiencePreview",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_LocaleCoverage(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _AudiencePreview_maxFirstNameLength(ctx context.Context, field graphql.CollectedField, obj *model.AudiencePreview) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1623,6 +1754,130 @@ func (ec *executionContext) _LanguageCoverage_maxFirstNameLength(ctx context.Con
 }
 func (ec *executionContext) fieldContext_LanguageCoverage_maxFirstNameLength(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("LanguageCoverage", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LocaleCoverage_language(ctx context.Context, field graphql.CollectedField, obj *model.LocaleCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LocaleCoverage_language(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Language, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LocaleCoverage_language(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LocaleCoverage", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LocaleCoverage_timezone(ctx context.Context, field graphql.CollectedField, obj *model.LocaleCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LocaleCoverage_timezone(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Timezone, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LocaleCoverage_timezone(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LocaleCoverage", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LocaleCoverage_count(ctx context.Context, field graphql.CollectedField, obj *model.LocaleCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LocaleCoverage_count(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Count, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LocaleCoverage_count(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LocaleCoverage", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LocaleCoverage_coverage(ctx context.Context, field graphql.CollectedField, obj *model.LocaleCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LocaleCoverage_coverage(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Coverage, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ChannelCoverage) graphql.Marshaler {
+			return ec.marshalNChannelCoverage2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐChannelCoverage(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LocaleCoverage_coverage(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LocaleCoverage",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ChannelCoverage(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LocaleCoverage_maxFirstNameLength(ctx context.Context, field graphql.CollectedField, obj *model.LocaleCoverage) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LocaleCoverage_maxFirstNameLength(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MaxFirstNameLength, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LocaleCoverage_maxFirstNameLength(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LocaleCoverage", field, false, false, errors.New("field of type Int does not have child fields"))
 }
 
 func (ec *executionContext) _Mutation_updateConsent(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -2061,6 +2316,29 @@ func (ec *executionContext) _Recipient_language(ctx context.Context, field graph
 	)
 }
 func (ec *executionContext) fieldContext_Recipient_language(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Recipient", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Recipient_timezone(ctx context.Context, field graphql.CollectedField, obj *model.Recipient) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Recipient_timezone(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Timezone, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Recipient_timezone(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Recipient", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
@@ -4517,6 +4795,11 @@ func (ec *executionContext) _AudiencePreview(ctx context.Context, sel ast.Select
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "byLocale":
+			out.Values[i] = ec._AudiencePreview_byLocale(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "maxFirstNameLength":
 			out.Values[i] = ec._AudiencePreview_maxFirstNameLength(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -4678,6 +4961,64 @@ func (ec *executionContext) _LanguageCoverage(ctx context.Context, sel ast.Selec
 			}
 		case "maxFirstNameLength":
 			out.Values[i] = ec._LanguageCoverage_maxFirstNameLength(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var localeCoverageImplementors = []string{"LocaleCoverage"}
+
+func (ec *executionContext) _LocaleCoverage(ctx context.Context, sel ast.SelectionSet, obj *model.LocaleCoverage) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, localeCoverageImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LocaleCoverage")
+		case "language":
+			out.Values[i] = ec._LocaleCoverage_language(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "timezone":
+			out.Values[i] = ec._LocaleCoverage_timezone(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "count":
+			out.Values[i] = ec._LocaleCoverage_count(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "coverage":
+			out.Values[i] = ec._LocaleCoverage_coverage(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "maxFirstNameLength":
+			out.Values[i] = ec._LocaleCoverage_maxFirstNameLength(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -4938,6 +5279,11 @@ func (ec *executionContext) _Recipient(ctx context.Context, sel ast.SelectionSet
 			}
 		case "language":
 			out.Values[i] = ec._Recipient_language(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "timezone":
+			out.Values[i] = ec._Recipient_timezone(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -5594,6 +5940,32 @@ func (ec *executionContext) marshalNLanguageCoverage2ᚖgithubᚗcomᚋfurknozg�
 		return graphql.Null
 	}
 	return ec._LanguageCoverage(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNLocaleCoverage2ᚕᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐLocaleCoverageᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.LocaleCoverage) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNLocaleCoverage2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐLocaleCoverage(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNLocaleCoverage2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐLocaleCoverage(ctx context.Context, sel ast.SelectionSet, v *model.LocaleCoverage) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LocaleCoverage(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNOrderFilter2ᚖgithubᚗcomᚋfurknozgᚋcoldbruᚋinternalᚋcustomerᚋgraphᚋmodelᚐOrderFilter(ctx context.Context, v any) (*model.OrderFilter, error) {

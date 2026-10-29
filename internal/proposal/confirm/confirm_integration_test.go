@@ -360,17 +360,21 @@ func (s *system) mustApprove(variant uuid.UUID) {
 // walk creates the sample campaign and approves every step but the last variant of the schedule
 // step, which it returns. The audience and plan variants are returned decoded.
 type walked struct {
-	id        uuid.UUID
-	aud       flow.AudienceContent
-	plan      flow.PlanContent
-	languages int
+	id   uuid.UUID
+	aud  flow.AudienceContent
+	plan flow.PlanContent
+	// slots is the number of schedule slots: the (language, timezone) pairs the plan sends to (D-076).
+	slots     int
 	schedules []flow.VariantView
 }
 
-func (s *system) walk() walked {
+func (s *system) walk() walked { return s.walkBrief(sampleBrief) }
+
+// walkBrief is walk for any brief; the mock answers briefs it does not know with `totalOrders >= 1`.
+func (s *system) walkBrief(brief string) walked {
 	s.t.Helper()
 	var info flow.CampaignInfo
-	b, _ := json.Marshal(map[string]string{"brief": sampleBrief})
+	b, _ := json.Marshal(map[string]string{"brief": brief})
 	if code, raw := s.do("POST", "/campaigns", string(b), &info); code != http.StatusAccepted {
 		s.t.Fatalf("POST /campaigns = %d: %s", code, raw)
 	}
@@ -397,8 +401,16 @@ func (s *system) walk() walked {
 	for _, tv := range s.waitDrafts(info.ID, flow.KindContent, want) {
 		s.mustApprove(tv.ID)
 	}
-	w.languages = len(w.plan.ByLanguage)
-	w.schedules = s.waitDrafts(info.ID, flow.KindSchedule, w.languages)
+	msgs, err := flow.MessagesByLocale(w.plan, w.aud)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	for _, m := range msgs {
+		if m.Total() > 0 {
+			w.slots++
+		}
+	}
+	w.schedules = s.waitDrafts(info.ID, flow.KindSchedule, w.slots)
 	return w
 }
 
@@ -534,8 +546,8 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 	if data.CampaignID != w.id.String() || data.RecipientCounts != (flow.Recipients{Email: 33, SMS: 13, Total: 46}) || data.RecipientBatches != 1 {
 		t.Errorf("data = %+v", data)
 	}
-	if len(data.Messages) != 3 || len(data.Schedules) != w.languages {
-		t.Errorf("%d messages, %d schedules, want 3 and %d", len(data.Messages), len(data.Schedules), w.languages)
+	if len(data.Messages) != 3 || len(data.Schedules) != w.slots {
+		t.Errorf("%d messages, %d schedules, want 3 and %d", len(data.Messages), len(data.Schedules), w.slots)
 	}
 	for _, m := range data.Messages {
 		if !strings.Contains(string(m.Content), "{{first_name}}") || (m.Channel != "sms" && m.Channel != "email") || m.Language == "" {
@@ -545,6 +557,10 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 	for _, sc := range data.Schedules {
 		if sc.SendAt != nil { // the mock sends immediately
 			t.Errorf("schedule %s send_at = %v, want null", sc.Language, sc.SendAt)
+		}
+		// The sample audience lives in Istanbul only (D-076).
+		if sc.Timezone != "Europe/Istanbul" {
+			t.Errorf("schedule %s timezone = %q, want Europe/Istanbul", sc.Language, sc.Timezone)
 		}
 	}
 	wantCTA, _ := content.CTAURL(content.DefaultCTAURL, w.id.String())
@@ -583,8 +599,8 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 			t.Fatalf("recipient %s unknown or listed twice", r.CustomerID)
 		}
 		seen[r.CustomerID] = true
-		if r.FirstName != src.FirstName || r.Language != src.Language {
-			t.Errorf("recipient %+v differs from Customer's %+v", r, src)
+		if r.FirstName != src.FirstName || r.Language != src.Language || r.Timezone != src.Timezone || r.Timezone != "Europe/Istanbul" {
+			t.Errorf("recipient %+v differs from Customer's %+v (timezone, D-076)", r, src)
 		}
 		switch r.Channel {
 		case "email": // primary: everybody who can get an email

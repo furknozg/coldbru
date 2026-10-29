@@ -40,7 +40,7 @@ func stepInfo(st store.ProposalStep) StepInfo {
 
 func variantView(v store.ProposalVariant) VariantView {
 	return VariantView{
-		ID: v.ID, StepID: v.StepID, Kind: v.Kind, Language: v.Language.String, Channel: v.Channel.String, Status: v.Status,
+		ID: v.ID, StepID: v.StepID, Kind: v.Kind, Language: v.Language.String, Channel: v.Channel.String, Timezone: v.Timezone.String, Status: v.Status,
 		Content: json.RawMessage(v.Content), RejectionReason: v.RejectionReason.String,
 		CreatedAt: ts(v.CreatedAt), ApprovedAt: tsPtr(v.ApprovedAt), RejectedAt: tsPtr(v.RejectedAt),
 	}
@@ -134,8 +134,12 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 	}
 	// ListLiveSteps is by creation time; a reopened audience is newer than an old plan, but the
 	// cascade supersedes everything after it, so kind order and creation order agree.
-	var plan PlanContent
-	havePlan := false
+	var (
+		plan     PlanContent
+		aud      AudienceContent
+		havePlan bool
+		haveAud  bool
+	)
 	views := make([]StepView, 0, len(steps))
 	for _, st := range steps {
 		vs, err := q.ListLiveVariants(ctx, st.ID)
@@ -148,7 +152,10 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 			if st.Status != StepStatusApproved || v.Status != VariantStatusApproved {
 				continue
 			}
-			if st.Kind == KindChannelPlan {
+			switch st.Kind {
+			case KindAudience:
+				haveAud = json.Unmarshal(v.Content, &aud) == nil
+			case KindChannelPlan:
 				havePlan = json.Unmarshal(v.Content, &plan) == nil
 			}
 		}
@@ -159,15 +166,21 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 		if sv.Status != StepStatusOpen {
 			continue
 		}
-		var p *PlanContent
+		var (
+			a *AudienceContent
+			p *PlanContent
+		)
+		if haveAud {
+			a = &aud
+		}
 		if havePlan {
 			p = &plan
 		}
-		if expected, err := expectedSlots(sv.Kind, p); err == nil {
+		if expected, err := expectedSlots(sv.Kind, a, p); err == nil {
 			have := map[Slot]bool{}
 			for _, v := range sv.Variants {
 				if v.Status == VariantStatusDraft || v.Status == VariantStatusApproved {
-					have[Slot{Language: v.Language, Channel: v.Channel}] = true
+					have[Slot{Language: v.Language, Channel: v.Channel, Timezone: v.Timezone}] = true
 				}
 			}
 			sv.Missing = missingFrom(expected, have)

@@ -306,6 +306,25 @@ type LanguageCoverage {
   maxFirstNameLength: Int!
 }
 
+"""
+Audience figures for one (language, timezone) pair. Schedule slots follow these pairs
+(D-076): `timezone` is the IANA `dim_customer.timezone` of the customers.
+"""
+type LocaleCoverage {
+  "Language code of the customers, for example tr or en."
+  language: String!
+  "IANA time zone of the customers, for example Europe/Istanbul."
+  timezone: String!
+  "Reachable customers with this language and time zone."
+  count: Int!
+  coverage: ChannelCoverage!
+  """
+  Longest `firstName`, in Unicode characters (char_length), among the reachable customers
+  counted in `count` for this pair; 0 when there are none.
+  """
+  maxFirstNameLength: Int!
+}
+
 """Size and channel reach of an audience (D-058, D-010)."""
 type AudiencePreview {
   "Customers that match the filter and are reachable on at least one channel."
@@ -313,6 +332,11 @@ type AudiencePreview {
   coverage: ChannelCoverage!
   "The same figures split by language (D-009)."
   byLanguage: [LanguageCoverage!]!
+  """
+  The same figures split by language and time zone, ordered by language then time zone. A pair
+  whose customers are all unreachable is listed with `count` 0, like `byLanguage` (D-076).
+  """
+  byLocale: [LocaleCoverage!]!
   """
   Longest `firstName`, in Unicode characters (char_length), among the reachable customers
   counted in `count`; 0 when there are none (D-071, D-028).
@@ -328,6 +352,8 @@ type Recipient {
   customerId: ID!
   firstName: String!
   language: String!
+  "IANA time zone of the customer (D-076)."
+  timezone: String!
   emailEligible: Boolean!
   smsEligible: Boolean!
   email: String

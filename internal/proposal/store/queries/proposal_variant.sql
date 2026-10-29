@@ -1,6 +1,6 @@
 -- name: CreateVariant :one
-INSERT INTO proposal_variant (step_id, kind, language, channel, content)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO proposal_variant (step_id, kind, language, channel, timezone, content)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListVariants :many

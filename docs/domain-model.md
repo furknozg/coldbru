@@ -169,7 +169,7 @@ Kolon listeleri kesindir (D-068); migration'lar `internal/proposal/store/migrati
 | `audience` | 1 | NULL | NULL |
 | `channel_plan` | 1 | NULL | NULL |
 | `content` | kitledeki her dil × plandaki her kanal (yalnız alıcısı olan çiftler, D-010) | dolu | dolu |
-| `schedule` | kitledeki her dil (D-009) | dolu | NULL |
+| `schedule` | kitledeki her (dil, saat dilimi) çifti (D-076) | dolu | NULL; `timezone` dolu |
 
 `proposal_variant_shape_check`:
 
@@ -189,7 +189,7 @@ CHECK (
 | `channel_plan` | `{mode: single \| primary_fallback \| both, primary: sms \| email, rationale, recipients: {email, sms, total}, by_language}` (D-010, D-070) |
 | `content` / sms | `{text, encoding: gsm7 \| ucs2, segments, rendered_length, estimated_cost_gbp}` (D-028, D-071) |
 | `content` / email | `{subject, preheader, headline, paragraphs[], cta_label, max_rendered_lengths, estimated_cost_gbp}`; HTML saklanmaz, `internal/content` yuvalı şablonla çizer (D-071) |
-| `schedule` | `{send_at, rationale}`; `send_at` `null` hemen gönderim demek (D-070) |
+| `schedule` | `{send_at, rationale}`; yuvanın saat dilimi `timezone` sütunundadır; `send_at` `null` hemen gönderim demek (D-070, D-076) |
 
 ### Durum makineleri (D-033, D-022)
 
@@ -352,7 +352,7 @@ Analytics bir olayı birden çok kez alabilir. Bu yüzden `processed_event` dedu
 |---|---|---|---|
 | `EVENTS` | limits, 7 gün | `evt.>` | Servisler arası olaylar; servis başına durable tüketici |
 | `RECIPIENTS` | work-queue | `recipients.>`; kampanya başına alt konu `recipients.<campaign_id>` (D-074) | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
-| `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.>` ve `fire.>`; `sched.<campaign_id>.<language>` → `fire.<campaign_id>.<language>` biçimi taslak | Dil başına tek zamanlama; tetiklenince hedef konuya ileti düşer |
+| `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.>` ve `fire.>`; (dil, saat dilimi) başına bir zamanlama (D-076); konu biçimi T-028'de kesinleşir | (Dil, saat dilimi) başına tek zamanlama (D-076); tetiklenince hedef konuya ileti düşer |
 | `SEND` | work-queue | `send.sms`, `send.email` | Teslimat başına ileti, `{delivery_id}` |
 
 Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, ileti sınırı 1 MB. Tanımlar `infra/nats/streams/*.json` dosyalarındadır; compose'daki tek seferlik `nats-init` konteyneri her `up`'ta bunları oluşturur veya günceller. Servisler stream oluşturmaz (D-049).
@@ -381,13 +381,13 @@ Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, 
 
 | Konu | Üretici → tüketici | `data` (taslak) |
 |---|---|---|
-| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, send_at}]` (`null` = hemen), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
+| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, timezone, send_at}]` (`null` = hemen, D-076), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
 | `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason`; yalnız `scheduled` veya `sending` kampanyanın iptalinde (D-074) |
 | `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call` satırı: `id`, `campaign_id`, `model`, `purpose`, token sayıları |
 | `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `language`, `started_at` |
 | `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, kanal ve durum sayıları, `sms_segments` |
 
-Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
+Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, timezone, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
 
 Alıcı listesi Proposal'dan geçer. Proposal listeyi Customer GraphQL'inden alır ve onaylı kanal planına göre her kişiye kanal atar (D-010). Liste zamanlama onaylanınca alınır ve Proposal'da ayrı bir tabloda saklanmaz; olay ve batch'ler tek outbox transaction'ında yazılır (D-074).
 

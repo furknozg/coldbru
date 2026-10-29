@@ -129,7 +129,7 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 	case errors.Is(err, flow.ErrNotApproved):
 		fail(w, r, CodeStepNotApproved, "Only an approved step can be reopened.")
 	case errors.Is(err, flow.ErrScheduleNotApproved):
-		fail(w, r, CodeScheduleNotApproved, "The schedule step is not approved; approve every language's send time first.")
+		fail(w, r, CodeScheduleNotApproved, "The schedule step is not approved; approve every send time first.")
 	case errors.Is(err, flow.ErrNoRecipients):
 		fail(w, r, CodeNoRecipients, "The approved plan reaches nobody right now; reopen the audience or the channel plan.")
 	case errors.Is(err, flow.ErrNotCancellable):

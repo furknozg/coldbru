@@ -51,22 +51,30 @@ const (
 	VariantStatusSuperseded = "superseded"
 )
 
-// Slot is the place of a variant in its step: the language and channel columns of
-// proposal_variant (D-034). The audience and channel plan steps have one slot with both empty,
-// the content step one per (language, channel), the schedule step one per language.
+// Slot is the place of a variant in its step: the language, channel and timezone columns of
+// proposal_variant (D-034, D-076). The audience and channel plan steps have one slot with all
+// three empty, the content step one per (language, channel), the schedule step one per
+// (language, timezone).
 type Slot struct {
 	Language string `json:"language,omitempty"`
 	Channel  string `json:"channel,omitempty" enums:"sms,email"`
+	// Timezone is the IANA time zone of a schedule slot, for example Europe/Istanbul; empty for
+	// every other step.
+	Timezone string `json:"timezone,omitempty"`
 }
 
 func (s Slot) String() string {
-	switch {
-	case s.Language == "" && s.Channel == "":
+	out := s.Language
+	if out == "" && s.Channel == "" && s.Timezone == "" {
 		return "-"
-	case s.Channel == "":
-		return s.Language
 	}
-	return s.Language + "/" + s.Channel
+	if s.Channel != "" {
+		out += "/" + s.Channel
+	}
+	if s.Timezone != "" {
+		out += "@" + s.Timezone
+	}
+	return out
 }
 
 // Coverage counts customers by the channels they can be reached on (D-010), in the snake_case of
@@ -89,14 +97,29 @@ type LanguageAudience struct {
 	MaxFirstNameLength int `json:"max_first_name_length"`
 }
 
-// AudienceContent is the content of the audience variant (D-034, D-070): the DSL the model wrote,
-// the compiled GraphQL filter, and the audience size and coverage Customer computed.
+// LocaleAudience is the audience figures of one (language, timezone) pair (D-076). The schedule
+// step opens one slot for every pair the plan sends a message to.
+type LocaleAudience struct {
+	Language string   `json:"language"`
+	Timezone string   `json:"timezone"`
+	Count    int      `json:"count"`
+	Coverage Coverage `json:"coverage"`
+	// MaxFirstNameLength is the longest first name, in Unicode characters, among the reachable
+	// customers of this pair; 0 when there are none.
+	MaxFirstNameLength int `json:"max_first_name_length"`
+}
+
+// AudienceContent is the content of the audience variant (D-034, D-070, D-076): the DSL the model
+// wrote, the compiled GraphQL filter, and the audience size and coverage Customer computed.
 type AudienceContent struct {
 	DSL        string             `json:"dsl"`
 	Filter     json.RawMessage    `json:"filter" swaggertype:"object"`
 	Count      int                `json:"count"`
 	Coverage   Coverage           `json:"coverage"`
 	ByLanguage []LanguageAudience `json:"by_language"`
+	// ByLocale is the same figures per (language, timezone), ordered by language then timezone
+	// (D-076). A variant stored before D-076 has none.
+	ByLocale []LocaleAudience `json:"by_locale"`
 	// MaxFirstNameLength is the longest first name among all reachable customers (D-071); it
 	// serves languages that have no entry of their own.
 	MaxFirstNameLength int `json:"max_first_name_length"`
@@ -122,14 +145,24 @@ func NewAudienceContent(dslSrc string, f *compile.Filter, p *customer.Preview) (
 	}
 	out := AudienceContent{
 		DSL: dslSrc, Filter: filter, Count: p.Count, Coverage: coverageFrom(p.Coverage),
-		ByLanguage: make([]LanguageAudience, 0, len(p.ByLanguage)), MaxFirstNameLength: p.MaxFirstNameLength,
+		ByLanguage: make([]LanguageAudience, 0, len(p.ByLanguage)), ByLocale: make([]LocaleAudience, 0, len(p.ByLocale)),
+		MaxFirstNameLength: p.MaxFirstNameLength,
 	}
 	for _, l := range p.ByLanguage {
 		out.ByLanguage = append(out.ByLanguage, LanguageAudience{
 			Language: l.Language, Count: l.Count, Coverage: coverageFrom(l.Coverage), MaxFirstNameLength: l.MaxFirstNameLength,
 		})
 	}
+	for _, l := range p.ByLocale {
+		out.ByLocale = append(out.ByLocale, LocaleAudience{
+			Language: l.Language, Timezone: l.Timezone, Count: l.Count, Coverage: coverageFrom(l.Coverage), MaxFirstNameLength: l.MaxFirstNameLength,
+		})
+	}
 	sort.Slice(out.ByLanguage, func(i, j int) bool { return out.ByLanguage[i].Language < out.ByLanguage[j].Language })
+	sort.Slice(out.ByLocale, func(i, j int) bool {
+		a, b := out.ByLocale[i], out.ByLocale[j]
+		return a.Language < b.Language || a.Language == b.Language && a.Timezone < b.Timezone
+	})
 	return out, nil
 }
 
@@ -139,6 +172,11 @@ func (a AudienceContent) Preview() *customer.Preview {
 	for _, l := range a.ByLanguage {
 		p.ByLanguage = append(p.ByLanguage, customer.LanguageCoverage{
 			Language: l.Language, Count: l.Count, Coverage: l.Coverage.toCustomer(), MaxFirstNameLength: l.MaxFirstNameLength,
+		})
+	}
+	for _, l := range a.ByLocale {
+		p.ByLocale = append(p.ByLocale, customer.LocaleCoverage{
+			Language: l.Language, Timezone: l.Timezone, Count: l.Count, Coverage: l.Coverage.toCustomer(), MaxFirstNameLength: l.MaxFirstNameLength,
 		})
 	}
 	return p
@@ -182,7 +220,8 @@ type PlanContent struct {
 }
 
 // ScheduleContent is the content of a schedule variant (D-009). SendAt is nil for "send
-// immediately".
+// immediately". The (language, timezone) it belongs to is the variant's slot, not part of the
+// content (D-076).
 type ScheduleContent struct {
 	SendAt    *time.Time `json:"send_at"`
 	Rationale string     `json:"rationale"`
@@ -215,6 +254,7 @@ type VariantView struct {
 	Kind            string          `json:"kind" validate:"required" enums:"audience,channel_plan,content,schedule"`
 	Language        string          `json:"language,omitempty"`
 	Channel         string          `json:"channel,omitempty" enums:"sms,email"`
+	Timezone        string          `json:"timezone,omitempty"` // schedule variants only (D-076)
 	Status          string          `json:"status" validate:"required" enums:"draft,approved,rejected,superseded"`
 	Content         json.RawMessage `json:"content" swaggertype:"object" validate:"required"`
 	RejectionReason string          `json:"rejection_reason,omitempty"`

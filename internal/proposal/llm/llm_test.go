@@ -337,9 +337,6 @@ func TestPlanTypes(t *testing.T) {
 	if llm.ChannelEmail.Other() != llm.ChannelSMS || llm.ChannelSMS.Other() != llm.ChannelEmail {
 		t.Error("Other()")
 	}
-	if llm.TimezoneOf("tr") != "Europe/Istanbul" || llm.TimezoneOf("en") != "Europe/London" || llm.TimezoneOf("de") != "UTC" {
-		t.Error("TimezoneOf")
-	}
 }
 
 func TestRepairExhaustedErrorText(t *testing.T) {

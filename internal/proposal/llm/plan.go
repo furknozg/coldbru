@@ -76,20 +76,30 @@ type ChannelPlanResult struct {
 	Usage    Usage
 }
 
-// ScheduleEntry is the send time proposed for one language (D-009). SendAt is nil for "send
-// immediately". It carries the offset the model wrote.
+// ScheduleLocale is one (language, timezone) pair of the audience that needs a send time
+// (D-076). Timezone is the IANA zone of the customers; Recipients is how many messages the
+// approved plan sends to the pair, computed in code.
+type ScheduleLocale struct {
+	Language   string
+	Timezone   string
+	Recipients int
+}
+
+// ScheduleEntry is the send time proposed for one (language, timezone) pair (D-076). SendAt is nil
+// for "send immediately". It carries the offset the model wrote.
 type ScheduleEntry struct {
 	Language  string
+	Timezone  string
 	SendAt    *time.Time
 	Rationale string
 }
 
-// ScheduleInput is the call-specific data of the schedule call (D-060, D-070).
+// ScheduleInput is the call-specific data of the schedule call (D-060, D-070, D-076).
 type ScheduleInput struct {
 	Brief        string
 	ContextNotes []string
-	// Languages are the languages that need a send time; the model returns one entry for each.
-	Languages []string
+	// Locales are the pairs that need a send time; the model returns one entry for each.
+	Locales []ScheduleLocale
 	// Now is the current time; the adapter sends it as RFC 3339 in UTC.
 	Now time.Time
 }
@@ -99,17 +109,6 @@ type ScheduleResult struct {
 	Entries  []ScheduleEntry
 	Attempts int
 	Usage    Usage
-}
-
-// Timezones maps a customer language to the IANA zone its send time is read in (D-070).
-var Timezones = map[string]string{"tr": "Europe/Istanbul", "en": "Europe/London"}
-
-// TimezoneOf returns the zone of language, UTC for a language without one.
-func TimezoneOf(language string) string {
-	if z, ok := Timezones[language]; ok {
-		return z
-	}
-	return "UTC"
 }
 
 // ProblemsError is a validation error with a list of problems. A validate callback returns it so

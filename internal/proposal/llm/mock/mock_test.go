@@ -245,25 +245,28 @@ func TestProposeChannelPlanRejectedByValidate(t *testing.T) {
 func TestProposeScheduleSendsImmediately(t *testing.T) {
 	t.Parallel()
 	ctx, col := collect(t.Context())
-	langs := []string{"tr", "en"}
+	locales := []llm.ScheduleLocale{
+		{Language: "en", Timezone: "Europe/Istanbul", Recipients: 3}, {Language: "en", Timezone: "Europe/London", Recipients: 2},
+		{Language: "tr", Timezone: "Europe/Istanbul", Recipients: 36}, {Language: "tr", Timezone: "Europe/London", Recipients: 1},
+	}
 	var validated []llm.ScheduleEntry
-	res, err := newMock().ProposeSchedule(ctx, llm.ScheduleInput{Languages: langs, Now: time.Now()}, func(e []llm.ScheduleEntry) error {
+	res, err := newMock().ProposeSchedule(ctx, llm.ScheduleInput{Locales: locales, Now: time.Now()}, func(e []llm.ScheduleEntry) error {
 		validated = e
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Entries) != 2 || res.Attempts != 1 || len(validated) != 2 {
+	if len(res.Entries) != 4 || res.Attempts != 1 || len(validated) != 4 {
 		t.Fatalf("entries = %+v", res.Entries)
 	}
 	for i, e := range res.Entries {
-		if e.Language != langs[i] || e.SendAt != nil || !strings.Contains(e.Rationale, "mock yanıt") {
+		if e.Language != locales[i].Language || e.Timezone != locales[i].Timezone || e.SendAt != nil || !strings.Contains(e.Rationale, "mock yanıt") {
 			t.Errorf("entry %d = %+v", i, e)
 		}
 	}
 	// The real validator accepts it.
-	if problems := flow.ScheduleProblems(res.Entries, langs, time.Now()); len(problems) > 0 {
+	if problems := flow.ScheduleProblems(res.Entries, locales, time.Now()); len(problems) > 0 {
 		t.Errorf("flow.ScheduleProblems: %v", problems)
 	}
 	r := onlyRecord(t, col, llm.PurposeSchedule, prompts.Schedule(), llm.OutcomeAccepted)
@@ -274,7 +277,7 @@ func TestProposeScheduleSendsImmediately(t *testing.T) {
 
 func TestProposeScheduleRejectedByValidate(t *testing.T) {
 	t.Parallel()
-	_, err := newMock().ProposeSchedule(t.Context(), llm.ScheduleInput{Languages: []string{"tr"}}, func([]llm.ScheduleEntry) error {
+	_, err := newMock().ProposeSchedule(t.Context(), llm.ScheduleInput{Locales: []llm.ScheduleLocale{{Language: "tr", Timezone: "Europe/Istanbul"}}}, func([]llm.ScheduleEntry) error {
 		return errors.New("no")
 	})
 	var ex *llm.RepairExhaustedError
@@ -463,7 +466,7 @@ func TestRegenerationNoteInPlanAndScheduleRationales(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sched, err := newMock().ProposeSchedule(t.Context(), llm.ScheduleInput{Languages: []string{"tr"}, ContextNotes: tt.notes}, nil)
+			sched, err := newMock().ProposeSchedule(t.Context(), llm.ScheduleInput{Locales: []llm.ScheduleLocale{{Language: "tr", Timezone: "Europe/Istanbul"}}, ContextNotes: tt.notes}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

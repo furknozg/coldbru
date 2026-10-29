@@ -19,26 +19,27 @@ const (
 // baseWhere is the compiled filter AND an active account.
 func baseWhere(filterWhere string) string { return filterWhere + " AND " + SQLActive }
 
-// previewSQL counts the base audience per language and channel combination.
-// One row per language: both, email only, SMS only, unreachable, and the longest
-// first name (characters) among the reachable customers, 0 when there is none
-// (D-071). No schema or index change: char_length runs over the matched rows.
+// previewSQL counts the base audience per (language, timezone) and channel combination.
+// One row per pair: both, email only, SMS only, unreachable, and the longest first name
+// (characters) among the reachable customers, 0 when there is none (D-071). The per-language
+// figures are summed from these rows in Go (D-076). No schema or index change: char_length
+// runs over the matched rows.
 func previewSQL(filterWhere string) string {
-	return "SELECT c.language, " +
+	return "SELECT c.language, c.timezone, " +
 		"count(*) FILTER (WHERE " + SQLEmailOK + " AND " + SQLSMSOK + "), " +
 		"count(*) FILTER (WHERE " + SQLEmailOK + " AND NOT " + SQLSMSOK + "), " +
 		"count(*) FILTER (WHERE NOT " + SQLEmailOK + " AND " + SQLSMSOK + "), " +
 		"count(*) FILTER (WHERE NOT " + SQLEmailOK + " AND NOT " + SQLSMSOK + "), " +
 		"COALESCE(max(char_length(c.first_name)) FILTER (WHERE " + SQLReachable + "), 0)::int " +
 		"FROM dwh.dim_customer c WHERE " + baseWhere(filterWhere) + " " +
-		"GROUP BY c.language ORDER BY c.language"
+		"GROUP BY c.language, c.timezone ORDER BY c.language, c.timezone"
 }
 
 // recipientsSQL selects reachable customers ordered by customer_id. Contact
 // details are returned only for an eligible channel. argsBefore is the number
 // of filter arguments; the keyset cursor (when hasCursor) and the limit follow.
 func recipientsSQL(filterWhere string, argsBefore int, hasCursor bool) string {
-	sql := "SELECT c.customer_id, c.first_name, c.language, " +
+	sql := "SELECT c.customer_id, c.first_name, c.language, c.timezone, " +
 		SQLEmailOK + ", " + SQLSMSOK + ", " +
 		"CASE WHEN " + SQLEmailOK + " THEN c.email END, " +
 		"CASE WHEN " + SQLSMSOK + " THEN c.phone_e164 END " +

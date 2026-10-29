@@ -199,6 +199,7 @@ func TestPreviewAndRecipientsAgreeWithEachOther(t *testing.T) {
 				t.Fatal(err)
 			}
 			total, email, sms, maxName := 0, 0, 0, 0
+			perPair := map[[2]string]int{}
 			var after *string
 			for {
 				page, err := svc.Recipients(t.Context(), f, 250, after)
@@ -207,6 +208,7 @@ func TestPreviewAndRecipientsAgreeWithEachOther(t *testing.T) {
 				}
 				for _, r := range page.Nodes {
 					total++
+					perPair[[2]string{r.Language, r.Timezone}]++
 					maxName = max(maxName, utf8.RuneCountInString(r.FirstName))
 					if r.EmailEligible {
 						email++
@@ -222,6 +224,15 @@ func TestPreviewAndRecipientsAgreeWithEachOther(t *testing.T) {
 			}
 			if total != pv.Count || email != pv.Coverage.Both+pv.Coverage.EmailOnly || sms != pv.Coverage.Both+pv.Coverage.SmsOnly {
 				t.Errorf("recipients: %d total, %d email, %d sms; preview: %+v", total, email, sms, pv)
+			}
+			for _, l := range pv.ByLocale {
+				if got := perPair[[2]string{l.Language, l.Timezone}]; got != l.Count {
+					t.Errorf("pair %s/%s: %d recipients, byLocale count %d", l.Language, l.Timezone, got, l.Count)
+				}
+				delete(perPair, [2]string{l.Language, l.Timezone})
+			}
+			if len(perPair) != 0 {
+				t.Errorf("recipients in pairs missing from byLocale: %v", perPair)
 			}
 			if maxName != pv.MaxFirstNameLength {
 				t.Errorf("longest recipient first name = %d, preview maxFirstNameLength = %d", maxName, pv.MaxFirstNameLength)

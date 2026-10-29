@@ -229,7 +229,7 @@ func (s *Service) loadFill(ctx context.Context, stepID uuid.UUID) (*fillCtx, err
 	if err != nil {
 		return nil, err
 	}
-	expected, err := expectedSlots(step.Kind, plan)
+	expected, err := expectedSlots(step.Kind, aud, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -332,27 +332,31 @@ func (s *Service) genPlan(ctx context.Context, fc *fillCtx) {
 }
 
 func (s *Service) genSchedule(ctx context.Context, fc *fillCtx) {
-	langs := scheduleLanguages(fc.missing)
+	locales, err := scheduleLocales(fc.missing, *fc.audience, *fc.plan)
+	if err != nil {
+		s.failed(ctx, fc, Slot{}, err, nil)
+		return
+	}
 	cctx, col := collect(ctx)
 	res, err := s.llm.ProposeSchedule(cctx, llm.ScheduleInput{
-		Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(fc.missing...), Languages: langs, Now: s.clock.Now(),
+		Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(fc.missing...), Locales: locales, Now: s.clock.Now(),
 	}, func(e []llm.ScheduleEntry) error {
-		return llm.NewProblemsError(ScheduleProblems(e, langs, s.clock.Now()))
+		return llm.NewProblemsError(ScheduleProblems(e, locales, s.clock.Now()))
 	})
 	if err != nil {
 		s.failed(ctx, fc, Slot{}, err, col.Records())
 		return
 	}
-	byLang := map[string]llm.ScheduleEntry{}
+	byLocale := map[Slot]llm.ScheduleEntry{}
 	for _, e := range res.Entries {
-		byLang[e.Language] = e
+		byLocale[Slot{Language: e.Language, Timezone: e.Timezone}] = e
 	}
 	items := make([]newVariant, 0, len(fc.missing))
 	contents := make([]any, 0, len(fc.missing))
 	for _, sl := range fc.missing {
-		e, ok := byLang[sl.Language]
+		e, ok := byLocale[sl]
 		if !ok {
-			s.failed(ctx, fc, sl, fmt.Errorf("the model returned no entry for %s", sl.Language), col.Records())
+			s.failed(ctx, fc, sl, fmt.Errorf("the model returned no entry for %s", sl), col.Records())
 			return
 		}
 		items = append(items, newVariant{slot: sl})
@@ -501,7 +505,7 @@ func (s *Service) storeVariants(ctx context.Context, fc *fillCtx, items []newVar
 					}
 				}
 				v, err := t.q.CreateVariant(ctx, store.CreateVariantParams{
-					StepID: step.ID, Kind: step.Kind, Language: text(it.slot.Language), Channel: text(it.slot.Channel), Content: encoded[i],
+					StepID: step.ID, Kind: step.Kind, Language: text(it.slot.Language), Channel: text(it.slot.Channel), Timezone: text(it.slot.Timezone), Content: encoded[i],
 				})
 				if err != nil {
 					return err

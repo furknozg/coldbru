@@ -82,14 +82,14 @@ func TestPreviewRunsInReadOnlyTxWithTimeout(t *testing.T) {
 	if !db.tx.rolledBack {
 		t.Error("transaction was not rolled back")
 	}
-	want := "SELECT c.language, " +
+	want := "SELECT c.language, c.timezone, " +
 		"count(*) FILTER (WHERE (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"count(*) FILTER (WHERE (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND NOT (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"count(*) FILTER (WHERE NOT (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"count(*) FILTER (WHERE NOT (c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) AND NOT (c.phone_e164 IS NOT NULL AND c.sms_opt_in)), " +
 		"COALESCE(max(char_length(c.first_name)) FILTER (WHERE ((c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced) OR (c.phone_e164 IS NOT NULL AND c.sms_opt_in))), 0)::int " +
 		"FROM dwh.dim_customer c WHERE c.city IS NOT DISTINCT FROM $1 AND c.account_status = 'active' " +
-		"GROUP BY c.language ORDER BY c.language"
+		"GROUP BY c.language, c.timezone ORDER BY c.language, c.timezone"
 	if db.tx.querySQL != want {
 		t.Errorf("query =\n  %s\nwant\n  %s", db.tx.querySQL, want)
 	}
@@ -102,7 +102,7 @@ func TestRecipientsQueryShape(t *testing.T) {
 	t.Parallel()
 	const reach = "(c.email IS NOT NULL AND c.email_opt_in AND NOT c.email_bounced)"
 	const sms = "(c.phone_e164 IS NOT NULL AND c.sms_opt_in)"
-	head := "SELECT c.customer_id, c.first_name, c.language, " + reach + ", " + sms + ", " +
+	head := "SELECT c.customer_id, c.first_name, c.language, c.timezone, " + reach + ", " + sms + ", " +
 		"CASE WHEN " + reach + " THEN c.email END, CASE WHEN " + sms + " THEN c.phone_e164 END " +
 		"FROM dwh.dim_customer c WHERE c.city IS NOT DISTINCT FROM $1 AND c.account_status = 'active' AND (" + reach + " OR " + sms + ")"
 

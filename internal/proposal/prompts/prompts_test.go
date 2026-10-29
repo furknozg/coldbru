@@ -135,7 +135,7 @@ func TestShippedPackages(t *testing.T) {
 func TestPlanAndSchedulePackages(t *testing.T) {
 	t.Parallel()
 	cp, sc := ChannelPlan(), Schedule()
-	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@1.1.0" {
+	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@2.0.0" {
 		t.Errorf("ids = %s, %s", cp.ID(), sc.ID())
 	}
 	for _, p := range []*Package{cp, sc} {
@@ -162,28 +162,45 @@ func TestPlanAndSchedulePackages(t *testing.T) {
 			t.Errorf("channel_plan prompt lost %q", w)
 		}
 	}
-	// The schedule prompt keeps the zones, the null rule and the window.
-	for _, w := range []string{"time zone", "send_at is null for every language", "at least 5 minutes", "at most 30 days"} {
+	// The schedule prompt keeps the null rule and the window and adds the offset check.
+	for _, w := range []string{"time zone", "send_at is null for that locale", "at least 5 minutes", "at most 30 days", "the offset", "daylight saving"} {
 		if !strings.Contains(sc.System, w) {
 			t.Errorf("schedule prompt lost %q", w)
 		}
 	}
-	// D-075: a named time applies to every language; the language of the brief is not an
-	// audience language; only an explicit restriction narrows it to a group.
+	// D-076: locales are (language, time zone) pairs; a time for a place applies only to its time
+	// zones, a general time is the same wall-clock time in every locale's own zone, a language
+	// restriction narrows to that language's locales, places outside the audience are ignored and
+	// mentioned, the rationale is in the language of the brief, one entry per locale.
 	for _, w := range []string{
-		"applies to every language of the audience",
+		"A locale is a pair of a language and an IANA time zone",
+		`{"language": "tr", "timezone": "Europe/Istanbul", "recipients": 36, "now_local"`,
+		"applies only to the locales whose time zone belongs to that place",
+		"as the same wall-clock time in each locale's own time zone",
+		"Never convert one time zone's wall-clock time into another",
+		"morning 09:00, noon 12:00, afternoon 15:00, evening 19:00",
+		"that time applies only to the locales of that language",
 		"The language the brief is written in is NOT an audience language",
-		"explicitly restricts a time to a group of the audience",
 		"\"İngilizce konuşanlara akşam\"",
-		"in the language of the brief, whatever the language of the entry is",
+		"is ignored: do not invent a locale for it",
+		"has no recipients in this audience",
+		"Return exactly one entry for each locale of the input",
+		"with the language and the timezone copied unchanged from the input",
+		"in the language of the brief, whatever the language or time zone of the entry is",
+		"Europe/London is +00:00 in winter and +01:00 in summer",
 	} {
 		if !strings.Contains(sc.System, w) {
-			t.Errorf("schedule prompt lost the D-075 wording %q", w)
+			t.Errorf("schedule prompt lost the D-076 wording %q", w)
 		}
 	}
-	for _, w := range []string{"only for one language", "names a time only for one language", "unless the brief says the time is for everyone"} {
+	// The D-075 wording (a time applies to every language, one entry per language) is replaced.
+	for _, w := range []string{
+		"applies to every language of the audience", "explicitly restricts a time to a group of the audience",
+		"for each language of the audience", "exactly one entry for each language", "send_at is null for every language",
+		"only for one language", "names a time only for one language", "unless the brief says the time is for everyone",
+	} {
 		if strings.Contains(sc.System, w) {
-			t.Errorf("schedule prompt still has the old rule 3 wording %q", w)
+			t.Errorf("schedule prompt still has the old wording %q", w)
 		}
 	}
 }
@@ -226,7 +243,7 @@ func TestPlanAndScheduleOutputSchemas(t *testing.T) {
 	}
 	items := sched.Properties["entries"].Items
 	if len(sched.Required) != 1 || sched.Required[0] != "entries" || sched.AdditionalProperties ||
-		len(items.Required) != 3 || items.Additional || len(items.Properties) != 3 || items.Properties["send_at"] == nil {
+		len(items.Required) != 4 || items.Additional || len(items.Properties) != 4 || items.Properties["send_at"] == nil || items.Properties["timezone"] == nil {
 		t.Errorf("schedule schema = %+v", sched)
 	}
 	if !strings.Contains(string(items.Properties["send_at"]), `"null"`) {

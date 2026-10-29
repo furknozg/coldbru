@@ -20,10 +20,11 @@ const (
 // RecipientsSubject is the subject of the recipient batches of a campaign (RECIPIENTS stream).
 func RecipientsSubject(campaignID string) string { return RecipientsSubjectPrefix + campaignID }
 
-// ConfirmedSchedule is the send time of one language. SendAt is nil for "send immediately": the
-// receiver sends when it processes the event.
+// ConfirmedSchedule is the send time of one (language, timezone) pair (D-076). SendAt is nil for
+// "send immediately": the receiver sends when it processes the event.
 type ConfirmedSchedule struct {
 	Language string     `json:"language"`
+	Timezone string     `json:"timezone"`
 	SendAt   *time.Time `json:"send_at"`
 }
 
@@ -59,8 +60,11 @@ type BatchRecipient struct {
 	CustomerID string `json:"customer_id"`
 	FirstName  string `json:"first_name"`
 	Language   string `json:"language"`
-	Channel    string `json:"channel"`
-	Contact    string `json:"contact"`
+	// Timezone is the IANA time zone of the person (D-076); with Language it selects the
+	// schedule the person's message waits for.
+	Timezone string `json:"timezone"`
+	Channel  string `json:"channel"`
+	Contact  string `json:"contact"`
 }
 
 // RecipientBatch is one message of the RECIPIENTS stream; BatchNo counts from 1.

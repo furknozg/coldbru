@@ -32,7 +32,7 @@ func TestConfirmedDataWireShape(t *testing.T) {
 	at := time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)
 	data := flow.ConfirmedData{
 		CampaignID: "c1",
-		Schedules:  []flow.ConfirmedSchedule{{Language: "tr", SendAt: &at}, {Language: "en"}},
+		Schedules:  []flow.ConfirmedSchedule{{Language: "tr", Timezone: "Europe/Istanbul", SendAt: &at}, {Language: "en", Timezone: "Europe/London"}},
 		Messages:   []flow.ConfirmedMessage{{Language: "tr", Channel: "sms", Content: json.RawMessage(`{"text":"Merhaba {{first_name}}"}`)}},
 		CTAURL:     "https://shop.example.com?utm_campaign=c1", RecipientBatches: 1,
 		RecipientCounts: flow.Recipients{Email: 33, SMS: 13, Total: 46},
@@ -60,6 +60,11 @@ func TestConfirmedDataWireShape(t *testing.T) {
 	}
 	if back.Schedules[0]["send_at"] != "2026-11-02T09:00:00Z" || back.Schedules[1]["send_at"] != nil {
 		t.Errorf("schedules = %v: send_at is an RFC 3339 string, null for send immediately", back.Schedules)
+	}
+	for i, want := range [][2]string{{"tr", "Europe/Istanbul"}, {"en", "Europe/London"}} {
+		if got := back.Schedules[i]; got["language"] != want[0] || got["timezone"] != want[1] || len(got) != 3 {
+			t.Errorf("schedule %d = %v, want language %s, timezone %s and send_at (D-076)", i, got, want[0], want[1])
+		}
 	}
 	if _, ok := back.Schedules[1]["send_at"]; !ok {
 		t.Error("send_at must be present (null) for send immediately")
@@ -90,7 +95,7 @@ func TestRecipientBatchWireShape(t *testing.T) {
 	t.Parallel()
 	raw, err := json.Marshal(flow.RecipientBatch{
 		CampaignID: "c1", BatchNo: 1, BatchCount: 2,
-		Recipients: []flow.BatchRecipient{{CustomerID: "u1", FirstName: "Ada", Language: "tr", Channel: "email", Contact: "a@example.com"}},
+		Recipients: []flow.BatchRecipient{{CustomerID: "u1", FirstName: "Ada", Language: "tr", Timezone: "Europe/Istanbul", Channel: "email", Contact: "a@example.com"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +109,7 @@ func TestRecipientBatchWireShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &b); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := keys(t, b.Recipients[0]), []string{"channel", "contact", "customer_id", "first_name", "language"}; !reflect.DeepEqual(got, want) {
+	if got, want := keys(t, b.Recipients[0]), []string{"channel", "contact", "customer_id", "first_name", "language", "timezone"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("recipient keys = %v, want %v", got, want)
 	}
 	if flow.RecipientsSubject("c1") != "recipients.c1" {

@@ -70,4 +70,5 @@ type ProposalVariant struct {
 	CreatedAt       pgtype.Timestamptz
 	ApprovedAt      pgtype.Timestamptz
 	RejectedAt      pgtype.Timestamptz
+	Timezone        pgtype.Text
 }

@@ -181,7 +181,7 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "service versions",
 			sql:  "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id",
-			want: []string{"1", "2", "3"},
+			want: []string{"1", "2", "3", "4"},
 		},
 		{
 			name: "platform versions",
@@ -307,6 +307,7 @@ type variantRow struct {
 	kind     string
 	language any
 	channel  any
+	timezone any
 	status   string
 	reason   any
 	approved any
@@ -315,9 +316,9 @@ type variantRow struct {
 
 func (f fixture) variant(ctx context.Context, v variantRow) error {
 	return f.exec(ctx, `INSERT INTO proposal_variant
-		(step_id, kind, language, channel, status, content, rejection_reason, approved_at, rejected_at)
-		VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, $7, $8)`,
-		v.step, v.kind, v.language, v.channel, v.status, v.reason, v.approved, v.rejected)
+		(step_id, kind, language, channel, timezone, status, content, rejection_reason, approved_at, rejected_at)
+		VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, $8, $9)`,
+		v.step, v.kind, v.language, v.channel, v.timezone, v.status, v.reason, v.approved, v.rejected)
 }
 
 // wantConstraint asserts that err is nil when want is empty, otherwise a Postgres error that
@@ -492,14 +493,26 @@ func TestConstraints_ProposalVariant(t *testing.T) {
 		{name: "content without language", run: func(_ *testing.T, ctx context.Context, f fixture) error {
 			return f.variant(ctx, variantRow{step: f.content, kind: "content", channel: "email", status: "draft"})
 		}, want: "proposal_variant_shape_check"},
+		{name: "schedule with language and timezone (D-076)", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", timezone: "Europe/London", status: "draft"})
+		}},
 		{name: "schedule with language only", run: func(_ *testing.T, ctx context.Context, f fixture) error {
 			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", status: "draft"})
-		}},
+		}, want: "proposal_variant_shape_check"},
 		{name: "schedule with channel", run: func(_ *testing.T, ctx context.Context, f fixture) error {
-			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", channel: "sms", status: "draft"})
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", channel: "sms", timezone: "Europe/London", status: "draft"})
 		}, want: "proposal_variant_shape_check"},
 		{name: "schedule without language", run: func(_ *testing.T, ctx context.Context, f fixture) error {
-			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", status: "draft"})
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", timezone: "Europe/London", status: "draft"})
+		}, want: "proposal_variant_shape_check"},
+		{name: "schedule with a blank timezone", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", timezone: " ", status: "draft"})
+		}, want: "proposal_variant_timezone_check"},
+		{name: "audience with a timezone", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			return f.variant(ctx, variantRow{step: f.audience, kind: "audience", timezone: "Europe/London", status: "draft"})
+		}, want: "proposal_variant_shape_check"},
+		{name: "content with a timezone", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			return f.variant(ctx, variantRow{step: f.content, kind: "content", language: "tr", channel: "sms", timezone: "Europe/Istanbul", status: "draft"})
 		}, want: "proposal_variant_shape_check"},
 
 		// Value lists.
@@ -597,6 +610,24 @@ func TestConstraints_ProposalVariantSlots(t *testing.T) {
 		{name: "different language, same channel", run: func(t *testing.T, ctx context.Context, f fixture) error {
 			mustExec(t, f.variant(ctx, variantRow{step: f.content, kind: "content", language: "tr", channel: "sms", status: "draft"}))
 			return f.variant(ctx, variantRow{step: f.content, kind: "content", language: "en", channel: "sms", status: "draft"})
+		}},
+		// A schedule slot is (language, timezone) (D-076).
+		{name: "schedule: same language, other timezone", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			mustExec(t, f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/Istanbul", status: "draft"}))
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/London", status: "draft"})
+		}},
+		{name: "schedule: same timezone, other language", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			mustExec(t, f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/Istanbul", status: "draft"}))
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "en", timezone: "Europe/Istanbul", status: "draft"})
+		}},
+		{name: "schedule: second draft in the same (language, timezone)", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			row := variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/Istanbul", status: "draft"}
+			mustExec(t, f.variant(ctx, row))
+			return f.variant(ctx, row)
+		}, want: "proposal_variant_live_slot_key"},
+		{name: "schedule: new draft after a superseded one", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			mustExec(t, f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/Istanbul", status: "superseded"}))
+			return f.variant(ctx, variantRow{step: f.schedule, kind: "schedule", language: "tr", timezone: "Europe/Istanbul", status: "draft"})
 		}},
 		{name: "reject then re-draft by update", run: func(t *testing.T, ctx context.Context, f fixture) error {
 			row := variantRow{step: f.content, kind: "content", language: "tr", channel: "sms", status: "draft"}
@@ -946,6 +977,10 @@ func TestMigration00003_PurposeList(t *testing.T) {
 	if err := insert("channel_plan"); err != nil {
 		t.Fatalf("channel_plan after Up: %v", err)
 	}
+	// 00004 is on top of 00003; roll it back first.
+	if _, err := provider.DownTo(ctx, 3); err != nil {
+		t.Fatalf("DownTo(3) error = %v", err)
+	}
 	// Down is refused while the table holds a purpose the old list does not know.
 	if _, err := provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "llm_call_purpose_check") {
 		t.Fatalf("Down() with a channel_plan row: err = %v, want the constraint to refuse it", err)
@@ -972,6 +1007,9 @@ func TestMigration00003_DownRestoresTheOldList(t *testing.T) {
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
+	}
+	if _, err := provider.DownTo(ctx, 3); err != nil { // 00004 is on top of 00003
+		t.Fatalf("DownTo(3) error = %v", err)
 	}
 	res, err := provider.Down(ctx)
 	if err != nil || res.Source.Version != 3 {
@@ -1134,4 +1172,149 @@ func TestQueries_Flow(t *testing.T) {
 			}
 		}
 	})
+}
+
+// provider00004 opens a goose provider over the proposal migrations of pool.
+func provider00004(t *testing.T, pool *pgxpool.Pool) *goose.Provider {
+	t.Helper()
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	return provider
+}
+
+// Migration 00004 adds proposal_variant.timezone (D-076). Up backfills the schedule rows an older
+// database holds with the language mapping of D-070 before the CHECK is added; Down drops the
+// column and restores the old slot index and shape check.
+func TestMigration00004_BackfillAndRoundTrip(t *testing.T) {
+	ctx := t.Context()
+	pool := newPool(t)
+	if err := migrate.UpPlatform(ctx, pool, discardLogger()); err != nil {
+		t.Fatalf("UpPlatform() error = %v", err)
+	}
+	provider := provider00004(t, pool)
+
+	// A database at 00003, with schedule variants written by the old code: one per language.
+	if _, err := provider.UpTo(ctx, 3); err != nil {
+		t.Fatalf("UpTo(3) error = %v", err)
+	}
+	if got := queryStrings(t, pool, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'proposal' AND table_name = 'proposal_variant' AND column_name = 'timezone'"); len(got) != 0 {
+		t.Fatalf("timezone exists before 00004: %v", got)
+	}
+	q := store.New(pool)
+	camp, err := q.CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+	sched, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "schedule", Version: 1})
+	mustExec(t, err)
+	content, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "content", Version: 1})
+	mustExec(t, err)
+	insert := func(step uuid.UUID, kind, lang, channel, status string) {
+		t.Helper()
+		var ch any
+		if channel != "" {
+			ch = channel
+		}
+		_, err := pool.Exec(ctx, `INSERT INTO proposal_variant (step_id, kind, language, channel, status, content, approved_at)
+			VALUES ($1, $2, $3, $4, $5, '{"send_at":null}'::jsonb, CASE WHEN $5 = 'approved' THEN now() END)`, step, kind, lang, ch, status)
+		mustExec(t, err)
+	}
+	insert(sched.ID, "schedule", "tr", "", "approved")
+	insert(sched.ID, "schedule", "en", "", "draft")
+	insert(sched.ID, "schedule", "en", "", "superseded") // history is backfilled too
+	insert(content.ID, "content", "tr", "sms", "draft")
+
+	if _, err := provider.UpByOne(ctx); err != nil {
+		t.Fatalf("Up 00004 error = %v", err)
+	}
+	got := queryStrings(t, pool, `SELECT kind || ':' || language || ':' || coalesce(timezone, 'NULL') || ':' || status
+		FROM proposal_variant ORDER BY kind, language, status`)
+	want := []string{
+		"content:tr:NULL:draft",
+		"schedule:en:Europe/London:draft", "schedule:en:Europe/London:superseded",
+		"schedule:tr:Europe/Istanbul:approved",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("variants after Up = %v, want %v (tr -> Europe/Istanbul, en -> Europe/London; non-schedule stays NULL)", got, want)
+	}
+	// The new live slot index lets a language hold a schedule per time zone.
+	insertTZ := func(lang, tz string) error {
+		_, err := pool.Exec(ctx, `INSERT INTO proposal_variant (step_id, kind, language, timezone, status, content)
+			VALUES ($1, 'schedule', $2, $3, 'draft', '{}'::jsonb)`, sched.ID, lang, tz)
+		return err
+	}
+	if err := insertTZ("tr", "Europe/London"); err != nil {
+		t.Errorf("a second zone of the same language: %v", err)
+	}
+	wantConstraint(t, insertTZ("tr", "Europe/London"), "proposal_variant_live_slot_key")
+
+	// Down while two zones of one language are live: the old index cannot hold them, so Down is
+	// refused and rolls back.
+	if _, err := provider.Down(ctx); err == nil || !strings.Contains(err.Error(), "proposal_variant_live_slot_key") {
+		t.Fatalf("Down() with two live zones of one language: err = %v, want the old slot index to refuse it", err)
+	}
+	if got := queryStrings(t, pool, "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 AND is_applied ORDER BY version_id"); !slices.Equal(got, []string{"1", "2", "3", "4"}) {
+		t.Fatalf("versions after the refused Down = %v: the failed migration must roll back", got)
+	}
+	mustExec(t, func() error {
+		_, err := pool.Exec(ctx, `UPDATE proposal_variant SET status = 'superseded' WHERE timezone = 'Europe/London' AND language = 'tr'`)
+		return err
+	}())
+
+	// Down: the column and the new constraints are gone, the rows stay.
+	if res, err := provider.Down(ctx); err != nil || res.Source.Version != 4 {
+		t.Fatalf("Down() = %+v, %v; want to roll back 00004", res, err)
+	}
+	if got := queryStrings(t, pool, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'proposal' AND table_name = 'proposal_variant' AND column_name = 'timezone'"); len(got) != 0 {
+		t.Errorf("timezone survived Down: %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT conname FROM pg_constraint WHERE conname = 'proposal_variant_timezone_check'"); len(got) != 0 {
+		t.Errorf("timezone check survived Down: %v", got)
+	}
+	if n := queryStrings(t, pool, "SELECT count(*)::text FROM proposal_variant"); n[0] != "5" {
+		t.Errorf("rows after Down = %s, want all 5 kept", n[0])
+	}
+	// The old shape (language only) and the old slot index are back.
+	oldInsert := func(lang string) error {
+		_, err := pool.Exec(ctx, `INSERT INTO proposal_variant (step_id, kind, language, status, content)
+			VALUES ($1, 'schedule', $2, 'draft', '{}'::jsonb)`, sched.ID, lang)
+		return err
+	}
+	wantConstraint(t, oldInsert("en"), "proposal_variant_live_slot_key") // en draft exists
+
+	// Up again: the CHECK is back and rows written without a timezone are refused.
+	if _, err := provider.UpByOne(ctx); err != nil {
+		t.Fatalf("Up 00004 again error = %v", err)
+	}
+	wantConstraint(t, oldInsert("tr"), "proposal_variant_shape_check")
+}
+
+// A schedule variant written through the generated query carries its timezone; every other kind
+// has none (D-076).
+func TestQueries_CreateVariantTimezone(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	q := store.New(pool)
+	camp, err := q.CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+	sched, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "schedule", Version: 1})
+	mustExec(t, err)
+	v, err := q.CreateVariant(ctx, store.CreateVariantParams{
+		StepID: sched.ID, Kind: "schedule", Language: pgtype.Text{String: "tr", Valid: true},
+		Timezone: pgtype.Text{String: "Europe/Istanbul", Valid: true}, Content: []byte(`{"send_at":null,"rationale":"now"}`),
+	})
+	if err != nil || v.Timezone.String != "Europe/Istanbul" || !v.Timezone.Valid {
+		t.Fatalf("CreateVariant(schedule) = %+v, %v", v, err)
+	}
+	if _, err := q.CreateVariant(ctx, store.CreateVariantParams{
+		StepID: sched.ID, Kind: "schedule", Language: pgtype.Text{String: "en", Valid: true}, Content: []byte(`{}`),
+	}); err == nil {
+		t.Error("a schedule variant without a timezone was accepted")
+	}
+	got, err := q.ListVariants(ctx, sched.ID)
+	if err != nil || len(got) != 1 || got[0].Timezone.String != "Europe/Istanbul" {
+		t.Errorf("ListVariants = %+v, %v", got, err)
+	}
 }

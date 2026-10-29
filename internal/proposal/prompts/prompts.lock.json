@@ -12,8 +12,8 @@
     },
     {
       "name": "schedule",
-      "version": "1.1.0",
-      "sha256": "30215a3b73ed3f82196ae5a55412bdd44effb58830adc72755505e41a80757a0"
+      "version": "2.0.0",
+      "sha256": "30419c3cc77aa0c11689f51069107c92f6167c864fa28880bd0c45408f35340a"
     },
     {
       "name": "screen",

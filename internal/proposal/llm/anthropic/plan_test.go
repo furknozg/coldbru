@@ -299,7 +299,11 @@ func TestProposeChannelPlanNormalisesEnums(t *testing.T) {
 var scheduleNow = time.Date(2026, 10, 28, 22, 30, 0, 0, time.UTC)
 
 func scheduleInput() llm.ScheduleInput {
-	return llm.ScheduleInput{Brief: "Yarın sabah 10'da gönder.", ContextNotes: []string{"saat 10:00"}, Languages: []string{"tr", "en"}, Now: scheduleNow.In(time.FixedZone("x", 3*3600))}
+	return llm.ScheduleInput{Brief: "Yarın sabah 10'da gönder.", ContextNotes: []string{"saat 10:00"}, Now: scheduleNow.In(time.FixedZone("x", 3*3600)),
+		Locales: []llm.ScheduleLocale{
+			{Language: "tr", Timezone: "Europe/Istanbul", Recipients: 36},
+			{Language: "en", Timezone: "Europe/London", Recipients: 10},
+		}}
 }
 
 func scheduleReply(entries string) llmtest.Response {
@@ -310,7 +314,7 @@ func scheduleReply(entries string) llmtest.Response {
 	})
 }
 
-const goodEntries = `[{"language":"tr","send_at":"2026-10-30T10:00:00+03:00","rationale":"Yarın 10:00 İstanbul."},{"language":"en","send_at":null,"rationale":"No time for en."}]`
+const goodEntries = `[{"language":"tr","timezone":"Europe/Istanbul","send_at":"2026-10-30T10:00:00+03:00","rationale":"Yarın 10:00 İstanbul."},{"language":"en","timezone":"Europe/London","send_at":null,"rationale":"No time for en."}]`
 
 func TestRequestBodySchedule(t *testing.T) {
 	t.Parallel()
@@ -348,37 +352,38 @@ func TestProposeScheduleAccepted(t *testing.T) {
 	}
 	tr, en := res.Entries[0], res.Entries[1]
 	wantAt := time.Date(2026, 10, 30, 7, 0, 0, 0, time.UTC)
-	if tr.Language != "tr" || tr.SendAt == nil || !tr.SendAt.Equal(wantAt) || tr.Rationale != "Yarın 10:00 İstanbul." {
+	if tr.Language != "tr" || tr.Timezone != "Europe/Istanbul" || tr.SendAt == nil || !tr.SendAt.Equal(wantAt) || tr.Rationale != "Yarın 10:00 İstanbul." {
 		t.Errorf("tr entry = %+v", tr)
 	}
 	if _, off := tr.SendAt.Zone(); off != 3*3600 {
 		t.Errorf("the offset the model wrote is lost: %d", off)
 	}
-	if en.Language != "en" || en.SendAt != nil {
+	if en.Language != "en" || en.Timezone != "Europe/London" || en.SendAt != nil {
 		t.Errorf("en entry = %+v, want send immediately", en)
 	}
 
-	// now in UTC, the zone and the local time of each language.
+	// now in UTC, and for each (language, timezone) pair the recipients and the local time.
 	var user struct {
 		Brief        string   `json:"brief"`
 		ContextNotes []string `json:"context_notes"`
 		Now          string   `json:"now"`
-		Languages    []struct {
-			Language string `json:"language"`
-			Timezone string `json:"timezone"`
-			NowLocal string `json:"now_local"`
-		} `json:"languages"`
+		Locales      []struct {
+			Language   string `json:"language"`
+			Timezone   string `json:"timezone"`
+			Recipients int    `json:"recipients"`
+			NowLocal   string `json:"now_local"`
+		} `json:"locales"`
 	}
 	text, _ := field(t, srv.Requests()[0].JSON(), "messages", 0, "content", 0, "text").(string)
 	decode(t, text, &user)
 	if user.Brief != "Yarın sabah 10'da gönder." || !reflect.DeepEqual(user.ContextNotes, []string{"saat 10:00"}) || user.Now != "2026-10-28T22:30:00Z" ||
-		len(user.Languages) != 2 {
+		len(user.Locales) != 2 {
 		t.Fatalf("user message = %+v", user)
 	}
-	if l := user.Languages[0]; l.Language != "tr" || l.Timezone != "Europe/Istanbul" || l.NowLocal != "2026-10-29T01:30:00+03:00" {
+	if l := user.Locales[0]; l.Language != "tr" || l.Timezone != "Europe/Istanbul" || l.Recipients != 36 || l.NowLocal != "2026-10-29T01:30:00+03:00" {
 		t.Errorf("tr = %+v", l)
 	}
-	if l := user.Languages[1]; l.Language != "en" || l.Timezone != "Europe/London" || l.NowLocal != "2026-10-28T22:30:00Z" {
+	if l := user.Locales[1]; l.Language != "en" || l.Timezone != "Europe/London" || l.Recipients != 10 || l.NowLocal != "2026-10-28T22:30:00Z" {
 		t.Errorf("en = %+v", l)
 	}
 
@@ -393,7 +398,7 @@ func TestProposeScheduleRepairsAndExhausts(t *testing.T) {
 	t.Run("repaired", func(t *testing.T) {
 		t.Parallel()
 		srv := llmtest.NewMessagesServer(t,
-			scheduleReply(`[{"language":"tr","send_at":"2026-10-28T22:31:00Z","rationale":"too soon"}]`),
+			scheduleReply(`[{"language":"tr","timezone":"Europe/Istanbul","send_at":"2026-10-28T22:31:00Z","rationale":"too soon"}]`),
 			scheduleReply(goodEntries),
 		)
 		ctx, col := withRecorder(t)
@@ -439,12 +444,14 @@ func TestProposeScheduleUnusableAnswersAreRepaired(t *testing.T) {
 		bad  string
 		want string
 	}{
-		{"no offset", `[{"language":"tr","send_at":"2026-10-30T10:00:00","rationale":"x"}]`, "RFC 3339"},
-		{"not a date", `[{"language":"tr","send_at":"tomorrow","rationale":"x"}]`, `send_at "tomorrow"`},
-		{"number", `[{"language":"tr","send_at":5,"rationale":"x"}]`, "string or null"},
-		{"missing send_at", `[{"language":"tr","rationale":"x"}]`, `"send_at" is required`},
-		{"empty language", `[{"language":" ","send_at":null,"rationale":"x"}]`, `"language" is required`},
-		{"missing rationale", `[{"language":"tr","send_at":null}]`, `"rationale" is required`},
+		{"no offset", `[{"language":"tr","timezone":"Europe/Istanbul","send_at":"2026-10-30T10:00:00","rationale":"x"}]`, "RFC 3339"},
+		{"not a date", `[{"language":"tr","timezone":"Europe/Istanbul","send_at":"tomorrow","rationale":"x"}]`, `send_at "tomorrow"`},
+		{"number", `[{"language":"tr","timezone":"Europe/Istanbul","send_at":5,"rationale":"x"}]`, "string or null"},
+		{"missing send_at", `[{"language":"tr","timezone":"Europe/Istanbul","rationale":"x"}]`, `"send_at" is required`},
+		{"empty language", `[{"language":" ","timezone":"Europe/Istanbul","send_at":null,"rationale":"x"}]`, `"language" is required`},
+		{"missing rationale", `[{"language":"tr","timezone":"Europe/Istanbul","send_at":null}]`, `"rationale" is required`},
+		{"missing timezone", `[{"language":"tr","send_at":null,"rationale":"x"}]`, `"timezone" is required`},
+		{"empty timezone", `[{"language":"tr","timezone":" ","send_at":null,"rationale":"x"}]`, `"timezone" is required`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

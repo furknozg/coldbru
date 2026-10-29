@@ -153,7 +153,9 @@ func TestFailureReasonsAreJoinedBySlot(t *testing.T) {
 	}
 	s.setFailure(step, Slot{Language: "tr", Channel: "sms"}, "refused")
 	s.setFailure(step, Slot{Language: "en", Channel: "email"}, "cut off")
-	if got := s.failureOf(step); got != "-: boom; en/email: cut off; tr/sms: refused" {
+	s.setFailure(step, Slot{Language: "tr", Timezone: "Europe/London"}, "late")
+	s.setFailure(step, Slot{Language: "tr", Timezone: "Europe/Istanbul"}, "early")
+	if got := s.failureOf(step); got != "-: boom; en/email: cut off; tr@Europe/Istanbul: early; tr@Europe/London: late; tr/sms: refused" {
 		t.Errorf("failureOf = %q", got)
 	}
 }
@@ -225,8 +227,8 @@ func TestModelNotesAddTheRejectionReason(t *testing.T) {
 		t.Error("modelNotes aliases the notes of the context")
 	}
 	fc.step.Kind = KindSchedule
-	fc.rejected = map[Slot]store.ProposalVariant{{Language: "tr"}: rejected("tr", "too early")}
-	if n := fc.modelNotes(Slot{Language: "tr"}, Slot{Language: "en"}); len(n) != 2 || !strings.Contains(n[1], "schedule (tr) proposal") {
+	fc.rejected = map[Slot]store.ProposalVariant{{Language: "tr", Timezone: "Europe/Istanbul"}: rejected("tr", "too early")}
+	if n := fc.modelNotes(Slot{Language: "tr", Timezone: "Europe/Istanbul"}, Slot{Language: "tr", Timezone: "Europe/London"}); len(n) != 2 || !strings.Contains(n[1], "schedule (tr@Europe/Istanbul) proposal") {
 		t.Errorf("notes = %q", n)
 	}
 }
@@ -238,6 +240,12 @@ func TestNewAudienceContent(t *testing.T) {
 		ByLanguage: []customer.LanguageCoverage{
 			{Language: "tr", Count: 30, MaxFirstNameLength: 9, Coverage: customer.Coverage{Both: 13, EmailOnly: 8, SmsOnly: 9, Unreachable: 2}},
 			{Language: "en", Count: 16, MaxFirstNameLength: 7, Coverage: customer.Coverage{Both: 7, EmailOnly: 5, SmsOnly: 4, Unreachable: 1}},
+		},
+		ByLocale: []customer.LocaleCoverage{
+			{Language: "tr", Timezone: "Europe/London", Count: 1, MaxFirstNameLength: 3, Coverage: customer.Coverage{EmailOnly: 1}},
+			{Language: "en", Timezone: "Europe/London", Count: 0, Coverage: customer.Coverage{Unreachable: 1}},
+			{Language: "tr", Timezone: "Europe/Istanbul", Count: 29, MaxFirstNameLength: 9, Coverage: customer.Coverage{Both: 13, EmailOnly: 7, SmsOnly: 9, Unreachable: 2}},
+			{Language: "en", Timezone: "Europe/Istanbul", Count: 16, MaxFirstNameLength: 7, Coverage: customer.Coverage{Both: 7, EmailOnly: 5, SmsOnly: 4}},
 		},
 	}
 	c, err := NewAudienceContent(`city === "Ankara"`, nil, p)
@@ -254,13 +262,27 @@ func TestNewAudienceContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"dsl"`, `"filter"`, `"count"`, `"coverage"`, `"email_only"`, `"sms_only"`, `"unreachable"`, `"by_language"`, `"max_first_name_length":9`, `"max_first_name_length":7`} {
+	for _, key := range []string{`"dsl"`, `"filter"`, `"count"`, `"coverage"`, `"email_only"`, `"sms_only"`, `"unreachable"`, `"by_language"`, `"by_locale"`, `"timezone":"Europe/London"`, `"max_first_name_length":9`, `"max_first_name_length":7`} {
 		if !strings.Contains(string(b), key) {
 			t.Errorf("content lacks %s: %s", key, b)
 		}
 	}
+	// by_locale is ordered by language then timezone whatever order Customer answered in (D-076).
+	var order []string
+	for _, l := range c.ByLocale {
+		order = append(order, l.Language+"/"+l.Timezone)
+	}
+	if got := strings.Join(order, " "); got != "en/Europe/Istanbul en/Europe/London tr/Europe/Istanbul tr/Europe/London" {
+		t.Errorf("by_locale order = %s", got)
+	}
+	if c.ByLocale[1].Count != 0 || c.ByLocale[3].Coverage.EmailOnly != 1 {
+		t.Errorf("by_locale = %+v", c.ByLocale)
+	}
 	// The round trip through the coverage table the plan prompt reads.
 	back := c.Preview()
+	if len(back.ByLocale) != 4 || back.ByLocale[3].Timezone != "Europe/London" || back.ByLocale[3].Coverage.EmailOnly != 1 {
+		t.Errorf("Preview() lost by_locale: %+v", back.ByLocale)
+	}
 	if back.Count != 46 || back.Coverage != p.Coverage || len(back.ByLanguage) != 2 || back.ByLanguage[0].Language != "en" {
 		t.Errorf("Preview() = %+v", back)
 	}
@@ -301,7 +323,10 @@ func TestInvalidContentError(t *testing.T) {
 
 func TestSlotString(t *testing.T) {
 	t.Parallel()
-	for slot, want := range map[Slot]string{{}: "-", {Language: "tr"}: "tr", {Language: "tr", Channel: "sms"}: "tr/sms"} {
+	for slot, want := range map[Slot]string{
+		{}: "-", {Language: "tr"}: "tr", {Language: "tr", Channel: "sms"}: "tr/sms",
+		{Language: "tr", Timezone: "Europe/Istanbul"}: "tr@Europe/Istanbul",
+	} {
 		if slot.String() != want {
 			t.Errorf("%+v = %q, want %q", slot, slot.String(), want)
 		}

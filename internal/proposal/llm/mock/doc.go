@@ -11,7 +11,7 @@
 //     "empty audience" rule are the real ones.
 //   - ProposeChannelPlan proposes primary_fallback with the channel that reaches more people as the
 //     primary (email on a tie, D-010).
-//   - ProposeSchedule proposes "send immediately" (send_at null) for every language.
+//   - ProposeSchedule proposes "send immediately" (send_at null) for every (language, timezone) pair.
 //   - StreamStructured writes SMS or email content for the requested language and channel from
 //     fixed templates, streamed in a few chunks. The text of a brief that is not hand-written
 //     carries a "[mock]" marker, and the rationales of the plan and the schedule say "mock yanıt".

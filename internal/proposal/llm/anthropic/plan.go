@@ -104,37 +104,40 @@ func decodePlan(text string) (llm.ChannelPlan, []string) {
 	return plan, problems
 }
 
-// scheduleUser is the user message of the schedule call (D-060, D-070).
+// scheduleUser is the user message of the schedule call (D-060, D-070, D-076).
 type scheduleUser struct {
-	Brief        string             `json:"brief"`
-	ContextNotes []string           `json:"context_notes,omitempty"`
-	Now          string             `json:"now"`
-	Languages    []scheduleLanguage `json:"languages"`
+	Brief        string           `json:"brief"`
+	ContextNotes []string         `json:"context_notes,omitempty"`
+	Now          string           `json:"now"`
+	Locales      []scheduleLocale `json:"locales"`
 }
 
-// scheduleLanguage is a language with the zone its time is read in. NowLocal is the current
-// moment in that zone, so the model does not convert UTC itself.
-type scheduleLanguage struct {
-	Language string `json:"language"`
-	Timezone string `json:"timezone"`
-	NowLocal string `json:"now_local"`
+// scheduleLocale is a (language, timezone) pair of the audience. NowLocal is the current moment
+// in that zone, so the model does not convert UTC itself.
+type scheduleLocale struct {
+	Language   string `json:"language"`
+	Timezone   string `json:"timezone"`
+	Recipients int    `json:"recipients"`
+	NowLocal   string `json:"now_local"`
 }
 
-// ProposeSchedule asks Haiku 5.5 for one send time per language (D-009, D-070) and repairs it in
-// the same conversation until validate accepts it: at most llm.MaxProposeAttempts calls.
+// ProposeSchedule asks Haiku 5.5 for one send time per (language, timezone) pair of the audience
+// (D-009, D-070, D-076) and repairs it in the same conversation until validate accepts it: at most
+// llm.MaxProposeAttempts calls.
 func (c *Client) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, validate func([]llm.ScheduleEntry) error) (llm.ScheduleResult, error) {
 	now := in.Now.UTC()
 	u := scheduleUser{
 		Brief: in.Brief, ContextNotes: in.ContextNotes, Now: now.Format(time.RFC3339),
-		Languages: make([]scheduleLanguage, 0, len(in.Languages)),
+		Locales: make([]scheduleLocale, 0, len(in.Locales)),
 	}
-	for _, lang := range in.Languages {
-		zone := llm.TimezoneOf(lang)
+	for _, l := range in.Locales {
 		local := now
-		if loc, err := time.LoadLocation(zone); err == nil {
+		if loc, err := time.LoadLocation(l.Timezone); err == nil {
 			local = now.In(loc)
 		}
-		u.Languages = append(u.Languages, scheduleLanguage{Language: lang, Timezone: zone, NowLocal: local.Format(time.RFC3339)})
+		u.Locales = append(u.Locales, scheduleLocale{
+			Language: l.Language, Timezone: l.Timezone, Recipients: l.Recipients, NowLocal: local.Format(time.RFC3339),
+		})
 	}
 	user, err := marshal(u)
 	if err != nil {
@@ -150,12 +153,13 @@ func (c *Client) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, vali
 	return llm.ScheduleResult{Entries: entries, Attempts: attempts, Usage: usage}, nil
 }
 
-// decodeSchedule reads {entries:[{language, send_at, rationale}]}. send_at is null or an RFC 3339
-// string with an offset.
+// decodeSchedule reads {entries:[{language, timezone, send_at, rationale}]}. send_at is null or an
+// RFC 3339 string with an offset.
 func decodeSchedule(text string) ([]llm.ScheduleEntry, []string) {
 	var raw struct {
 		Entries *[]struct {
 			Language  *string         `json:"language"`
+			Timezone  *string         `json:"timezone"`
 			SendAt    json.RawMessage `json:"send_at"`
 			Rationale *string         `json:"rationale"`
 		} `json:"entries"`
@@ -178,12 +182,18 @@ func decodeSchedule(text string) ([]llm.ScheduleEntry, []string) {
 			problems = append(problems, at+`: "language" is required`)
 			continue
 		}
-		at = fmt.Sprintf("entries[%d] (%s)", i, *e.Language)
+		if e.Timezone == nil || strings.TrimSpace(*e.Timezone) == "" {
+			problems = append(problems, at+`: "timezone" is required`)
+			continue
+		}
+		at = fmt.Sprintf("entries[%d] (%s, %s)", i, *e.Language, *e.Timezone)
 		if e.Rationale == nil {
 			problems = append(problems, at+`: "rationale" is required`)
 			continue
 		}
-		entry := llm.ScheduleEntry{Language: strings.TrimSpace(*e.Language), Rationale: strings.TrimSpace(*e.Rationale)}
+		entry := llm.ScheduleEntry{
+			Language: strings.TrimSpace(*e.Language), Timezone: strings.TrimSpace(*e.Timezone), Rationale: strings.TrimSpace(*e.Rationale),
+		}
 		switch trimmed := bytes.TrimSpace(e.SendAt); {
 		case len(trimmed) == 0:
 			problems = append(problems, at+`: "send_at" is required; use null to send immediately`)
