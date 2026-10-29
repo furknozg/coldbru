@@ -80,6 +80,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-074 | Onay: alıcılar onay anında Customer'dan, saklanmaz; olay ve 500'lük RECIPIENTS batch'leri tek outbox transaction'ında; cancel ve confirm uçları | Gönderim | Kabul edildi |
 | D-075 | Zamanlama prompt'u schedule@1.1.0: brief'teki zaman tüm dillere; konum bazlı zamanlama T-043'te, T-027'den önce | LLM entegrasyonu | Kabul edildi |
 | D-076 | Konum bazlı zamanlama: (dil, saat dilimi) yuvaları, dim_customer.timezone, GraphQL byLocale + Recipient.timezone, migration 00004, schedule@2.0.0, olayda timezone | LLM entegrasyonu | Kabul edildi |
+| D-077 | notification_db şeması: locale_schedule, message, delivery'de schedule_id/message_id FK, recipient_batch + batch_count, CHECK'ler ve iki indeks, kampanya bitince PII temizliği | Gönderim | Kabul edildi |
 
 ---
 
@@ -413,7 +414,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Yalnız `Nats-Msg-Id` ve JetStream dedup penceresi — reddedildi: pencere dışı tekrarları ve yeniden başlatmayı korumaz.
   - Unique kısıt, idempotency anahtarı yok — reddedildi: timeout sonrası yeniden denemede provider tarafında çift gönderim olabilir.
 - **Sonuçlar / bedel:** Her gönderim bir DB yazımı ekler. Garanti "en az bir kez teslim + DB'de tekil satır"dır. Provider isteği kabul edip yanıt kaybolursa yeniden deneme provider'ın idempotency'sine güvenir; mock provider anahtarı saklamalıdır. Lease süresi açık.
-- **Doğrulama:** Doğrulanmadı — henüz kod yok. Hedef testler: aynı alıcı batch'i iki kez gelince tek satır; eşzamanlı iki worker tek gönderim yapar.
+- **Doğrulama:** Kısmen, 2026-10-29'da (T-027, D-077): `UNIQUE(campaign_id, customer_id, channel)` ve `ON CONFLICT DO NOTHING` ile tekrar gelen teslimatın yok sayılması `TestQueries` (notification store) ile doğrulandı. Worker tarafı T-029'da. Hedef testler: aynı alıcı batch'i iki kez gelince tek satır; eşzamanlı iki worker tek gönderim yapar.
 
 ## D-024: NATS düzeni: dört stream, teslimat başına ileti, kanal başına 100/s limiter, NAK ile retry
 
@@ -1314,6 +1315,30 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Daha çok onay yuvası (seed'de en fazla 4). Bir migration ve index değişimi. Prompt'un MAJOR sürümü önbelleği bir kez soğutur. GraphQL'de iki alan ve SQL'de bir gruplama daha.
 - **Doğrulama:** 2026-10-29'da (T-043): Customer `locale_integration_test.go` örnek brief'te `byLocale` toplamının 46 olduğunu ve doğrudan SQL `group by` ile aynı olduğunu, `totalOrders >= 1` için dört çifti, `Recipient.timezone`'un saklı sütunla aynı olduğunu doğrular. Store `TestMigration00004_BackfillAndRoundTrip` ve timezone kısıt vakaları. Flow `locale_integration_test.go`: örnek brief'te yalnız (tr, Europe/Istanbul) ve (en, Europe/Istanbul) yuvaları; "yarın sabah" ikisinde 09:00+03:00; `totalOrders >= 1` dört yuva; yanlış Londra ofseti aynı konuşmada onarılır; yaz saati geçişi birim testinde. Confirm `locale_integration_test.go`: olay `schedules` ve batch alıcıları `timezone` taşır, çift başına sayılar planla aynıdır. `schedule@2.0.0` kilidi yeniden üretildi. Canlı yığında `00004` uygulandı (`goose_db_version` 4, sütun, index ve iki CHECK var); servis gerçek model modunda olduğu için kampanya açılmadı. `make test` geçti.
 - **Uygulama notu:** Customer tek SQL sorgusuyla (dil, saat dilimi) gruplar, `byLanguage` bu satırlardan toplanır. Yuva adı `tr@Europe/Istanbul` biçimindedir. Doğrulayıcı yalnız sayısal ofseti karşılaştırır (`Z`, +00:00 olan bölgede kabul). Saat dilimi verisi için `time/tzdata` gömülüdür. Prompt'a çift başına alıcı sayısı ve İstanbul/Londra ofset ipucu eklendi. Kanal planı içeriği `by_locale` almaz; çift başına alıcılar kitle ve plandan hesaplanır. Onayda düşürülen alıcılar (dil/saat dilimi/kanal) başına sayıyla loglanır.
+
+## D-077: notification_db şeması: locale_schedule, message, delivery'de schedule_id/message_id FK, recipient_batch + batch_count, CHECK'ler ve iki indeks, kampanya bitince PII temizliği
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** Gönderim
+- **Bağlam:** D-023 `delivery` için `UNIQUE(campaign_id, customer_id, channel)`, durum makinesini ve `Idempotency-Key`'i; D-074 onay olayını ve 500'lük batch'leri; D-076 zamanlamayı (dil, saat dilimi) çiftine bağladı. `docs/domain-model.md` §4 taslağı dil başına zamanlama içeriyordu ve kolonları kesin değildi. Olay EVENTS'ten, batch'ler RECIPIENTS'ten sırasız ve en az bir kez gelir. `outbox` ve `processed_event` platform setindedir (D-054). Kodlama kuralı 7 gereği şema kullanıcıyla kesinleşti (T-027).
+- **Karar:**
+  - `send_campaign(id = Proposal campaign.id, status scheduled | sending | completed | cancelled, cta_url, batch_count ≥ 1, created_at, updated_at, completed_at)`.
+  - `locale_schedule(id, campaign_id FK, language, timezone, send_at NULL = hemen, status scheduled | fired | cancelled, fired_at)`, `UNIQUE(campaign_id, language, timezone)` (D-076).
+  - `message(id, campaign_id FK, language, channel, content jsonb)`, `UNIQUE(campaign_id, language, channel)`.
+  - `delivery`: `id` (UUIDv7, `Idempotency-Key`), `campaign_id`, `schedule_id` ve `message_id` FK'leri, `customer_id text`, `channel`, `first_name`, `contact`, `status`, `attempts`, `lease_until`, `provider_message_id`, `last_error`, `sent_at`, `updated_at`; `UNIQUE(campaign_id, customer_id, channel)` (D-023). Eşleşmeyen alıcı FK ile reddedilir.
+  - `recipient_batch(campaign_id FK, batch_no ≥ 1, recipients, received_at)`, `PRIMARY KEY(campaign_id, batch_no)`. Batch tüketicisi batch satırını ve teslimatları tek transaction'da `ON CONFLICT DO NOTHING` ile yazar. Bir zamanlama ancak `recipient_batch` sayısı `batch_count`'a eşitse gönderime başlar; değilse tetiklenme iletisi, kampanya henüz yoksa batch NAK ile ertelenir.
+  - Bütünlük: durumlar `text` + `CHECK`; `sent` ⇒ `sent_at`, `failed` ⇒ `last_error`, `sending` ⇒ `lease_until` dolu; `attempts ≥ 0`. İndeksler: `delivery (campaign_id, channel, status)` (dashboard sayımları, D-036) ve kısmi `delivery (schedule_id) WHERE status = 'pending'`. Ekleme-yalnız trigger yoktur. Lease süresi T-029'dadır.
+  - Kapsam (kullanıcı onayladı): T-021 ile aynı; Notification'ın migration seti, açılışta `app.Options.Migrations` ile uygulanması, `sqlc.yaml` ile temel ekleme ve okuma sorguları, kısıtları sınayan entegrasyon testleri.
+  - Kullanıcı ayrıca onayladı: D-068 desenindeki ek CHECK'ler (`completed` ⇒ `completed_at`, `fired` ⇒ `fired_at`, `cta_url` ve `timezone` boş olamaz); bileşik FK'ler: `locale_schedule UNIQUE (id, campaign_id)`, `message UNIQUE (id, campaign_id, channel)`, `delivery (schedule_id, campaign_id)` ve `(message_id, campaign_id, channel)` bunlara bağlanır, böylece teslimat başka kampanyanın zamanlaması veya metniyle ya da başka kanalın metniyle eşleşemez; kapsanmayan her FK sütununa indeks.
+  - Kişisel veri: bekleyen teslimatta `first_name` ve `contact` zorunludur (CHECK); kampanya `completed` veya `cancelled` olduğu transaction'da bu iki alan `NULL` yapılır. Sayılar, durumlar, `customer_id` ve `provider_message_id` kalır.
+- **Alternatifler:**
+  - Teslimatın yalnız değer taşıması — reddedildi: metni veya zamanlaması olmayan alıcı sessizce hiç gönderilmezdi.
+  - Batch geldikçe göndermek — reddedildi: "hemen" zamanlamasında yarım kitleye gönderim ve belirsiz tamamlanma.
+  - Yalnız unique ve FK — reddedildi: durum kuralları yalnız kodda kalır, dashboard tabloyu tarar.
+  - Kişisel veriyi süresiz tutmak — reddedildi: `notification_db` kalıcı bir kişisel veri deposu olurdu.
+- **Sonuçlar / bedel:** Batch tüketicisi (dil, saat dilimi) → zamanlama ve (dil, kanal) → metin eşlemesini yapar. Bir tablo ve birkaç kısıt ile indeks eklenir. Tamamlanmış kampanyada alıcı yalnız `customer_id` ile görülür. Proposal'ın outbox payload'larındaki kişisel veri (D-074) bu kararla temizlenmez.
+- **Doğrulama:** 2026-10-29'da (T-027): `internal/notification/store` integration testleri: `TestMigrations_Applied`, `TestMigrations_DownThenUp`, `TestConstraints_SendCampaign`, `_LocaleSchedule`, `_Message`, `_RecipientBatch`, `_Delivery` (her CHECK için red ve kabul; başka kampanyanın zamanlaması veya metni ve farklı kanallı metin bileşik FK'lerle reddedilir), `_NotNull`, `TestQueries` (12 sqlc sorgusu; tekrar gelen batch ve teslimat yok sayılır, ilk yazım kalır; teslimat beklerken kişisel veri temizliği reddedilir, bitince temizlenir). Canlı yığında notification `healthy`; `notification_db`'de beş servis tablosu, `outbox`, `processed_event` ve iki goose sürüm tablosu `notification` şemasında; `delivery` kısıt adları migration'la aynı. `make test` geçti.
+- **Uygulama notu:** Migration'lar iki dosyadır (tablolar; `delivery`). `delivery.campaign_id` ayrıca tek sütunlu FK'dir. `delivery_schedule_id_idx` ve `delivery_message_id_idx` FK indeksleridir; `campaign_id` FK'leri unique/PK'nin öndeki sütunuyla kapsanır. `InsertRecipientBatch` ve `InsertDelivery` eklenen satır sayısını döner (0 = tekrar). `ListPendingDeliveries` `(schedule_id, limit)` alır ve `id`'ye göre sıralar. `send_campaign.updated_at` uygulamada güncellenir.
 
 ---
 
