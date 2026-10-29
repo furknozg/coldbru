@@ -54,7 +54,7 @@ func TestWireConstantsMatchNotification(t *testing.T) {
 func TestWireDecodesWhatNotificationPublishes(t *testing.T) {
 	at := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
 	raw, err := json.Marshal(nprogress.CompletedData{
-		CampaignID: "c", CompletedAt: at, Counts: []nprogress.Count{{Channel: "sms", Status: "sent", Count: 3}}, SMSSegments: 6, EstimatedCostGBP: "0.2400",
+		CampaignID: "c", CompletedAt: at, Counts: []nprogress.Count{{Channel: "sms", Status: "sent", Count: 3}}, SMSSegments: 6, EstimatedCostUSD: "0.2400",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestWireDecodesWhatNotificationPublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.CampaignID != "c" || !got.CompletedAt.Equal(at) || len(got.Counts) != 1 || got.Counts[0] != (progress.Count{Channel: "sms", Status: "sent", Count: 3}) ||
-		got.SMSSegments != 6 || got.EstimatedCostGBP != "0.2400" {
+		got.SMSSegments != 6 || got.EstimatedCostUSD != "0.2400" {
 		t.Errorf("decoded completed data = %+v", got)
 	}
 	raw, err = json.Marshal(nprogress.StartedData{CampaignID: "c", ScheduleID: "s", Language: "tr", Timezone: "Europe/Istanbul", StartedAt: at})

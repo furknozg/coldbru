@@ -297,12 +297,12 @@ type CampaignView struct {
 	Cost CostSummary `json:"cost" validate:"required"`
 }
 
-// CostSummary adds up the estimated_cost_gbp of the draft and approved variants of the current
+// CostSummary adds up the estimated_cost_usd of the draft and approved variants of the current
 // content step (D-071): per channel and in total, as decimal strings with four decimals. Rejected
 // and superseded variants are not counted. A variant without an estimate counts as zero. The figures
 // are estimates at the configured demo prices.
 type CostSummary struct {
-	SMSGBP   string `json:"sms_gbp" validate:"required"`
-	EmailGBP string `json:"email_gbp" validate:"required"`
-	TotalGBP string `json:"total_gbp" validate:"required"`
+	SMSUSD   string `json:"sms_usd" validate:"required"`
+	EmailUSD string `json:"email_usd" validate:"required"`
+	TotalUSD string `json:"total_usd" validate:"required"`
 }

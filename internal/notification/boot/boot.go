@@ -21,8 +21,8 @@ import (
 )
 
 // Setup is the app.Options.Setup of the notification service. It needs the database and NATS, and
-// PROVIDER_BASE_URL, CUSTOMER_GRAPHQL_URL and CUSTOMER_TOKEN; SMS_SEGMENT_PRICE_GBP and
-// EMAIL_PRICE_GBP price the completed event and have demo defaults. The relay, the consumers, the
+// PROVIDER_BASE_URL, CUSTOMER_GRAPHQL_URL and CUSTOMER_TOKEN; SMS_SEGMENT_PRICE_USD and
+// EMAIL_PRICE_USD price the completed event and have demo defaults. The relay, the consumers, the
 // send workers and the completion checker stop when the service stops, after the HTTP server and
 // before the database pool and the NATS connection: the checker and the send workers first, then
 // the consumers, then the relay, which keeps publishing until nothing can write to the outbox any
@@ -84,6 +84,6 @@ func Setup(ctx context.Context, d *app.Deps) error {
 
 	api.New(api.Config{Source: api.NewPoolSource(d.Pool), Logger: d.Logger, Shutdown: ctx}).Mount(d.Router)
 	d.Logger.Info("send workers configured", "provider", providerCfg.BaseURL, "customer", consentCfg.String(),
-		"sms_segment_price_gbp", contentCfg.Prices.SMSSegment.String(), "email_price_gbp", contentCfg.Prices.Email.String())
+		"sms_segment_price_usd", contentCfg.Prices.SMSSegment.String(), "email_price_usd", contentCfg.Prices.Email.String())
 	return nil
 }

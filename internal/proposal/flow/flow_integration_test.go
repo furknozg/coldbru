@@ -241,6 +241,7 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 		t.Fatalf("llm_call rows by purpose: screen %d, segment %d, channel_plan %d, content %d (want %d), schedule %d",
 			len(byPurpose["screen"]), len(byPurpose["segment"]), len(byPurpose["channel_plan"]), len(byPurpose["content"]), len(want), len(byPurpose["schedule"]))
 	}
+	requireTokenEvents(t, h, camp.ID)
 	if r := byPurpose["screen"][0]; r.StepID != nil || r.VariantID != nil {
 		t.Errorf("screen row = %+v: it belongs to no step", r)
 	}
@@ -357,6 +358,7 @@ func TestScreenBlockCancelsTheCampaign(t *testing.T) {
 	if len(rows) != 1 || rows[0].Purpose != "screen" {
 		t.Errorf("llm_call rows = %+v, want the screen call", rows)
 	}
+	requireTokenEvents(t, h, camp.ID)
 	// A cancelled campaign accepts no more actions.
 	if _, err := h.svc.AddContext(t.Context(), camp.ID, "x"); !errors.Is(err, flow.ErrNotDrafting) {
 		t.Errorf("AddContext on a cancelled campaign: err = %v", err)

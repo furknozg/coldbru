@@ -35,12 +35,12 @@ type Count struct {
 
 // CompletedData is the data of evt.notification.completed.v1: the campaign finished, every
 // delivery is final (D-080). SMSSegments is the sum of the stored segment counts of the sent SMS
-// (an estimate, D-071), EstimatedCostGBP is those segments at the SMS segment price plus the sent
+// (an estimate, D-071), EstimatedCostUSD is those segments at the SMS segment price plus the sent
 // emails at the email price, a decimal string with four decimals like content.Money.
 type CompletedData struct {
 	CampaignID       string    `json:"campaign_id"`
 	CompletedAt      time.Time `json:"completed_at"`
 	Counts           []Count   `json:"counts"`
 	SMSSegments      int64     `json:"sms_segments"`
-	EstimatedCostGBP string    `json:"estimated_cost_gbp"`
+	EstimatedCostUSD string    `json:"estimated_cost_usd"`
 }

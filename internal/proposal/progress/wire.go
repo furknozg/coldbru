@@ -43,5 +43,5 @@ type CompletedData struct {
 	CompletedAt      time.Time `json:"completed_at"`
 	Counts           []Count   `json:"counts"`
 	SMSSegments      int64     `json:"sms_segments"`
-	EstimatedCostGBP string    `json:"estimated_cost_gbp"`
+	EstimatedCostUSD string    `json:"estimated_cost_usd"`
 }

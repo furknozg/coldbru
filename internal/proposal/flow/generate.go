@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/furknozg/coldbru/internal/platform/events"
+	"github.com/furknozg/coldbru/internal/platform/outbox"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
@@ -548,7 +551,7 @@ func (t *txn) persistCalls(ctx context.Context, s *Service, campaign uuid.UUID, 
 		if err != nil {
 			return err
 		}
-		if _, err := store.New(sp).InsertLLMCall(ctx, r.StoreParams(campaign, step, vid)); err != nil {
+		if err := insertCall(ctx, sp, r.StoreParams(campaign, step, vid)); err != nil {
 			s.log.Error("flow: cannot store an llm_call record", "campaign", campaign, "purpose", r.Purpose, "error", err)
 			if rerr := sp.Rollback(ctx); rerr != nil {
 				return rerr
@@ -570,10 +573,52 @@ func (s *Service) persistLoose(ctx context.Context, campaign uuid.UUID, step *uu
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
 	defer cancel()
 	for _, r := range recs {
-		if _, err := s.q.InsertLLMCall(ctx, r.StoreParams(campaign, step, nil)); err != nil {
+		if err := s.insertLooseCall(ctx, r.StoreParams(campaign, step, nil)); err != nil {
 			s.log.Error("flow: cannot store an llm_call record", "campaign", campaign, "purpose", r.Purpose, "error", err)
 		}
 	}
+}
+
+// insertLooseCall stores one record and its token_completed event in a transaction of their own.
+func (s *Service) insertLooseCall(ctx context.Context, p store.InsertLLMCallParams) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if err := insertCall(ctx, tx, p); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// insertCall inserts the llm_call row through tx and, in the same transaction, the
+// evt.proposal.token_completed.v1 envelope that tells Analytics about it (D-083). When either
+// write fails the caller rolls tx back, so a row never exists without its event or the reverse.
+func insertCall(ctx context.Context, tx pgx.Tx, p store.InsertLLMCallParams) error {
+	row, err := store.New(tx).InsertLLMCall(ctx, p)
+	if err != nil {
+		return err
+	}
+	data := TokenCompletedData{
+		LLMCallID: row.ID.String(), CampaignID: row.CampaignID.String(),
+		Purpose: row.Purpose, Model: row.Model, PromptName: row.PromptName, PromptVersion: row.PromptVersion,
+		Tokens: TokenCounts{
+			Input: int64(row.InputTokens), Output: int64(row.OutputTokens),
+			CacheRead: int64(row.CacheReadTokens), CacheCreation: int64(row.CacheCreationTokens),
+		},
+		Outcome: row.Outcome, LatencyMs: int64(row.LatencyMs), CreatedAt: row.CreatedAt.Time.UTC(),
+	}
+	if row.StepID != nil {
+		id := row.StepID.String()
+		data.StepID = &id
+	}
+	env, err := events.New(EventTypeTokenCompleted, EventVersion, EventProducer, row.CampaignID.String(), data)
+	if err != nil {
+		return err
+	}
+	_, err = outbox.Write(ctx, tx, env)
+	return err
 }
 
 // failed stores the records of a failed generation and reports the failure. A cancelled context

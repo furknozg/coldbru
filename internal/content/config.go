@@ -12,10 +12,10 @@ import (
 const (
 	// KeyCTAURL is the link of the call-to-action button of every email.
 	KeyCTAURL = "CAMPAIGN_CTA_URL"
-	// KeySMSSegmentPrice is the price of one SMS segment in GBP.
-	KeySMSSegmentPrice = "SMS_SEGMENT_PRICE_GBP"
-	// KeyEmailPrice is the price of one email in GBP.
-	KeyEmailPrice = "EMAIL_PRICE_GBP"
+	// KeySMSSegmentPrice is the price of one SMS segment in USD.
+	KeySMSSegmentPrice = "SMS_SEGMENT_PRICE_USD"
+	// KeyEmailPrice is the price of one email in USD.
+	KeyEmailPrice = "EMAIL_PRICE_USD"
 )
 
 // Demo defaults of D-071. The prices are not those of a real provider.

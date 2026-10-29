@@ -203,8 +203,8 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 	return out, nil
 }
 
-// costOf sums the estimated_cost_gbp of the draft and approved variants of the content step per
-// channel (D-071). Amounts are added as integers in micro-pounds (content.Money), so no rounding
+// costOf sums the estimated_cost_usd of the draft and approved variants of the content step per
+// channel (D-071). Amounts are added as integers in micro-dollars (content.Money), so no rounding
 // error builds up; a variant whose content has no estimate, or a malformed one, counts as zero.
 func costOf(steps []StepView) CostSummary {
 	var sms, email content.Money
@@ -217,7 +217,7 @@ func costOf(steps []StepView) CostSummary {
 				continue
 			}
 			var c struct {
-				Cost string `json:"estimated_cost_gbp"`
+				Cost string `json:"estimated_cost_usd"`
 			}
 			if json.Unmarshal(v.Content, &c) != nil {
 				continue
@@ -234,7 +234,7 @@ func costOf(steps []StepView) CostSummary {
 			}
 		}
 	}
-	return CostSummary{SMSGBP: sms.String(), EmailGBP: email.String(), TotalGBP: (sms + email).String()}
+	return CostSummary{SMSUSD: sms.String(), EmailUSD: email.String(), TotalUSD: (sms + email).String()}
 }
 
 // orderSteps sorts steps by kind order; at most one live step per kind exists (D-068).

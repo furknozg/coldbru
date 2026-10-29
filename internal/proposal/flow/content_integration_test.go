@@ -166,7 +166,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			info := content.MeasureSMS(content.ExpandMax(smsText[v.Language], maxName))
 			cost := contentPrices.EstimateSMS(info.Segments, recipients)
 			wantSMS += cost
-			if c.Text != smsText[v.Language] || c.Encoding != info.Encoding || c.Segments != info.Segments || c.RenderedLength != info.Length || c.EstimatedCostGBP != cost.String() {
+			if c.Text != smsText[v.Language] || c.Encoding != info.Encoding || c.Segments != info.Segments || c.RenderedLength != info.Length || c.EstimatedCostUSD != cost.String() {
 				t.Errorf("%s/sms = %+v, want %+v costing %s", v.Language, c, info, cost)
 			}
 			if v.Language == "tr" && (c.Encoding != content.UCS2 || c.Segments < 1) {
@@ -177,7 +177,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			decodeInto(t, v.Content, &c)
 			cost := contentPrices.EstimateEmail(recipients)
 			wantEmail += cost
-			if c.EstimatedCostGBP != cost.String() || c.MaxRenderedLengths.Subject != len([]rune("Sepetin seni bekliyor, "))+maxName || len(c.Paragraphs) != 2 {
+			if c.EstimatedCostUSD != cost.String() || c.MaxRenderedLengths.Subject != len([]rune("Sepetin seni bekliyor, "))+maxName || len(c.Paragraphs) != 2 {
 				t.Errorf("%s/email = %+v, want cost %s and subject length %d", v.Language, c, cost, len([]rune("Sepetin seni bekliyor, "))+maxName)
 			}
 		}
@@ -188,6 +188,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireTokenEvents(t, h, camp.ID)
 	var contentRows []store.LlmCall
 	for _, r := range rows {
 		if r.Purpose == "content" {
@@ -221,7 +222,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 
 	// 3. Get sums the live variants per channel and in total.
 	cost := h.get(camp.ID).Cost
-	if cost.SMSGBP != wantSMS.String() || cost.EmailGBP != wantEmail.String() || cost.TotalGBP != (wantSMS+wantEmail).String() {
+	if cost.SMSUSD != wantSMS.String() || cost.EmailUSD != wantEmail.String() || cost.TotalUSD != (wantSMS+wantEmail).String() {
 		t.Errorf("cost = %+v, want sms %s email %s", cost, wantSMS, wantEmail)
 	}
 	if wantSMS == 0 || wantEmail == 0 {
@@ -256,7 +257,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 	}
 	var ec content.SMSContent
 	decodeInto(t, edited.Content, &ec)
-	if ec.RenderedLength != 160 || ec.Encoding != content.GSM7 || ec.Segments != 1 || ec.EstimatedCostGBP == "" {
+	if ec.RenderedLength != 160 || ec.Encoding != content.GSM7 || ec.Segments != 1 || ec.EstimatedCostUSD == "" {
 		t.Errorf("edited content = %+v, want 160 characters, GSM-7, 1 segment, a recomputed cost", ec)
 	}
 	if got := variantStatus(t, h, sms.ID); got != flow.VariantStatusSuperseded {
@@ -271,7 +272,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 	wantSMS = 0
 	for _, v := range h.step(camp.ID, flow.KindContent).Variants {
 		var c struct {
-			Cost string `json:"estimated_cost_gbp"`
+			Cost string `json:"estimated_cost_usd"`
 		}
 		decodeInto(t, v.Content, &c)
 		if v.Channel == "sms" {
@@ -279,7 +280,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			wantSMS += m
 		}
 	}
-	if got := h.get(camp.ID).Cost.SMSGBP; got != wantSMS.String() || ec.EstimatedCostGBP != contentPrices.EstimateSMS(1, recipients).String() {
-		t.Errorf("sms cost after the edit = %s (variant %s), want %s", got, ec.EstimatedCostGBP, wantSMS)
+	if got := h.get(camp.ID).Cost.SMSUSD; got != wantSMS.String() || ec.EstimatedCostUSD != contentPrices.EstimateSMS(1, recipients).String() {
+		t.Errorf("sms cost after the edit = %s (variant %s), want %s", got, ec.EstimatedCostUSD, wantSMS)
 	}
 }

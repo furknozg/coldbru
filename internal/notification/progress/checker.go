@@ -237,7 +237,7 @@ func (c *Checker) complete(ctx context.Context, id uuid.UUID) (bool, error) {
 		CompletedAt:      at.Time.UTC(),
 		Counts:           counts,
 		SMSSegments:      segments,
-		EstimatedCostGBP: Estimate(segments, counts, c.prices).String(),
+		EstimatedCostUSD: Estimate(segments, counts, c.prices).String(),
 	}
 	env, err := events.New(EventTypeCompleted, EventVersion, EventProducer, id.String(), data)
 	if err != nil {
@@ -250,6 +250,6 @@ func (c *Checker) complete(ctx context.Context, id uuid.UUID) (bool, error) {
 		return false, fmt.Errorf("commit: %w", err)
 	}
 	c.log.Info("campaign completed", slog.String("campaign_id", data.CampaignID), slog.Int64("sms_segments", data.SMSSegments),
-		slog.String("estimated_cost_gbp", data.EstimatedCostGBP), slog.Int64("pii_cleared", cleared))
+		slog.String("estimated_cost_usd", data.EstimatedCostUSD), slog.Int64("pii_cleared", cleared))
 	return true, nil
 }

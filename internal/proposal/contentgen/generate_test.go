@@ -34,10 +34,10 @@ func TestGenerateSMSStoresMeasurements(t *testing.T) {
 	decode(t, raw, &got)
 	rendered := []rune(strings.ReplaceAll(text, "{{first_name}}", rep("x", 9)))
 	want := content.SMSContent{
-		Text: text, Encoding: content.UCS2, Segments: 2, RenderedLength: len(rendered), EstimatedCostGBP: "2.6400", // 2 x 33 x 0.04
+		Text: text, Encoding: content.UCS2, Segments: 2, RenderedLength: len(rendered), EstimatedCostUSD: "2.6400", // 2 x 33 x 0.04
 	}
 	if len(rendered) <= 70 {
-		want.Segments, want.EstimatedCostGBP = 1, "1.3200"
+		want.Segments, want.EstimatedCostUSD = 1, "1.3200"
 	}
 	if got != want {
 		t.Errorf("content = %+v, want %+v", got, want)
@@ -62,8 +62,8 @@ func TestGenerateEmailStoresBlocksAndCost(t *testing.T) {
 	if got.Subject != "Sepetin seni bekliyor, {{first_name}}" || len(got.Paragraphs) != 2 || got.CTALabel != "Sepete dön" {
 		t.Errorf("blocks = %+v", got)
 	}
-	if got.EstimatedCostGBP != "0.0330" || got.MaxRenderedLengths.Subject != 23+9 || got.MaxRenderedLengths.Headline != 8+9+1 {
-		t.Errorf("measurements = %+v / %s", got.MaxRenderedLengths, got.EstimatedCostGBP)
+	if got.EstimatedCostUSD != "0.0330" || got.MaxRenderedLengths.Subject != 23+9 || got.MaxRenderedLengths.Headline != 8+9+1 {
+		t.Errorf("measurements = %+v / %s", got.MaxRenderedLengths, got.EstimatedCostUSD)
 	}
 	// The % of "%30" and the umlauts are stored as written, not escaped.
 	if !strings.Contains(string(raw), `"%30 indirim fırsatını kaçırma."`) {
@@ -151,7 +151,7 @@ func TestGenerateRepairsAnOverLongAnswer(t *testing.T) {
 	}
 	var got content.SMSContent
 	decode(t, raw, &got)
-	if got.Text != "Merhaba {{first_name}}, sepetin seni bekliyor!" || got.Encoding != content.GSM7 || got.Segments != 1 || got.EstimatedCostGBP != "0.4000" {
+	if got.Text != "Merhaba {{first_name}}, sepetin seni bekliyor!" || got.Encoding != content.GSM7 || got.Segments != 1 || got.EstimatedCostUSD != "0.4000" {
 		t.Errorf("content = %+v", got)
 	}
 	calls := s.StreamCalls()
@@ -248,7 +248,7 @@ func TestGenerateWrongChannelIsRepaired(t *testing.T) {
 	}
 	var got content.EmailContent
 	decode(t, raw, &got)
-	if got.EstimatedCostGBP != "0.0050" {
+	if got.EstimatedCostUSD != "0.0050" {
 		t.Errorf("content = %+v", got)
 	}
 	rp, _ := userOf(t, s.StreamCalls()[1].UserJSON)["repair"].(map[string]any)

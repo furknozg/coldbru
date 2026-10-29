@@ -219,7 +219,7 @@ func started(t *testing.T, id uuid.UUID, tz string) events.Envelope {
 func completed(t *testing.T, id uuid.UUID) events.Envelope {
 	return envelope(t, progress.EventTypeCompleted, id, progress.CompletedData{
 		CampaignID: id.String(), CompletedAt: time.Now().UTC(), Counts: []progress.Count{{Channel: "sms", Status: "sent", Count: 3}},
-		SMSSegments: 3, EstimatedCostGBP: "0.1200",
+		SMSSegments: 3, EstimatedCostUSD: "0.1200",
 	})
 }
 

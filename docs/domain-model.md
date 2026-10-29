@@ -310,7 +310,7 @@ Canlı dashboard bu tablonun `campaign_id, channel, status` kırılımındaki an
 
 ## 5. analytics_db
 
-Taslak; yalnız sınırı kesin (D-036): olaylardan kampanya özeti ve LLM kullanımı.
+Diyagram ilk taslaktır; kesin şema D-083'tür: `campaign_summary(campaign_id, completed_at, sms_segments, delivery_cost_usd)`, `campaign_delivery_count(campaign_id, channel, status, count)` ve `llm_usage(llm_call_id, campaign_id, purpose, model, prompt_name, prompt_version, token sayıları, outcome, latency_ms, cost_usd)`; tablolar arasında FK yoktur, kampanyanın LLM maliyeti raporda `SUM(llm_usage.cost_usd)` ile hesaplanır. Tüm maliyetler USD'dir. Rapor uçları: `GET /campaigns`, `GET /campaigns/{id}/summary`, `GET /llm-usage?group=prompt_version`. Tıklama takibi (CTR) T-044'tedir (D-082).
 
 ```mermaid
 erDiagram
@@ -383,9 +383,9 @@ Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, 
 |---|---|---|
 | `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, timezone, send_at}]` (`null` = hemen, D-076), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
 | `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason`; yalnız `scheduled` veya `sending` kampanyanın iptalinde (D-074) |
-| `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call` satırı: `id`, `campaign_id`, `model`, `purpose`, token sayıları |
+| `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call_id`, `campaign_id`, `step_id`, `purpose`, `model`, `prompt_name`, `prompt_version`, `tokens{input, output, cache_read, cache_creation}`, `outcome`, `latency_ms`, `created_at`; her `llm_call` satırıyla aynı transaction'da (D-083) |
 | `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `schedule_id`, `language`, `timezone`, `started_at`; her zamanlama tetiklenişinde (D-080) |
-| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, `completed_at`, `counts[{channel, status, count}]`, `sms_segments`, `estimated_cost_gbp`; kampanya başına bir kez (D-080) |
+| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, `completed_at`, `counts[{channel, status, count}]`, `sms_segments`, `estimated_cost_usd`; kampanya başına bir kez (D-080) |
 
 Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, timezone, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
 

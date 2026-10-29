@@ -28,7 +28,7 @@ type ContentRequest struct {
 
 // ContentGenerator writes and checks the texts of the content step. contentgen implements it with
 // the content prompt and the validators of package content (D-071); the flow treats the content as
-// opaque JSON, except that it reads estimated_cost_gbp for the cost summary (D-070).
+// opaque JSON, except that it reads estimated_cost_usd for the cost summary (D-070).
 // Implementations must be safe for concurrent use.
 type ContentGenerator interface {
 	// Generate returns the validated content of one slot. onDelta (may be nil) gets the text
