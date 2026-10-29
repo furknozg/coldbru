@@ -148,8 +148,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_ADDR: ":8080"
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
-      DATABASE_URL: postgres://notification_svc:${NOTIFICATION_DB_PASSWORD:-notification_svc_dev}@postgres:5432/notification_db?sslmode=disable
+      DATABASE_URL: postgres://notification_svc:${NOTIFICATION_DB_PASSWORD:-notification_svc_dev}@postgres:5432/notification_db?sslmode=disable&pool_max_conns=16
       NATS_URL: nats://nats:4222
+      PROVIDER_BASE_URL: http://mockprovider:8080
+      CUSTOMER_GRAPHQL_URL: http://customer:8080/graphql
+      CUSTOMER_TOKEN: ${CUSTOMER_TOKEN_NOTIFICATION:-notification-dev-token}
     ports:
       - "${NOTIFICATION_HOST_PORT:-8082}:8080"
     depends_on:

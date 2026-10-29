@@ -14,10 +14,13 @@ SELECT channel, status, count(*) AS total FROM delivery WHERE campaign_id = $1
 GROUP BY channel, status ORDER BY channel, status;
 
 -- name: ClearDeliveryPII :execrows
--- Run in the transaction that completes or cancels the campaign (D-077). A delivery that is still
--- pending or sending is rejected by delivery_pii_check and aborts the statement, on purpose.
+-- Run in the transaction that completes or cancels the campaign (D-077, D-078). Only deliveries that
+-- are final lose their personal data: a pending or sending one still needs it. The cancellation
+-- cancels the pending ones first, so they are cleared too; a delivery that is still sending is
+-- cleared by the send worker when it settles it (the settle statements do that for a cancelled
+-- campaign). At the end of a campaign every delivery is final, so all of them are cleared.
 UPDATE delivery SET first_name = NULL, contact = NULL, updated_at = now()
-WHERE campaign_id = $1 AND (first_name IS NOT NULL OR contact IS NOT NULL);
+WHERE campaign_id = $1 AND status NOT IN ('pending', 'sending') AND (first_name IS NOT NULL OR contact IS NOT NULL);
 
 -- name: InsertDeliveryBatch :batchexec
 -- InsertDelivery for a whole recipient batch in one round trip (D-077): one queued statement per

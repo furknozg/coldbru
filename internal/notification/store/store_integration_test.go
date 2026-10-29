@@ -906,25 +906,30 @@ func TestQueries(t *testing.T) {
 	})
 
 	t.Run("clear personal data", func(t *testing.T) {
-		// The email delivery is still pending: clearing is refused and nothing changes.
-		if _, err := q.ClearDeliveryPII(ctx, campID); err == nil {
-			t.Fatal("ClearDeliveryPII() with a pending delivery error = nil, want delivery_pii_check")
-		} else {
-			wantConstraint(t, err, "delivery_pii_check")
+		// The email delivery is still pending: it keeps its personal data, the final ones lose theirs.
+		n, err := q.ClearDeliveryPII(ctx, campID)
+		if err != nil || n != 2 {
+			t.Fatalf("ClearDeliveryPII() with a pending delivery = %d, %v, want 2 rows (the final ones)", n, err)
 		}
 		var kept int
-		if err := pool.QueryRow(ctx, "SELECT count(*) FROM delivery WHERE campaign_id = $1 AND contact IS NOT NULL", campID).Scan(&kept); err != nil || kept != 3 {
-			t.Fatalf("rows with contact after refused clear = %d, %v, want 3 (statement rolled back)", kept, err)
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM delivery WHERE campaign_id = $1 AND contact IS NOT NULL AND status = 'pending'", campID).Scan(&kept); err != nil || kept != 1 {
+			t.Fatalf("pending rows with contact after the clear = %d, %v, want 1", kept, err)
 		}
+		// A sending delivery is skipped the same way.
+		mustExec(t, execErr(pool.Exec(ctx, "UPDATE delivery SET status = 'sending', lease_until = now() + interval '1 minute' WHERE status = 'pending'")))
+		if n, err := q.ClearDeliveryPII(ctx, campID); err != nil || n != 0 {
+			t.Fatalf("ClearDeliveryPII() with a sending delivery = %d, %v, want 0 rows", n, err)
+		}
+		mustExec(t, execErr(pool.Exec(ctx, "UPDATE delivery SET status = 'pending', lease_until = NULL WHERE status = 'sending'")))
 
 		// Finish the campaign: every delivery final, then clear in the same transaction.
 		mustExec(t, execErr(pool.Exec(ctx, "UPDATE delivery SET status = 'failed', last_error = 'boom' WHERE status = 'pending'")))
 		tx, err := pool.Begin(ctx)
 		mustExec(t, err)
 		defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
-		n, err := q.WithTx(tx).ClearDeliveryPII(ctx, campID)
-		if err != nil || n != 3 {
-			t.Fatalf("ClearDeliveryPII() = %d, %v, want 3 rows", n, err)
+		n, err = q.WithTx(tx).ClearDeliveryPII(ctx, campID)
+		if err != nil || n != 1 {
+			t.Fatalf("ClearDeliveryPII() = %d, %v, want 1 row (the one that was pending)", n, err)
 		}
 		mustExec(t, tx.Commit(ctx))
 
