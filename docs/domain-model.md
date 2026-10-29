@@ -283,7 +283,7 @@ erDiagram
     }
 ```
 
-Tablo adları ve kolonlar taslaktır. `send_campaign` adı, Proposal'daki `campaign`'den ayırmak için seçildi. `customer_id`, `customer_db`'deki gibi `text`'tir.
+Diyagram ilk taslaktır; kesin şema D-077'dir: `language_schedule` yerine (dil, saat dilimi) başına `locale_schedule` (D-076), `delivery`'de `schedule_id` ve `message_id` FK'leri, batch takibi için `recipient_batch` ve `send_campaign.batch_count`, durum CHECK'leri, `delivery (campaign_id, channel, status)` ve kısmi `delivery (schedule_id) WHERE status = 'pending'` indeksleri, kampanya bitince `first_name` ve `contact` alanlarının `NULL` yapılması. `send_campaign` adı, Proposal'daki `campaign`'den ayırmak için seçildi. `customer_id`, `customer_db`'deki gibi `text`'tir.
 
 Kesin olanlar (D-023):
 
