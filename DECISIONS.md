@@ -84,6 +84,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-078 | Notification tüketicileri: outbox'a headers, sched.<id> → fire.<id>, iş anahtarıyla idempotent ham tüketici, tetiklenmede SEND kuyruğu, iptalde durum + PII temizliği | Gönderim | Kabul edildi |
 | D-079 | Gönderim worker'ları: provider sözleşmesi, 5 deneme 2 sn ×2 1 dk tavan, 30 sn lease, x/time/rate 100/s burst 10, 100'lük izin kontrolü, gobreaker 5/30 sn/1, SMS'te ad kısaltma | Gönderim | Kabul edildi |
 | D-080 | Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE | Takip ve altyapı | Kabul edildi |
+| D-081 | Mock provider: Go cephe D-079 sözleşmesini uygular, e-postayı Mailpit'e, SMS'i MockServer'a iletir; %5 5xx, %2 429, %1 zaman aşımı, 50–300 ms; kanal başına 110/s; bellekte 24 sa idempotency; receipt yok | Gönderim | Kabul edildi |
 
 ---
 
@@ -417,7 +418,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Yalnız `Nats-Msg-Id` ve JetStream dedup penceresi — reddedildi: pencere dışı tekrarları ve yeniden başlatmayı korumaz.
   - Unique kısıt, idempotency anahtarı yok — reddedildi: timeout sonrası yeniden denemede provider tarafında çift gönderim olabilir.
 - **Sonuçlar / bedel:** Her gönderim bir DB yazımı ekler. Garanti "en az bir kez teslim + DB'de tekil satır"dır. Provider isteği kabul edip yanıt kaybolursa yeniden deneme provider'ın idempotency'sine güvenir; mock provider anahtarı saklamalıdır. Lease süresi açık.
-- **Doğrulama:** Kısmen, 2026-10-29'da (T-027, D-077): `UNIQUE(campaign_id, customer_id, channel)` ve `ON CONFLICT DO NOTHING` ile tekrar gelen teslimatın yok sayılması `TestQueries` (notification store) ile doğrulandı. Worker tarafı T-029'da. Hedef testler: aynı alıcı batch'i iki kez gelince tek satır; eşzamanlı iki worker tek gönderim yapar.
+- **Doğrulama:** Kısmen, 2026-10-29'da (T-027, D-077): `UNIQUE(campaign_id, customer_id, channel)` ve `ON CONFLICT DO NOTHING` ile tekrar gelen teslimatın yok sayılması `TestQueries` (notification store) ile doğrulandı. Worker tarafı T-029'da (aynı teslimat için tekrar gelen mesaj tek provider çağrısı) ve T-031'de (mock aynı `Idempotency-Key`'e saklı 202'yi döner, zaman aşımından sonra yeniden deneme ikinci bir e-posta üretmez; canlı gönderimde 1 zaman aşımı tek e-postayla sonuçlandı) doğrulandı. Hedef testler: aynı alıcı batch'i iki kez gelince tek satır; eşzamanlı iki worker tek gönderim yapar.
 
 ## D-024: NATS düzeni: dört stream, teslimat başına ileti, kanal başına 100/s limiter, NAK ile retry
 
@@ -1414,6 +1415,28 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Doğrulama:** 2026-10-29'da (T-030): `internal/notification/sender/completion_integration_test.go` (intake + sender + httptest provider): tetiklenmede EVENTS'e `evt.notification.started.v1`; tüm teslimatlar gönderilince kampanya son gönderimden yaklaşık 240 ms sonra `completed`, kişisel veri temizlenir, sayımlar, `sms_segments` ve maliyet doğru tek bir `completed` olayı yazılır; iptal edilmiş kampanya tamamlanmaz. `internal/notification/api` testleri: SSE önce snapshot, değişiklikte yeni snapshot, bitince `done` ve kapanış, bilinmeyen kampanya 404. `internal/proposal/progress` integration testleri: `started` sonra `completed` kampanyayı `sending` ve `completed` yapar, hub `campaign_status` olayları çıkar, tekrarlar etkisiz, iptal edilmiş kampanyada yok sayılır. Canlı yığında notification ve proposal `healthy`, `/openapi.json` iki yeni ucu listeler, rastgele id 404 problem+json, `proposal-notification-events` tüketicisi çalışıyor; kampanya açılmadı. `make test` geçti.
 - **Uygulama notu:** Denetleyici 2 sn'de bir ve her sonlandırmadan sonra (en az 250 ms arayla) çalışır. REST/SSE gövdesindeki `updated_at` sayımların okunduğu andır; `status` Notification'ın `send_campaign.status`'üdür. Zaten bitmiş kampanyaya bağlanan istemci hemen `snapshot` + `done` alır. Proposal'da hub olayları commit'ten sonra yayınlanır. `started` her tetiklenmede gelir, Proposal ikinci ve sonrakileri yok sayar. nginx'te `/campaigns/{id}/deliveries*` yolunun Notification'a yönlendirilmesi T-034'tedir.
 
+## D-081: Mock provider: Go cephe D-079 sözleşmesini uygular, e-postayı Mailpit'e, SMS'i MockServer'a iletir; %5 5xx, %2 429, %1 zaman aşımı, 50–300 ms; kanal başına 110/s; bellekte 24 sa idempotency; receipt yok
+
+- **Durum:** Kabul edildi · 2026-10-29
+- **Alan:** Gönderim
+- **Bağlam:** Brief gerçek bir servisi taklit eden, zaman zaman hata, gecikme ve 429 döndüren bir mock provider istiyor. D-018 mock'u ayrı bir servis olarak, D-079 provider sözleşmesini (`POST /v1/sms`, `POST /v1/email`, `Idempotency-Key`, 202 `{message_id}`, 429 + `Retry-After`) belirledi; D-079 yeniden denemede provider'ın aynı anahtara aynı yanıtı vermesine güvenir. Kullanıcı SMS için MockServer'ı, e-posta için Mailpit'i önerdi. Mailpit bir SMTP sunucusudur, idempotency ve 429 kavramı yoktur; MockServer durum tutmaz, 429'u yalnız senaryoyla verebilir. Hata oranları açık konuydu (T-031).
+- **Karar:**
+  - D-079 sözleşmesini mevcut Go `mockprovider` servisi uygular. Kabul ettiği e-postayı SMTP ile Mailpit'e, SMS'i HTTP ile MockServer'a iletir; gönderilen mesajlar bu iki aracın arayüzlerinden görülür. Notification ve T-029 değişmez.
+  - Hata ve gecikme: istek başına %5 5xx, %2 kendiliğinden 429 (`Retry-After`), %1 zaman aşımı (mesaj kabul edilip iletilir, yanıt 12 sn geciktirilir; "kabul edildi ama yanıt kayboldu" durumu), 50–300 ms gecikme. Oranlar ortam değişkenleriyle ayarlanır; `MOCK_SEED` verilirse rastgelelik deterministiktir.
+  - Mock'un kendi hız sınırı kanal başına 110/s'dir; aşımda 429 + `Retry-After: 1`. Böylece Notification'ın 100/s limiter'ının altında kalındığı kanıtlanır (araştırma 01 §7).
+  - Idempotency deposu bellekte, 24 sa TTL'lidir: aynı anahtar ilk yanıtı ve aynı `message_id`'yi döner, Mailpit veya MockServer'a ikinci kez iletmez; aynı anahtar farklı gövdeyle gelirse 422.
+  - Teslim raporu (receipt, webhook) yoktur; 202 `sent` demektir. README'de kapsam dışı olarak belirtilir.
+- **Alternatifler:**
+  - Doğrudan MockServer + Mailpit — reddedildi: idempotency kalkardı (D-023, D-079; zaman aşımında çift gönderim), 429 gerçek hız sınırını sınamazdı, e-posta istemcisi SMTP'ye dönerdi.
+  - Yalnız Go mock — reddedildi: gönderilenleri görecek arayüz olmazdı.
+  - Daha sert oranlar (%15 5xx, %5 429) — reddedildi: başarısız teslimatlar belirgin artardı. Varsayılanda hatasız — reddedildi: brief'teki hata, gecikme ve 429 varsayılanda görünmezdi.
+  - Mock'ta hız sınırı olmaması — reddedildi: limiter'ın doğruluğu sınanmazdı.
+  - Diskte idempotency deposu — reddedildi: yeni bağımlılık veya volume.
+  - Gecikmeli webhook — reddedildi: yeni uç, durumlar ve Notification şeması değişirdi.
+- **Sonuçlar / bedel:** Compose'a iki konteyner (Mailpit, MockServer) eklenir. Oranlar ölçülmüş değil, seçilmiş değerlerdir. Mock yeniden başlarsa idempotency deposu boşalır. Gerçek teslim durumu yoktur.
+- **Doğrulama:** 2026-10-29'da (T-031): `internal/mockprovider` birim testleri (aynı anahtar ve gövdeyle tekrar aynı `message_id` ve tek iletim; farklı gövdeyle 422; sahte saatle TTL; 110/s'de 429 + `Retry-After: 1`; sabit tohumla hata sayıları; zaman aşımında yanıt beklerken tekrar saklanmış 202'yi alır; 25 eşzamanlı istek tek iletim; Türkçe konulu MIME); sözleşme testi: Notification'ın gerçek `provider.Client`'ı her yanıt sınıfını alır; integration `TestInboxesReceiveWhatTheMockAccepts` gerçek Mailpit ve MockServer'la. İlk canlı uçtan uca gönderim (Proposal geçici olarak mock LLM modunda, sonra eski moduna döndürüldü): örnek brief kampanyası `completed`, 48 teslimat (e-posta 35, SMS 13 `sent`, 0 `failed`; compose veritabanı uzun süredir açık olduğu için kitle 48'di, D-017 kayması); mock metrikleri e-postada 1 enjekte 5xx, 3 hız sınırı 429'u, 1 zaman aşımı ve onun 1 tekrarı, SMS'te 1 enjekte 5xx — hepsi yeniden denenip gönderildi; Mailpit'te 35 e-posta, MockServer'da 13 SMS. `make test` geçti.
+- **Uygulama notu:** İmajlar `axllent/mailpit:v1.31.5` (GHSA-FPXJ-M5Q8-FPHW 1.30.0'da kapandı) ve `mockserver/mockserver:8.0.0`; ikisi de yayından en az iki hafta sonra seçildi. Mailpit arayüzü `${MAILPIT_UI_HOST_PORT:-8025}`, MockServer `${MOCKSERVER_HOST_PORT:-1080}`. Idempotency anahtarları kanal başınadır; gövde karşılaştırması kanonik JSON'un sha256'sıyla yapılır; kayıtlı anahtar doğrulama, hız sınırı, hata ve gecikmeden önce tekrar oynatılır. Anahtar başına bir kilit eşzamanlı tekrarları bekletir. 400 geçersiz anahtar veya JSON, 413 1 MiB üstü, 422 alan doğrulaması veya farklı gövdeli anahtar. Hız sınırı 429'larının bir kısmı Notification'ın 16 göndericisinin burst hizalanmasından gelir; yeniden deneme bunları kapatır.
+
 ---
 
 ## Açık konular
@@ -1425,5 +1448,4 @@ Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/RE
 - Üç onarım denemesi başarısız olunca kullanıcıya ne gösterilir (D-027); ön eleme işaretlerse akış durur ve gerekçe gösterilir (D-069), arayüzü T-035'te
 - Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
 - promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061)
-- Mock provider hata/gecikme/429 oranları
 - Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği

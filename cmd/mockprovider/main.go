@@ -1,9 +1,10 @@
-// Command mockprovider is the mock SMS/email provider (D-018, D-056).
+// Command mockprovider is the mock SMS/email provider (D-018, D-056, D-081).
 package main
 
 import (
 	_ "embed"
 
+	"github.com/furknozg/coldbru/internal/mockprovider"
 	"github.com/furknozg/coldbru/internal/platform/app"
 )
 
@@ -14,8 +15,8 @@ var openAPISpec []byte
 
 // @title			Coldbru Mockprovider API
 // @version		0.1.0
-// @description	REST API of the mock SMS and email provider.
+// @description	REST API of the mock SMS and email provider (D-081). Accepts messages with an Idempotency-Key, injects failures, 429s and delays, and hands the accepted messages to Mailpit (email) and MockServer (SMS). No real message is sent. Errors are RFC 9457 application/problem+json.
 // @BasePath		/
 func main() {
-	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "mockprovider"})
+	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "mockprovider", Setup: mockprovider.Setup})
 }

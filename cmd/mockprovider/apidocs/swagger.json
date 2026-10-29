@@ -45,11 +45,115 @@
                     }
                 },
                 "type": "object"
+            },
+            "mockprovider.Accepted": {
+                "properties": {
+                    "message_id": {
+                        "description": "MessageID is the provider's id of the message. A repeated Idempotency-Key gets the same id.",
+                        "example": "019a0e6e-0000-7000-8000-000000000001",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "message_id"
+                ],
+                "type": "object"
+            },
+            "mockprovider.EmailRequest": {
+                "properties": {
+                    "html": {
+                        "description": "HTML is the HTML part of the message.",
+                        "example": "\u003cp\u003eMerhaba Ayşe\u003c/p\u003e",
+                        "type": "string"
+                    },
+                    "subject": {
+                        "description": "Subject is the subject line.",
+                        "example": "Sepetin seni bekliyor",
+                        "type": "string"
+                    },
+                    "text": {
+                        "description": "Text is the plain-text alternative of the message.",
+                        "example": "Merhaba Ayşe",
+                        "type": "string"
+                    },
+                    "to": {
+                        "description": "To is the recipient email address.",
+                        "example": "ayse@example.com",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "html",
+                    "subject",
+                    "text",
+                    "to"
+                ],
+                "type": "object"
+            },
+            "mockprovider.Problem": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the stable machine-readable name of the problem.",
+                        "example": "validation_failed",
+                        "type": "string"
+                    },
+                    "detail": {
+                        "description": "Detail explains this occurrence.",
+                        "example": "to must be an E.164 phone number such as +905551112233.",
+                        "type": "string"
+                    },
+                    "instance": {
+                        "description": "Instance is the path of the request.",
+                        "example": "/v1/sms",
+                        "type": "string"
+                    },
+                    "status": {
+                        "description": "Status is the HTTP status code.",
+                        "example": 422,
+                        "type": "integer"
+                    },
+                    "title": {
+                        "description": "Title is a short, fixed summary of the problem type.",
+                        "example": "Validation failed",
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Type identifies the problem type: urn:coldbru:mockprovider:problem:\u003ccode\u003e.",
+                        "example": "urn:coldbru:mockprovider:problem:validation_failed",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "status",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "mockprovider.SMSRequest": {
+                "properties": {
+                    "text": {
+                        "description": "Text is the message.",
+                        "example": "Merhaba Ayşe, sepetinde ürün kaldı: %30 indirim seni bekliyor.",
+                        "type": "string"
+                    },
+                    "to": {
+                        "description": "To is the recipient phone number in E.164 format.",
+                        "example": "+905551112233",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text",
+                    "to"
+                ],
+                "type": "object"
             }
         }
     },
     "info": {
-        "description": "REST API of the mock SMS and email provider.",
+        "description": "REST API of the mock SMS and email provider (D-081). Accepts messages with an Idempotency-Key, injects failures, 429s and delays, and hands the accepted messages to Mailpit (email) and MockServer (SMS). No real message is sent. Errors are RFC 9457 application/problem+json.",
         "title": "Coldbru Mockprovider API",
         "version": "0.1.0"
     },
@@ -107,6 +211,216 @@
                 "summary": "Readiness probe",
                 "tags": [
                     "platform"
+                ]
+            }
+        },
+        "/v1/email": {
+            "post": {
+                "description": "Accepts one email and hands it to Mailpit over SMTP as a multipart/alternative message (text and HTML, UTF-8, RFC 2047 subject, `X-Idempotency-Key` header). Idempotency, rate limit, fault injection and latency are as for POST /v1/sms.",
+                "parameters": [
+                    {
+                        "description": "Delivery id; at most 128 printable ASCII characters",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/mockprovider.EmailRequest",
+                                "summary": "body",
+                                "description": "The message"
+                            }
+                        }
+                    },
+                    "description": "The message",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Accepted"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Missing or invalid Idempotency-Key, or the body is not JSON"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Body above 1 MiB"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Invalid fields, or the key was used with another body"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Rate limit or injected 429; Retry-After in seconds"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Injected failure"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Injected failure, or the inbox is unreachable"
+                    }
+                },
+                "summary": "Send an email",
+                "tags": [
+                    "provider"
+                ]
+            }
+        },
+        "/v1/sms": {
+            "post": {
+                "description": "Accepts one SMS and hands it to MockServer, where it shows on the dashboard. The Idempotency-Key header is required: a repeated key with the same body gets the stored answer (same `message_id`) and is forwarded no second time; the same key with another body is 422. Order of the checks: idempotency lookup, validation, the per-channel rate limit (110/s, 429 with Retry-After: 1), injected faults (5% 502/503, 2% 429 with Retry-After 1-3, 1% accepted but the 202 is held back 12 s), 50-300 ms latency, forward, store. Faults and rate-limit answers are not stored.",
+                "parameters": [
+                    {
+                        "description": "Delivery id; at most 128 printable ASCII characters",
+                        "in": "header",
+                        "name": "Idempotency-Key",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/mockprovider.SMSRequest",
+                                "summary": "body",
+                                "description": "The message"
+                            }
+                        }
+                    },
+                    "description": "The message",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Accepted"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Missing or invalid Idempotency-Key, or the body is not JSON"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Body above 1 MiB"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Invalid fields, or the key was used with another body"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Rate limit or injected 429; Retry-After in seconds"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Injected failure"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/mockprovider.Problem"
+                                }
+                            }
+                        },
+                        "description": "Injected failure, or the inbox is unreachable"
+                    }
+                },
+                "summary": "Send an SMS",
+                "tags": [
+                    "provider"
                 ]
             }
         }
