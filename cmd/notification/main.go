@@ -4,6 +4,7 @@ package main
 import (
 	_ "embed"
 
+	"github.com/furknozg/coldbru/internal/notification/boot"
 	"github.com/furknozg/coldbru/internal/notification/store"
 	"github.com/furknozg/coldbru/internal/platform/app"
 )
@@ -18,5 +19,5 @@ var openAPISpec []byte
 // @description	REST API of the notification service: message delivery.
 // @BasePath		/
 func main() {
-	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "notification", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true})
+	app.Main(app.Options{OpenAPISpec: openAPISpec, Name: "notification", Database: true, PlatformMigrations: true, Migrations: store.Migrations(), NATS: true, Setup: boot.Setup})
 }

@@ -187,7 +187,7 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "platform versions",
 			sql:  "SELECT version_id::text FROM goose_platform_version WHERE version_id > 0 ORDER BY version_id",
-			want: []string{"1", "2"},
+			want: []string{"1", "2", "3"},
 		},
 		{
 			name: "delivery indexes",

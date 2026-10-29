@@ -389,3 +389,93 @@ func TestProcess_MalformedPayloadIsTerminated(t *testing.T) {
 		})
 	}
 }
+
+func TestProcess_HandlerMalformedIsTerminatedWithoutRetry(t *testing.T) {
+	e := newEnv(t)
+	var calls atomic.Int32
+	e.consume(t, func(ctx context.Context, tx pgx.Tx, ev events.Envelope) error {
+		calls.Add(1)
+		if _, err := tx.Exec(ctx, `INSERT INTO side_effect (event_id) VALUES ($1::uuid)`, ev.ID); err != nil {
+			return err
+		}
+		return consumer.Malformed(errors.New("data has no campaign"))
+	})
+
+	e.publish(t, subject, envelopeJSON(eventID), eventID)
+
+	eventually(t, 10*time.Second, "message terminated", func() bool { return e.set.terms.Load() == 1 })
+	e.quiet(t)
+
+	if got := calls.Load(); got != 1 {
+		t.Errorf("handler calls = %d, want 1 (no retry)", got)
+	}
+	if e.set.acks.Load() != 0 || e.set.naks.Load() != 0 {
+		t.Errorf("acks/naks = %d/%d, want 0/0", e.set.acks.Load(), e.set.naks.Load())
+	}
+	if got := e.count(t, "processed_event"); got != 0 {
+		t.Errorf("processed_event rows = %d, want 0 (rolled back)", got)
+	}
+	if got := e.count(t, "side_effect"); got != 0 {
+		t.Errorf("side_effect rows = %d, want 0 (rolled back)", got)
+	}
+	if got := e.errs.len(); got != 0 {
+		t.Errorf("Process errors = %d, want 0 (logged by Process itself)", got)
+	}
+}
+
+func TestProcess_HandlerRetryLaterIsDeferredNotFailed(t *testing.T) {
+	e := newEnv(t)
+	var calls atomic.Int32
+	e.consume(t, func(ctx context.Context, tx pgx.Tx, ev events.Envelope) error {
+		n := calls.Add(1)
+		if _, err := tx.Exec(ctx, `INSERT INTO side_effect (event_id) VALUES ($1::uuid)`, ev.ID); err != nil {
+			return err
+		}
+		if n <= 2 {
+			return consumer.RetryLater(0, "not yet")
+		}
+		return nil
+	})
+
+	e.publish(t, subject, envelopeJSON(eventID), eventID)
+
+	eventually(t, 10*time.Second, "message acked", func() bool { return e.set.acks.Load() == 1 })
+	e.quiet(t)
+
+	if got := calls.Load(); got != 3 {
+		t.Errorf("handler calls = %d, want 3", got)
+	}
+	if got := e.set.naks.Load(); got != 2 {
+		t.Errorf("naks = %d, want 2", got)
+	}
+	if got := e.errs.len(); got != 0 {
+		t.Errorf("Process errors = %d, want 0 (waiting is not a failure)", got)
+	}
+	// The deferred attempts rolled back with processed_event, so the event ran again until it passed.
+	if got := e.count(t, "processed_event"); got != 1 {
+		t.Errorf("processed_event rows = %d, want 1", got)
+	}
+	if got := e.count(t, "side_effect"); got != 1 {
+		t.Errorf("side_effect rows = %d, want 1", got)
+	}
+}
+
+func TestProcess_HandlerRetryLaterIsTerminatedAtMaxDeliver(t *testing.T) {
+	e := newEnv(t)
+	var calls atomic.Int32
+	e.consume(t, func(context.Context, pgx.Tx, events.Envelope) error {
+		calls.Add(1)
+		return consumer.RetryLater(0, "never")
+	})
+
+	e.publish(t, subject, envelopeJSON(eventID), eventID)
+
+	eventually(t, 15*time.Second, "message terminated", func() bool { return e.set.terms.Load() == 1 })
+	e.quiet(t)
+	if got := calls.Load(); got != consumer.MaxDeliver {
+		t.Errorf("handler calls = %d, want %d", got, consumer.MaxDeliver)
+	}
+	if got := e.count(t, "processed_event"); got != 0 {
+		t.Errorf("processed_event rows = %d, want 0", got)
+	}
+}

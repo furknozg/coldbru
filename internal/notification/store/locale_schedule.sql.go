@@ -12,6 +12,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelScheduledSchedules = `-- name: CancelScheduledSchedules :execrows
+UPDATE locale_schedule SET status = 'cancelled' WHERE campaign_id = $1 AND status = 'scheduled'
+`
+
+// Cancels the schedules of a campaign that have not fired (D-078).
+func (q *Queries) CancelScheduledSchedules(ctx context.Context, campaignID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelScheduledSchedules, campaignID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createLocaleSchedule = `-- name: CreateLocaleSchedule :one
 INSERT INTO locale_schedule (campaign_id, language, timezone, send_at) VALUES ($1, $2, $3, $4) RETURNING id, campaign_id, language, timezone, send_at, status, fired_at
 `
@@ -73,4 +86,37 @@ func (q *Queries) ListLocaleSchedules(ctx context.Context, campaignID uuid.UUID)
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockLocaleSchedule = `-- name: LockLocaleSchedule :one
+SELECT id, campaign_id, language, timezone, send_at, status, fired_at FROM locale_schedule WHERE id = $1 FOR UPDATE
+`
+
+// Taken after LockSendCampaign by the firing, so a firing and a cancellation of one schedule never overlap (D-078).
+func (q *Queries) LockLocaleSchedule(ctx context.Context, id uuid.UUID) (LocaleSchedule, error) {
+	row := q.db.QueryRow(ctx, lockLocaleSchedule, id)
+	var i LocaleSchedule
+	err := row.Scan(
+		&i.ID,
+		&i.CampaignID,
+		&i.Language,
+		&i.Timezone,
+		&i.SendAt,
+		&i.Status,
+		&i.FiredAt,
+	)
+	return i, err
+}
+
+const markScheduleFired = `-- name: MarkScheduleFired :execrows
+UPDATE locale_schedule SET status = 'fired', fired_at = now() WHERE id = $1 AND status = 'scheduled'
+`
+
+// 0 rows when the schedule is no longer 'scheduled' (fired or cancelled).
+func (q *Queries) MarkScheduleFired(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markScheduleFired, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

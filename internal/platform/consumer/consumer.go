@@ -27,7 +27,9 @@ const invalidTextRepresentation = "22P02"
 
 // Handler applies one event. It must do all its database writes through tx: if
 // it returns an error the transaction, including the processed_event row,
-// rolls back and the event is redelivered.
+// rolls back and the event is redelivered. An error wrapped with Malformed
+// terminates the event instead: it can never succeed. An error wrapped with
+// RetryLater defers it without counting as a failure.
 type Handler func(ctx context.Context, tx pgx.Tx, e events.Envelope) error
 
 // ConsumerConfig returns the durable pull consumer definition for a service:
@@ -59,6 +61,10 @@ type Processor struct {
 //   - invalid JSON or empty event id: logged and terminated, nil returned.
 //   - event already in processed_event: committed, acked, nil returned.
 //   - handler success: committed, then acked.
+//   - handler error wrapped with Malformed: rolled back (the event is not recorded), logged and
+//     terminated, nil returned.
+//   - handler error wrapped with RetryLater: rolled back, nak'd with the delay, nil returned; at
+//     MaxDeliver it is logged and terminated instead.
 //   - failure (handler or database): rolled back; below MaxDeliver the message
 //     is nak'd with Backoff delay and the error is returned for the caller to
 //     log; at MaxDeliver it is logged here and terminated, nil returned.
@@ -100,6 +106,21 @@ func (p *Processor) Process(ctx context.Context, msg jetstream.Msg) error {
 	}
 
 	if err := p.Handler(ctx, tx, env); err != nil {
+		var bad *malformedError
+		var retry *retryLaterError
+		switch {
+		case errors.As(err, &bad):
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+			return p.terminateMalformed(ctx, msg, "handler rejected the event", bad.cause)
+		case errors.As(err, &retry):
+			// Rolled back with the processed_event row, so the redelivery runs the handler again.
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+			backoff := p.Backoff
+			if backoff == (Backoff{}) {
+				backoff = DefaultBackoff
+			}
+			return deferMessage(ctx, p.Logger, backoff, msg, retry)
+		}
 		return p.fail(ctx, msg, env, fmt.Errorf("handle %s %s: %w", env.Type, env.ID, err))
 	}
 	if err := tx.Commit(ctx); err != nil {

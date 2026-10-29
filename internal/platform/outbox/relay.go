@@ -2,6 +2,7 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -26,7 +28,8 @@ const selectBatch = `
 	SELECT id::text, subject,
 	       CASE WHEN starts_with(subject, $1)
 	            THEN payload || jsonb_build_object('id', id::text)
-	            ELSE payload END
+	            ELSE payload END,
+	       headers
 	FROM outbox
 	WHERE published_at IS NULL
 	ORDER BY created_at, id
@@ -40,7 +43,8 @@ const selectBatch = `
 //
 // The Relay publishes two kinds of rows: event envelopes written by Write (subject under "evt.",
 // the row id is added as the envelope's "id") and raw messages written by WriteMessage (any other
-// subject, published as stored). Both carry the row id as Nats-Msg-Id.
+// subject, published as stored). Both carry the row id as Nats-Msg-Id. A raw message may also carry
+// the headers stored with it (WithHeaders, D-078), for example Nats-Schedule.
 //
 // Publishing is at least once: if the process dies between PubAck and the
 // commit that sets published_at, the row is published again. The outbox id is
@@ -174,11 +178,12 @@ func (r *Relay) publishBatch(ctx context.Context, size int) (int, error) {
 	type item struct {
 		id, subject string
 		data        []byte
+		headers     []byte // jsonb object, nil when the row has none
 	}
 	var batch []item
 	for rows.Next() {
 		var it item
-		if err := rows.Scan(&it.id, &it.subject, &it.data); err != nil {
+		if err := rows.Scan(&it.id, &it.subject, &it.data, &it.headers); err != nil {
 			rows.Close()
 			return 0, fmt.Errorf("scan outbox row: %w", err)
 		}
@@ -194,7 +199,12 @@ func (r *Relay) publishBatch(ctx context.Context, size int) (int, error) {
 	published := make([]string, 0, len(batch))
 	var publishErr error
 	for _, it := range batch {
-		if _, err := r.JS.Publish(ctx, it.subject, it.data, jetstream.WithMsgID(it.id)); err != nil {
+		msg, err := buildMsg(it.subject, it.data, it.headers)
+		if err != nil {
+			publishErr = fmt.Errorf("build outbox message %s for %s: %w", it.id, it.subject, err)
+			break
+		}
+		if _, err := r.JS.PublishMsg(ctx, msg, jetstream.WithMsgID(it.id)); err != nil {
 			publishErr = fmt.Errorf("publish outbox event %s to %s: %w", it.id, it.subject, err)
 			break
 		}
@@ -219,4 +229,50 @@ func (r *Relay) publishBatch(ctx context.Context, size int) (int, error) {
 	r.Logger.InfoContext(ctx, "outbox batch published",
 		slog.Int("read", len(batch)), slog.Int("published", len(published)))
 	return len(batch), nil
+}
+
+// buildMsg makes the NATS message of one outbox row. headers is the stored jsonb object or nil.
+// Nats-Msg-Id is not set here; PublishMsg's WithMsgID sets it and wins over any stored header.
+func buildMsg(subject string, data, headers []byte) (*nats.Msg, error) {
+	msg := &nats.Msg{Subject: subject, Data: data}
+	if len(headers) == 0 {
+		return msg, nil
+	}
+	var h map[string]string
+	if err := json.Unmarshal(headers, &h); err != nil {
+		return nil, fmt.Errorf("decode stored headers: %w", err)
+	}
+	if err := ValidateHeaders(h); err != nil {
+		return nil, fmt.Errorf("stored headers: %w", err)
+	}
+	if len(h) > 0 {
+		msg.Header = make(nats.Header, len(h)+1)
+		for k, v := range h {
+			msg.Header.Set(k, v)
+		}
+	}
+	return msg, nil
+}
+
+// Start runs the Relay in the background, detached from ctx's cancellation (the service stops it
+// through the returned function instead, so it keeps publishing while consumers drain), and returns
+// the stop function: it cancels the Relay and waits for Run to return or ctx to end. Services
+// register it with Deps.OnShutdown, before the workers that write to the outbox, because hooks run
+// in reverse order of registration.
+func (r *Relay) Start(ctx context.Context) (stop func(context.Context) error) {
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = r.Run(runCtx) // Run returns nil when its context ends
+	}()
+	return func(ctx context.Context) error {
+		cancel()
+		select {
+		case <-done:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }

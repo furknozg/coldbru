@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPendingDeliveries = `-- name: CancelPendingDeliveries :execrows
+UPDATE delivery SET status = 'cancelled', updated_at = now() WHERE campaign_id = $1 AND status = 'pending'
+`
+
+// Run before ClearDeliveryPII in the cancellation transaction (D-078): a pending delivery cannot lose
+// its personal data (delivery_pii_check). Deliveries that are sending, sent, failed or skipped keep their state.
+func (q *Queries) CancelPendingDeliveries(ctx context.Context, campaignID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelPendingDeliveries, campaignID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const clearDeliveryPII = `-- name: ClearDeliveryPII :execrows
 UPDATE delivery SET first_name = NULL, contact = NULL, updated_at = now()
 WHERE campaign_id = $1 AND (first_name IS NOT NULL OR contact IS NOT NULL)

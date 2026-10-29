@@ -396,14 +396,14 @@ func TestWrite_InvalidEnvelope(t *testing.T) {
 }
 
 // writeRaw stores a raw message in its own transaction and returns the outbox row id.
-func writeRaw(t *testing.T, pool *pgxpool.Pool, subject, payload string, commit bool) string {
+func writeRaw(t *testing.T, pool *pgxpool.Pool, subject, payload string, commit bool, opts ...outbox.MessageOption) string {
 	t.Helper()
 	ctx := t.Context()
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatalf("begin: %v", err)
 	}
-	id, err := outbox.WriteMessage(ctx, tx, subject, []byte(payload))
+	id, err := outbox.WriteMessage(ctx, tx, subject, []byte(payload), opts...)
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatalf("WriteMessage() error = %v", err)
@@ -555,4 +555,51 @@ func jsonEqual(raw json.RawMessage, want string) bool {
 		return false
 	}
 	return fmt.Sprint(a) == fmt.Sprint(b)
+}
+
+func TestRelay_PublishesHeaders(t *testing.T) {
+	e := newEnv(t)
+	withID := writeRaw(t, e.pool, "recipients.c1", `{"n":1}`, true, outbox.WithHeaders(map[string]string{
+		"X-Kind": "batch", "X-Note": "a b: c",
+	}))
+	without := writeRaw(t, e.pool, "recipients.c2", `{"n":2}`, true)
+	emptyMap := writeRaw(t, e.pool, "recipients.c3", `{"n":3}`, true, outbox.WithHeaders(map[string]string{}))
+
+	// Stored as NULL when there are no headers, a JSON object otherwise.
+	for id, wantNull := range map[string]bool{withID: false, without: true, emptyMap: true} {
+		var isNull bool
+		if err := e.pool.QueryRow(t.Context(), `SELECT headers IS NULL FROM outbox WHERE id = $1::uuid`, id).Scan(&isNull); err != nil {
+			t.Fatalf("query headers: %v", err)
+		}
+		if isNull != wantNull {
+			t.Errorf("row %s headers IS NULL = %v, want %v", id, isNull, wantNull)
+		}
+	}
+
+	startRelay(t, &outbox.Relay{Pool: e.pool, JS: e.js, Logger: discardLogger(), PollInterval: 100 * time.Millisecond})
+	eventually(t, 5*time.Second, "three raw messages", func() bool { return recipientsMsgCount(t, e) == 3 })
+
+	for seq := uint64(1); seq <= 3; seq++ {
+		msg, err := e.recipients.GetMsg(t.Context(), seq)
+		if err != nil {
+			t.Fatalf("GetMsg(%d) error = %v", seq, err)
+		}
+		switch msg.Subject {
+		case "recipients.c1":
+			if got := msg.Header.Get(jetstream.MsgIDHeader); got != withID {
+				t.Errorf("Nats-Msg-Id = %q, want the row id %q", got, withID)
+			}
+			if got := msg.Header.Get("X-Kind"); got != "batch" {
+				t.Errorf("X-Kind = %q", got)
+			}
+			if got := msg.Header.Get("X-Note"); got != "a b: c" {
+				t.Errorf("X-Note = %q", got)
+			}
+		default:
+			// Unchanged behaviour: Nats-Msg-Id is the only header.
+			if len(msg.Header) != 1 || msg.Header.Get(jetstream.MsgIDHeader) == "" {
+				t.Errorf("%s headers = %v, want only Nats-Msg-Id", msg.Subject, msg.Header)
+			}
+		}
+	}
 }
