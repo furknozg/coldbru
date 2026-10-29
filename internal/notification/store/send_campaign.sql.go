@@ -11,6 +11,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const cancelSendCampaign = `-- name: CancelSendCampaign :execrows
+UPDATE send_campaign SET status = 'cancelled', updated_at = now()
+WHERE id = $1 AND status IN ('scheduled', 'sending')
+`
+
+// Cancels a campaign that has not finished (D-078); 0 rows for completed or already cancelled.
+func (q *Queries) CancelSendCampaign(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelSendCampaign, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createSendCampaign = `-- name: CreateSendCampaign :one
 INSERT INTO send_campaign (id, cta_url, batch_count) VALUES ($1, $2, $3) RETURNING id, status, cta_url, batch_count, created_at, updated_at, completed_at
 `
@@ -54,4 +68,59 @@ func (q *Queries) GetSendCampaign(ctx context.Context, id uuid.UUID) (SendCampai
 		&i.CompletedAt,
 	)
 	return i, err
+}
+
+const insertSendCampaign = `-- name: InsertSendCampaign :execrows
+INSERT INTO send_campaign (id, cta_url, batch_count) VALUES ($1, $2, $3)
+ON CONFLICT (id) DO NOTHING
+`
+
+type InsertSendCampaignParams struct {
+	ID         uuid.UUID
+	CtaUrl     string
+	BatchCount int32
+}
+
+// Returns 1 when the campaign was new and 0 when Proposal's confirmed event for it was already
+// applied (D-078). Unlike CreateSendCampaign it does not fail on a repeat.
+func (q *Queries) InsertSendCampaign(ctx context.Context, arg InsertSendCampaignParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertSendCampaign, arg.ID, arg.CtaUrl, arg.BatchCount)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const lockSendCampaign = `-- name: LockSendCampaign :one
+SELECT id, status, cta_url, batch_count, created_at, updated_at, completed_at FROM send_campaign WHERE id = $1 FOR UPDATE
+`
+
+// Serialises the tx with every other that locks the campaign: batch intake, a schedule firing and
+// the cancellation all take this lock first, so none sees a half-applied state of another (D-078).
+func (q *Queries) LockSendCampaign(ctx context.Context, id uuid.UUID) (SendCampaign, error) {
+	row := q.db.QueryRow(ctx, lockSendCampaign, id)
+	var i SendCampaign
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.CtaUrl,
+		&i.BatchCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const startSendCampaign = `-- name: StartSendCampaign :execrows
+UPDATE send_campaign SET status = 'sending', updated_at = now() WHERE id = $1 AND status = 'scheduled'
+`
+
+// scheduled -> sending when the first schedule fires; 0 rows when it is already past that.
+func (q *Queries) StartSendCampaign(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, startSendCampaign, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

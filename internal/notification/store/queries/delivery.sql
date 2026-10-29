@@ -18,3 +18,15 @@ GROUP BY channel, status ORDER BY channel, status;
 -- pending or sending is rejected by delivery_pii_check and aborts the statement, on purpose.
 UPDATE delivery SET first_name = NULL, contact = NULL, updated_at = now()
 WHERE campaign_id = $1 AND (first_name IS NOT NULL OR contact IS NOT NULL);
+
+-- name: InsertDeliveryBatch :batchexec
+-- InsertDelivery for a whole recipient batch in one round trip (D-077): one queued statement per
+-- recipient, same ON CONFLICT rule as InsertDelivery (D-023).
+INSERT INTO delivery (campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (campaign_id, customer_id, channel) DO NOTHING;
+
+-- name: CancelPendingDeliveries :execrows
+-- Run before ClearDeliveryPII in the cancellation transaction (D-078): a pending delivery cannot lose
+-- its personal data (delivery_pii_check). Deliveries that are sending, sent, failed or skipped keep their state.
+UPDATE delivery SET status = 'cancelled', updated_at = now() WHERE campaign_id = $1 AND status = 'pending';

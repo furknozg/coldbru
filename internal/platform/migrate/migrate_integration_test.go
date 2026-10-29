@@ -314,8 +314,8 @@ func TestUpPlatform_ThenUp_UsesSearchPathSchema(t *testing.T) {
 	if err := migrate.UpPlatform(ctx, pool, logger); err != nil {
 		t.Fatalf("UpPlatform() error = %v", err)
 	}
-	if got := strings.Count(buf.String(), "migration applied"); got != 2 {
-		t.Fatalf("UpPlatform() logged %d applied migrations, want 2", got)
+	if got := strings.Count(buf.String(), "migration applied"); got != 3 {
+		t.Fatalf("UpPlatform() logged %d applied migrations, want 3", got)
 	}
 	if err := migrate.Up(ctx, pool, testMigrations(t), logger); err != nil {
 		t.Fatalf("Up() error = %v", err)
@@ -359,8 +359,8 @@ func TestUpPlatform_ThenUp_UsesSearchPathSchema(t *testing.T) {
 		if err != nil {
 			t.Fatalf("query goose_platform_version: %v", err)
 		}
-		if n != 2 {
-			t.Errorf("goose_platform_version rows = %d, want 2", n)
+		if n != 3 {
+			t.Errorf("goose_platform_version rows = %d, want 3", n)
 		}
 	})
 
