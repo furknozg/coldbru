@@ -156,8 +156,8 @@ func (h *Events) cancelled(ctx context.Context, tx pgx.Tx, env events.Envelope) 
 	if err != nil {
 		return fmt.Errorf("cancel deliveries: %w", err)
 	}
-	// Fails, and so retries with backoff, while a delivery is still sending (delivery_pii_check): its
-	// worker has to finish it first (D-077).
+	// Clears the deliveries that are final, the ones just cancelled included. A delivery that is
+	// still sending is skipped: its send worker clears it when it settles it (D-077).
 	cleared, err := q.ClearDeliveryPII(ctx, campaignID)
 	if err != nil {
 		return fmt.Errorf("clear delivery personal data: %w", err)
@@ -170,8 +170,8 @@ func (h *Events) cancelled(ctx context.Context, tx pgx.Tx, env events.Envelope) 
 
 // dbError wraps a database error of a write that depends only on the message. A constraint
 // violation (SQLSTATE class 23) is Malformed: the same data fails the same way on every retry.
-// The cancellation does not use it: its statements depend on the state of other rows (a delivery that
-// is still sending blocks the personal data clearing until it finishes), so every failure there is retried.
+// The cancellation does not use it: its statements depend on the state of other rows, so every
+// failure there is retried.
 func dbError(what string, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && len(pgErr.Code) == 5 && pgErr.Code[:2] == "23" {
