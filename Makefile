@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts consent
+.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts consent web-image
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -33,6 +33,10 @@ coverage:
 
 # API_SPEC_SERVICES are the services that embed an OpenAPI spec (D-057); customer is GraphQL and has none.
 API_SPEC_SERVICES := proposal notification analytics mockprovider
+
+# Builds the web image (Vue build + nginx gateway, D-085); same image as `docker compose build web`.
+web-image:
+	docker build -t coldbru-web:dev web
 
 # Runs sqlc in every internal/ directory that holds a sqlc.yaml (D-051), then regenerates the
 # OpenAPI 3.1 spec of each service in API_SPEC_SERVICES into cmd/<svc>/apidocs/swagger.json (D-057),

@@ -88,6 +88,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-082 | Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link | Takip ve altyapı | Kabul edildi |
 | D-083 | Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları | Takip ve altyapı | Kabul edildi |
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
+| D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -308,7 +309,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Ayrı web konteyneri + önünde nginx gateway — reddedildi: fazladan konteyner, kazanç az.
   - Compose içinde Vite dev sunucusu — reddedildi: üretime benzemez, ayrıca yine bir gateway gerekir.
 - **Sonuçlar / bedel:** Arayüz değişikliği compose'da görünmek için imajın yeniden build edilmesini ister. Servisler arası iç trafik (GraphQL, NATS) nginx'ten geçmez. Yönlendirme tablosu ve nginx sürümü uygulamada belirlenecek.
-- **Doğrulama:** Doğrulanmadı — henüz nginx yapılandırması yok.
+- **Doğrulama:** 2026-10-30'da (T-034, D-085): `web/Dockerfile` ve `web/nginx.conf`; canlı yığında arayüz, `/api/*` yönlendirmesi ve tamponsuz SSE doğrulandı.
 
 ## D-016: REST sözleşmesi Go kodundan swag v2 ile OpenAPI 3; TS tipleri ve istemci spec'ten üretilir
 
@@ -1498,6 +1499,25 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Arayüz hangi servisin hangi ucu sunduğunu bilir. Go ve TS değişikliği birlikte commit edilmelidir. EventSource header gönderemez; kimlik doğrulama olmadığı için sorun değildir (D-072).
 - **Doğrulama:** 2026-10-30'da (T-033): `web/src/api/__tests__` (Vitest, 38 test): `ApiError`/`unwrap` problem+json, düz metin 500, ağ hatası; istemci çağrısı `/api/proposal/campaigns`'e gider; sahte EventSource ile `useEventStream` (tipli olay, yeniden bağlanma, URL değişimi, kaldırılınca kapanma); `schema-freshness.spec.ts` üretilen tiplerin spec'le bayt bayt aynı olduğunu doğrular; `events.spec.ts` olay adlarını tip düzeyinde sabitler. Vite proxy canlı yığına karşı denendi: `/api/<servis>/healthz` 200, önek sıyrılıyor, SSE tamponsuz (snapshot hemen, ping 15 sn'de). `make generate` ikinci çalıştırmada fark bırakmadı.
 - **Uygulama notu:** `openapi-fetch` 0.17.0 ve `openapi-typescript` 7.13.0 tam sürümle sabitlendi. Olay haritası üretilen `api.EventCatalog` tipinden doğrudan gelir. Üretilen şemalar eslint, oxlint ve prettier dışındadır. `unwrap` başarıyı `response.ok`'tan okur; yalnız `TypeError` `NetworkError` olur. Notification akışı `done`'dan sonra sunucu tarafından kapanır; tarayıcı yeniden bağlanmasın diye işleyici `close()` çağırmalıdır. `VITE_API_BASE` isteğe bağlı bir önektir; Vite proxy hedefleri sabittir.
+
+## D-085: nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-015 arayüzü sunan ve `/api/*`'yi servislere yönlendiren tek bir çok aşamalı nginx konteynerini, D-043 Customer'ın dışarı açılmamasını, D-084 `/api/proposal`, `/api/notification`, `/api/analytics` öneklerini, D-072 Proposal'ın `Location: /campaigns/{id}` başlığını gateway'de çözmeyi, D-082 tıklama yedeğini nginx'e verdi. İmaj, port, `Location` düzeltmesi, SSE ayarları ve `/r/` yolunun zamanı açıktı (T-034).
+- **Karar:**
+  - `web/Dockerfile`: `node:24-alpine` (corepack ile pnpm) aşamasında `pnpm build`, çıktı sabitlenmiş bir `nginx:<stable>-alpine` imajına kopyalanır. Compose'da `web` servisi `${WEB_HOST_PORT:-8080}:80` ve proposal, notification, analytics'e `service_healthy` ile bağlıdır. SPA için `try_files … /index.html`. Servislerin kendi host portları geliştirme için kalır; Customer dışarı açılmaz.
+  - nginx her `/api/<servis>/` önekini sıyırıp ilgili servise iletir; Proposal'ın `Location` başlığı `proxy_redirect` ile `/api/proposal/…` olur.
+  - `/api/` konumlarında `proxy_http_version 1.1`, `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout 1h` ve boş `Connection` başlığı; `text/event-stream` için gzip kapalıdır.
+  - D-082'deki `/r/` yönlendirmesi ve nginx yedeği T-044'te, uçla birlikte kurulur.
+- **Alternatifler:**
+  - Servis host portlarını kapatmak — reddedildi: Scalar `/docs` ve doğrudan servis denemesi kaybolurdu.
+  - Backend'in `X-Forwarded-Prefix` okuması — reddedildi: Go kodu ve testleri değişirdi.
+  - Yalnız `/events` yollarında tamponsuz — reddedildi: yeni bir SSE yolu eklenince kural unutulabilirdi.
+  - `/r/` için şimdiden yer tutucu — reddedildi: test edilemeyen kural.
+- **Sonuçlar / bedel:** İlk build'de node imajı indirilir. Yeni bir `Location` biçimi eklenirse `proxy_redirect` kuralı da eklenmelidir. Normal JSON yanıtları da tamponsuz geçer. T-044 nginx dosyasına tekrar dokunur.
+- **Doğrulama:** 2026-10-30'da (T-034): canlı yığında `web` `healthy`; `localhost:8080/` ve `/campaigns/x` index.html döner (no-cache), hash'li asset'ler `immutable`; `/api/{proposal,notification,analytics}/healthz` 200, `/api/customer/healthz` nginx 404; 404 problem+json geçer; Proposal SSE'de snapshot hemen, ping 15 sn sonra (tamponsuz, gzip yok); Notification SSE'de snapshot + done. `Location` düzeltmesi, Proposal gerçek model modunda olduğu için kampanya açılmadan, stub bir upstream ile doğrulandı: `Location: /api/proposal/campaigns/abc-123`, upstream öneksiz yolu ve sorgu dizesini aldı. `docker compose restart proposal` sonrası nginx yeniden yüklemeden 2 sn'de toparlandı. `make test` geçti.
+- **Uygulama notu:** İmajlar `node:24.22.0-alpine` ve `nginx:1.30.5-alpine`; pnpm `12.8.1` Dockerfile'da corepack ile sabitlenir (`package.json`'da `packageManager` yok). Yapılandırma `web/nginx.conf`; Docker DNS'i `resolver 127.0.0.11` ve değişkenli `proxy_pass` ile, önek `rewrite` ile sıyrılır. `absolute_redirect off` (yoksa nginx `Location`'a host portsuz mutlak URL yazıyordu). Bilinmeyen `/api/` yolları SPA'ya düşmez, nginx HTML 404'ü döner. `X-Request-Id` çağıranınki yoksa nginx'in `$request_id`'si. İmaj build'i `pnpm build` (tip denetimi dahil) çalıştırır.
 
 ---
 

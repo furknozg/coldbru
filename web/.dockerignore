@@ -1,0 +1,12 @@
+# Only package.json, pnpm-lock.yaml, sources and configs reach the build.
+node_modules
+dist
+dist-ssr
+coverage
+.eslintcache
+.DS_Store
+.vscode
+.git
+*.local
+Dockerfile
+.dockerignore
