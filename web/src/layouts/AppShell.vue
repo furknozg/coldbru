@@ -55,9 +55,8 @@ onMounted(() => void list.load())
     </aside>
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+      <header v-if="!isDesktop" class="flex h-14 shrink-0 items-center gap-3 px-4">
         <Button
-          v-if="!isDesktop"
           variant="ghost"
           size="icon"
           :aria-label="t('list.open')"
@@ -65,8 +64,7 @@ onMounted(() => void list.load())
         >
           <MenuIcon />
         </Button>
-        <h1 class="text-espresso text-sm font-semibold">{{ t('app.title') }}</h1>
-        <div class="ml-auto"><LlmModeBadge :mode="mode" /></div>
+        <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
       </header>
       <main class="min-h-0 flex-1">
         <RouterView />
