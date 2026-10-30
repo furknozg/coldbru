@@ -57,7 +57,8 @@ func (c *Client) Screen(ctx context.Context, brief string) (llm.ScreenResult, er
 	out, _ := marshal(struct {
 		Verdict llm.Verdict `json:"verdict"`
 		Reason  string      `json:"reason"`
-	}{res.Verdict, res.Reason})
+		Title   string      `json:"title"`
+	}{res.Verdict, res.Reason, res.Title})
 	cl.report(msg, llm.OutcomeAccepted, out, "")
 	if res.Verdict == llm.VerdictBlock {
 		return res, &llm.ScreenBlockedError{Reason: res.Reason}
@@ -71,25 +72,27 @@ func (c *call) invalid(msg *sdk.Message, text, reason string) error {
 	return &llm.InvalidOutputError{Purpose: c.purpose, StopReason: string(msg.StopReason), Reason: reason}
 }
 
-// parseVerdict reads {verdict, reason}. The schema guarantees the shape; the check stays because
-// the guarantee is the API's, not ours (D-069: validate what the model returns). The enum is
-// compared case-insensitively.
+// parseVerdict reads {verdict, reason, title}. The schema guarantees the shape; the check stays
+// because the guarantee is the API's, not ours (D-069: validate what the model returns). The enum
+// is compared case-insensitively. The title is returned trimmed and unchecked: the flow validates
+// it (llm.CheckTitle) and drops a bad one without failing the screen (D-088).
 func parseVerdict(text string) (llm.ScreenResult, error) {
 	var raw struct {
 		Verdict *string `json:"verdict"`
 		Reason  *string `json:"reason"`
+		Title   *string `json:"title"`
 	}
 	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&raw); err != nil {
 		return llm.ScreenResult{}, fmt.Errorf("not the verdict object: %v", err)
 	}
-	if raw.Verdict == nil || raw.Reason == nil {
-		return llm.ScreenResult{}, errors.New("verdict and reason are both required")
+	if raw.Verdict == nil || raw.Reason == nil || raw.Title == nil {
+		return llm.ScreenResult{}, errors.New("verdict, reason and title are all required")
 	}
 	switch v := llm.Verdict(strings.ToLower(strings.TrimSpace(*raw.Verdict))); v {
 	case llm.VerdictAllow, llm.VerdictBlock:
-		return llm.ScreenResult{Verdict: v, Reason: strings.TrimSpace(*raw.Reason)}, nil
+		return llm.ScreenResult{Verdict: v, Reason: strings.TrimSpace(*raw.Reason), Title: strings.TrimSpace(*raw.Title)}, nil
 	default:
 		return llm.ScreenResult{}, fmt.Errorf("unknown verdict %q", *raw.Verdict)
 	}

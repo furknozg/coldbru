@@ -27,6 +27,8 @@ const (
 	CodeScheduleNotApproved = "schedule_not_approved"
 	CodeNoRecipients        = "no_recipients"
 	CodeNotCancellable      = "campaign_not_cancellable"
+	CodeNotQuestion         = "message_not_question"
+	CodeAlreadyAnswered     = "question_already_answered"
 	CodeInvalidContent      = "invalid_content"
 	CodeInvalidInput        = "invalid_input"
 	CodeInvalidRequest      = "invalid_request"
@@ -76,6 +78,8 @@ var specs = map[string]problemSpec{
 	CodeScheduleNotApproved: {http.StatusConflict, "The schedule is not approved"},
 	CodeNoRecipients:        {http.StatusConflict, "The plan reaches no recipients"},
 	CodeNotCancellable:      {http.StatusConflict, "The campaign cannot be cancelled"},
+	CodeNotQuestion:         {http.StatusConflict, "The message is not a question"},
+	CodeAlreadyAnswered:     {http.StatusConflict, "The question is already answered"},
 	CodeInvalidContent:      {http.StatusUnprocessableEntity, "The content is invalid"},
 	CodeInvalidInput:        {http.StatusUnprocessableEntity, "The input is invalid"},
 	CodeInvalidRequest:      {http.StatusUnprocessableEntity, "The request body is invalid"},
@@ -134,6 +138,10 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 		fail(w, r, CodeNoRecipients, "The approved plan reaches nobody right now; reopen the audience or the channel plan.")
 	case errors.Is(err, flow.ErrNotCancellable):
 		fail(w, r, CodeNotCancellable, "The campaign is completed or already cancelled.")
+	case errors.Is(err, flow.ErrNotQuestion):
+		fail(w, r, CodeNotQuestion, "Only a question of the agent can be answered.")
+	case errors.Is(err, flow.ErrAlreadyAnswered):
+		fail(w, r, CodeAlreadyAnswered, "The question has an answer already.")
 	case errors.Is(err, flow.ErrInvalidInput):
 		fail(w, r, CodeInvalidInput, strings.TrimPrefix(err.Error(), "flow: "))
 	case errors.Is(err, flow.ErrConfirm):

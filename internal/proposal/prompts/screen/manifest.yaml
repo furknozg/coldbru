@@ -1,6 +1,6 @@
-# Prompt package screen (D-059, D-069): the injection pre-screen of a brief.
+# Prompt package screen (D-059, D-069, D-088): the injection pre-screen of a brief, and its title.
 name: screen
-version: 1.0.0
+version: 2.0.0
 model: claude-haiku-5-5
 effort: low
 system:

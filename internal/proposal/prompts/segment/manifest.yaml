@@ -1,8 +1,9 @@
-# Prompt package segment (D-059, D-060, D-069): brief -> audience filter, as a tool loop.
+# Prompt package segment (D-059, D-060, D-069, D-088): brief -> audience filter, as a tool loop
+# with a clarifying question and a summary tool.
 # The system text is the parts below, joined in this order at startup; "@catalog" is the filter
 # catalog rendered from internal/proposal/catalog (D-066).
 name: segment
-version: 1.0.0
+version: 2.0.0
 model: claude-sonnet-5-5
 effort: medium
 requires_dsl: "0.1"

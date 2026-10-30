@@ -148,15 +148,20 @@ func TestProposeSegmentGoesThroughTheTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.DSL != c.DSL || res.Filter == nil || res.Preview == nil || res.Preview.Count != 7 || res.Turn != 1 || res.Turns != 1 || res.ProposeAttempts != 1 {
+			if res.DSL != c.DSL || res.Filter == nil || res.Preview == nil || res.Preview.Count != 7 || res.Turn != 1 || res.Turns != 1 || res.ProposeAttempts != 1 || res.Question != nil {
 				t.Errorf("result = %+v, want DSL %q", res, c.DSL)
+			}
+			// Every accepted filter comes with a marked summary that passes the summary rules (D-088).
+			if md, problems := llm.CheckSummary(res.Summary); len(problems) > 0 || !strings.HasPrefix(md, "[mock]") || !strings.Contains(md, "**7 ulaşılabilir kişi**") {
+				t.Errorf("summary = %q, problems %v", res.Summary, problems)
 			}
 			r := onlyRecord(t, col, llm.PurposeSegment, prompts.Segment(), llm.OutcomeAccepted)
 			var calls []struct {
 				Name  string
-				Input struct{ DSL string }
+				Input struct{ DSL, Markdown string }
 			}
-			if err := json.Unmarshal(r.Response, &calls); err != nil || len(calls) != 1 || calls[0].Name != "propose_segment" || calls[0].Input.DSL != c.DSL {
+			if err := json.Unmarshal(r.Response, &calls); err != nil || len(calls) != 2 || calls[0].Name != "propose_segment" || calls[0].Input.DSL != c.DSL ||
+				calls[1].Name != "send_summary" || calls[1].Input.Markdown != res.Summary {
 				t.Errorf("response = %s (%v)", r.Response, err)
 			}
 		})
@@ -347,7 +352,7 @@ func TestEveryCannedTextPassesTheContentValidators(t *testing.T) {
 					if n := len(col.Records()); n != 1 {
 						t.Errorf("%s %s/%s maxName %d: %d model calls, want one accepted attempt", c.Name, lang, ch, maxName, n)
 					}
-					text := string(raw)
+					text := string(raw.Content)
 					if maxName <= 30 && !strings.Contains(text, content.FirstNameToken) {
 						t.Errorf("%s %s/%s maxName %d: no %s in %s", c.Name, lang, ch, maxName, content.FirstNameToken, text)
 					}
@@ -509,7 +514,8 @@ func TestRegeneratedContentCarriesTheMarkerAndStaysValid(t *testing.T) {
 					if c.Name == "default" {
 						plainReq.Brief = "Hiçbir kayıtla eşleşmeyen bir brief."
 					}
-					base, err := g.Generate(t.Context(), plainReq, nil)
+					gen, err := g.Generate(t.Context(), plainReq, nil)
+					base := gen.Content
 					if err != nil {
 						t.Fatalf("%s %s/%s %d: %v", c.Name, lang, ch, maxName, err)
 					}
@@ -517,7 +523,8 @@ func TestRegeneratedContentCarriesTheMarkerAndStaysValid(t *testing.T) {
 						req := plainReq
 						mod(&req)
 						ctx, col := collect(t.Context())
-						raw, err := g.Generate(ctx, req, nil)
+						gen, err := g.Generate(ctx, req, nil)
+						raw := gen.Content
 						if err != nil {
 							t.Fatalf("%s %s/%s %d %s: %v", c.Name, lang, ch, maxName, name, err)
 						}
@@ -536,7 +543,7 @@ func TestRegeneratedContentCarriesTheMarkerAndStaysValid(t *testing.T) {
 						}
 						// Deterministic: asking again gives the same bytes.
 						again, err := g.Generate(t.Context(), req, nil)
-						if err != nil || string(again) != string(raw) {
+						if err != nil || string(again.Content) != string(raw) {
 							t.Errorf("%s %s/%s %s: second answer differs (%v)", c.Name, lang, ch, name, err)
 						}
 						// An already marked default text gets no second marker.
@@ -547,5 +554,107 @@ func TestRegeneratedContentCarriesTheMarkerAndStaysValid(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// D-088: titles for every case and for an unknown brief, the canned question for a brief with a
+// question mark, the filter after the answer, and summaries for the plan, the schedule and the text.
+func TestScreenTitles(t *testing.T) {
+	t.Parallel()
+	for _, c := range mock.Cases() {
+		res, err := newMock().Screen(t.Context(), c.Brief)
+		if err != nil || res.Title != c.Title {
+			t.Errorf("%s: title = %q, %v, want %q", c.Name, res.Title, err, c.Title)
+		}
+		if title, cerr := llm.CheckTitle(c.Title); cerr != nil || title != c.Title {
+			t.Errorf("%s: canned title %q fails the checks: %v", c.Name, c.Title, cerr)
+		}
+	}
+	long := "Çok uzun bir brief yazıyorum ki başlık altmış karakteri aşsın ve kesilsin, hatta daha da uzun olsun diye devam ediyorum."
+	ctx, col := collect(t.Context())
+	res, err := newMock().Screen(ctx, long)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title, cerr := llm.CheckTitle(res.Title); cerr != nil || title != res.Title || !strings.HasPrefix(res.Title, "[mock] Çok uzun") {
+		t.Errorf("default title = %q (%v)", res.Title, cerr)
+	}
+	if r := onlyRecord(t, col, llm.PurposeScreen, prompts.Screen(), llm.OutcomeAccepted); !strings.Contains(string(r.Response), `"title":"[mock] `) {
+		t.Errorf("response = %s", r.Response)
+	}
+	if res, _ := newMock().Screen(t.Context(), ""); res.Title != "[mock] Örnek kampanya" {
+		t.Errorf("title of an empty brief = %q", res.Title)
+	}
+}
+
+func TestProposeSegmentAsksForABriefWithAQuestionMark(t *testing.T) {
+	t.Parallel()
+	tools := llm.NewCustomerTools(previewer{count: 7})
+	brief := mock.SampleBrief + " Emin değilim?"
+	if !mock.AsksQuestion(brief) || mock.AsksQuestion(mock.SampleBrief) {
+		t.Fatal("AsksQuestion")
+	}
+	ctx, col := collect(t.Context())
+	res, err := newMock().ProposeSegment(ctx, llm.SegmentInput{Brief: brief, QuestionsLeft: 2}, tools)
+	if err != nil || res.Question == nil || res.Question.Text != mock.Question.Text || len(res.Question.Options) != 2 || res.DSL != "" {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if problems := llm.CheckQuestion(res.Question); len(problems) != 0 {
+		t.Errorf("the canned question fails the checks: %v", problems)
+	}
+	if r := onlyRecord(t, col, llm.PurposeSegment, prompts.Segment(), llm.OutcomeAccepted); !strings.Contains(string(r.Response), `"ask_user"`) {
+		t.Errorf("response = %s", r.Response)
+	}
+	// No question left: the mock proposes the default filter of the brief (here: the sample's,
+	// because the brief no longer matches the sample case).
+	res, err = newMock().ProposeSegment(t.Context(), llm.SegmentInput{Brief: brief, QuestionsLeft: 0}, tools)
+	if err != nil || res.Question != nil || res.DSL != mock.DefaultDSL {
+		t.Errorf("without a question left: %+v, %v", res, err)
+	}
+	// Answered: the first option keeps the filter, the second switches to QuestionDSL; the summary
+	// quotes the answer.
+	res, err = newMock().ProposeSegment(t.Context(), llm.SegmentInput{Brief: brief, QuestionsLeft: 1, Clarifications: []llm.Clarification{{Question: mock.Question.Text, Answer: mock.Question.Options[0]}}}, tools)
+	if err != nil || res.Question != nil || res.DSL != mock.DefaultDSL || !strings.Contains(res.Summary, mock.Question.Options[0]) {
+		t.Errorf("after the first option: %+v, %v", res, err)
+	}
+	res, err = newMock().ProposeSegment(t.Context(), llm.SegmentInput{Brief: brief, QuestionsLeft: 1, Clarifications: []llm.Clarification{{Question: mock.Question.Text, Answer: mock.Question.Options[1]}}}, tools)
+	if err != nil || res.Question != nil || res.DSL != mock.QuestionDSL || !strings.Contains(res.Summary, "son 30 günde") {
+		t.Errorf("after the second option: %+v, %v", res, err)
+	}
+	if _, errs := compile.Compile(mock.QuestionDSL); len(errs) > 0 {
+		t.Errorf("QuestionDSL does not compile: %v", errs)
+	}
+}
+
+func TestSummariesOfPlanScheduleAndContent(t *testing.T) {
+	t.Parallel()
+	m := newMock()
+	plan, err := m.ProposeChannelPlan(t.Context(), llm.ChannelPlanInput{Brief: mock.SampleBrief, Coverage: &customer.Preview{Count: 46, Coverage: customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13}}}, nil)
+	if err != nil || plan.Question != nil {
+		t.Fatal(err)
+	}
+	if md, problems := llm.CheckSummary(plan.Summary); len(problems) != 0 || !strings.HasPrefix(md, "[mock]") || !strings.Contains(md, "E-posta 33, SMS 33") {
+		t.Errorf("plan summary = %q (%v)", plan.Summary, problems)
+	}
+	sched, err := m.ProposeSchedule(t.Context(), llm.ScheduleInput{Brief: mock.SampleBrief, Locales: []llm.ScheduleLocale{{Language: "tr", Timezone: "Europe/Istanbul"}, {Language: "en", Timezone: "Europe/London"}}}, nil)
+	if err != nil || sched.Question != nil {
+		t.Fatal(err)
+	}
+	if md, problems := llm.CheckSummary(sched.Summary); len(problems) != 0 || !strings.HasPrefix(md, "[mock]") || !strings.Contains(md, "2 yerel ayar") {
+		t.Errorf("schedule summary = %q (%v)", sched.Summary, problems)
+	}
+	gen, err := generator(t).Generate(t.Context(), flow.ContentRequest{
+		Language: "tr", Channel: "sms", Brief: mock.SampleBrief, Recipients: 33,
+		Audience: flow.AudienceContent{Count: 46, MaxFirstNameLength: 9},
+		Plan:     flow.PlanContent{Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if md, problems := llm.CheckSummary(gen.Summary); len(problems) != 0 || !strings.HasPrefix(md, "[mock]") {
+		t.Errorf("content summary = %q (%v)", gen.Summary, problems)
+	}
+	if strings.Contains(string(gen.Content), "summary") {
+		t.Errorf("stored content carries the summary: %s", gen.Content)
 	}
 }

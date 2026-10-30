@@ -39,6 +39,7 @@ type fakeFlow struct {
 	regenStep     func(ctx context.Context, id uuid.UUID) error
 	confirm       func(ctx context.Context, id uuid.UUID) error
 	cancel        func(ctx context.Context, id uuid.UUID, reason string) error
+	answer        func(ctx context.Context, id uuid.UUID, answer string) (flow.ChatMessageView, error)
 	ofVariant     func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	ofStep        func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 }
@@ -72,6 +73,14 @@ func (f *fakeFlow) Cancel(ctx context.Context, id uuid.UUID, reason string) erro
 		return f.cancel(ctx, id, reason)
 	}
 	return nil
+}
+
+func (f *fakeFlow) Answer(ctx context.Context, id uuid.UUID, answer string) (flow.ChatMessageView, error) {
+	f.note("answer " + id.String() + " " + answer)
+	if f.answer != nil {
+		return f.answer(ctx, id, answer)
+	}
+	return flow.ChatMessageView{ID: otherID, CampaignID: campID, Kind: flow.MessageKindAnswer, Body: answer, ReplyTo: &id}, nil
 }
 
 func (f *fakeFlow) Hub() *flow.Hub {

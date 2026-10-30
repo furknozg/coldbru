@@ -17,10 +17,14 @@ type repairLoop[T any] struct {
 	maxTokens int64
 	// user is the user message: one JSON object with the call-specific data (D-060).
 	user string
-	// decode turns the model text into a value; its error lists the problems with the answer.
-	decode func(text string) (T, []string)
+	// decode turns the model text into a value, or into the agent's question (D-088); its problems
+	// list what is wrong with the answer.
+	decode func(text string) (T, *llm.Question, []string)
 	// validate is the caller's check (may be nil); its error is turned into problems.
 	validate func(T) error
+	// questionsLeft is how many questions the step may still ask; a question beyond it is a
+	// validation failure (llm.QuestionLimitProblem) that costs an attempt (D-088).
+	questionsLeft int
 }
 
 // repairIntro opens the user message that follows a rejected answer. It is the adapter's fixed
@@ -40,11 +44,12 @@ func repairMessage(problems []string) string {
 // run makes at most llm.MaxProposeAttempts calls in one conversation. A rejected answer goes back
 // as the assistant turn, followed by a user message that lists the problems; a refusal stops at
 // once. Every call is reported once to the recorder in ctx. attempts is the number of calls made.
-func (l repairLoop[T]) run(ctx context.Context, c *Client) (val T, attempts int, usage llm.Usage, err error) {
+// An accepted question is returned instead of a value, with no validate call (D-088).
+func (l repairLoop[T]) run(ctx context.Context, c *Client) (val T, question *llm.Question, attempts int, usage llm.Usage, err error) {
 	var zero T
 	oc, err := outputConfig(l.pkg)
 	if err != nil {
-		return zero, 0, usage, err
+		return zero, nil, 0, usage, err
 	}
 	messages := []sdk.MessageParam{userMessage(l.user)}
 	var last []string
@@ -59,27 +64,30 @@ func (l repairLoop[T]) run(ctx context.Context, c *Client) (val T, attempts int,
 			Messages:     messages,
 		})
 		if err != nil {
-			return zero, attempt, usage, cl.failed(nil, err)
+			return zero, nil, attempt, usage, cl.failed(nil, err)
 		}
 		usage = usage.Add(usageOf(msg.Usage))
 
 		// Branch on the stop reason before reading the content (structured outputs: refusal and
 		// max_tokens may not match the schema).
 		if msg.StopReason == sdk.StopReasonRefusal {
-			return zero, attempt, usage, cl.refused(msg)
+			return zero, nil, attempt, usage, cl.refused(msg)
 		}
 		text := textOf(msg)
 		var problems []string
 		if msg.StopReason == sdk.StopReasonEndTurn {
-			v, dp := l.decode(text)
-			if len(dp) == 0 && l.validate != nil {
+			v, q, dp := l.decode(text)
+			if len(dp) == 0 && q != nil && l.questionsLeft <= 0 {
+				dp = []string{llm.QuestionLimitProblem}
+			}
+			if len(dp) == 0 && q == nil && l.validate != nil {
 				if verr := l.validate(v); verr != nil {
 					dp = llm.Problems(verr)
 				}
 			}
 			if len(dp) == 0 {
 				cl.report(msg, llm.OutcomeAccepted, storableOutput(text), "")
-				return v, attempt, usage, nil
+				return v, q, attempt, usage, nil
 			}
 			problems = dp
 		} else {
@@ -88,12 +96,12 @@ func (l repairLoop[T]) run(ctx context.Context, c *Client) (val T, attempts int,
 		cl.report(msg, llm.OutcomeValidationFailed, storableOutput(text), strings.Join(problems, "; "))
 		last = problems
 		if attempt == llm.MaxProposeAttempts {
-			return zero, attempt, usage, &llm.RepairExhaustedError{Purpose: l.purpose, Attempts: attempt, Problems: last}
+			return zero, nil, attempt, usage, &llm.RepairExhaustedError{Purpose: l.purpose, Attempts: attempt, Problems: last}
 		}
 		if len(msg.Content) > 0 {
 			messages = append(messages, msg.ToParam())
 		}
 		messages = append(messages, userMessage(repairMessage(problems)))
 	}
-	return zero, llm.MaxProposeAttempts, usage, &llm.RepairExhaustedError{Purpose: l.purpose, Attempts: llm.MaxProposeAttempts, Problems: last}
+	return zero, nil, llm.MaxProposeAttempts, usage, &llm.RepairExhaustedError{Purpose: l.purpose, Attempts: llm.MaxProposeAttempts, Problems: last}
 }

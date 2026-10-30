@@ -172,6 +172,8 @@ func TestEventTypes(t *testing.T) {
 		{GenerationFailed{Meta: m}, TypeGenerationFailed}, {VariantCreated{Meta: m}, TypeVariantCreated}, {VariantApproved{Meta: m}, TypeVariantApproved},
 		{VariantRejected{Meta: m}, TypeVariantRejected}, {VariantSuperseded{Meta: m}, TypeVariantSuperseded}, {ContentDelta{Meta: m}, TypeContentDelta},
 		{ContextAdded{Meta: m}, TypeContextAdded}, {ContentReset{Meta: m}, TypeContentReset},
+		{CampaignTitled{Meta: m}, TypeCampaignTitled}, {QuestionAsked{Meta: m}, TypeQuestionAsked},
+		{AnswerGiven{Meta: m}, TypeAnswerGiven}, {SummaryPosted{Meta: m}, TypeSummaryPosted},
 	}
 	seen := map[string]bool{}
 	for _, w := range want {

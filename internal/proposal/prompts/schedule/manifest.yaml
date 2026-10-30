@@ -1,6 +1,6 @@
-# Prompt package schedule (D-059, D-070): the send time of every (language, time zone) locale of an audience.
+# Prompt package schedule (D-059, D-070, D-076, D-088): the send time of every (language, time zone) locale of an audience.
 name: schedule
-version: 2.0.0
+version: 3.0.0
 model: claude-haiku-5-5
 effort: low
 system:

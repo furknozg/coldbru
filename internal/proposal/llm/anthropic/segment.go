@@ -10,6 +10,7 @@ import (
 
 	sdk "github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/furknozg/coldbru/internal/proposal/customer"
 	"github.com/furknozg/coldbru/internal/proposal/dsl"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 )
@@ -18,6 +19,8 @@ import (
 const (
 	toolPropose = "propose_segment"
 	toolCount   = "count_audience"
+	toolAsk     = "ask_user"
+	toolSummary = "send_summary"
 )
 
 // Nudges are user messages that follow a failed turn; the call-specific part of the conversation
@@ -27,10 +30,32 @@ const (
 	nudgeCutOff = "Your answer was cut off before it was complete. Think less, keep the filter short, and call propose_segment with the final DSL filter."
 )
 
-// segmentUser is the user message of the segment call: one JSON object (D-060).
+// summaryResult is the tool result of an accepted send_summary.
+const summaryResult = `{"ok":true,"next":"The summary was sent to the marketer. Stop."}`
+
+// segmentUser is the user message of the segment call: one JSON object (D-060, D-088).
 type segmentUser struct {
-	Brief        string   `json:"brief"`
-	ContextNotes []string `json:"context_notes,omitempty"`
+	Brief          string          `json:"brief"`
+	ContextNotes   []string        `json:"context_notes,omitempty"`
+	Clarifications []clarification `json:"clarifications,omitempty"`
+	QuestionsLeft  int             `json:"questions_left"`
+}
+
+// clarification is one answered question of the step, as the user message carries it (D-088).
+type clarification struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+
+func clarificationsOf(in []llm.Clarification) []clarification {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]clarification, len(in))
+	for i, c := range in {
+		out[i] = clarification{Question: c.Question, Answer: c.Answer}
+	}
+	return out
 }
 
 // toolCall is one tool_use of a turn as stored in llm_call.response.
@@ -39,19 +64,27 @@ type toolCall struct {
 	Input json.RawMessage `json:"input"`
 }
 
-// ProposeSegment runs the segment tool loop (D-027, D-069). The model sees the brief, may probe
-// audience sizes with count_audience and ends by calling propose_segment. Each propose_segment is
-// validated by tools; a rejected one returns to the model as an is_error tool_result with every
+// ProposeSegment runs the segment tool loop (D-027, D-069, D-088). The model sees the brief, may
+// probe audience sizes with count_audience and ends by calling propose_segment. Each propose_segment
+// is validated by tools; a rejected one returns to the model as an is_error tool_result with every
 // problem (code, position, near text, suggestions) so it repairs in the same conversation, with
 // its thinking blocks passed back unchanged. At most llm.MaxProposeAttempts propose attempts and
 // llm.MaxSegmentTurns model turns; a refusal stops at once.
+//
+// Two more tools (D-088): ask_user ends the loop with a question for the marketer, unless the step
+// has no question left (in.QuestionsLeft is 0), in which case the call is rejected and counts as
+// a propose attempt; send_summary, called in the same turn as the accepted propose_segment or in
+// the turn after its result, is returned as Summary. A loop that ends without a summary still
+// succeeds. A turn that holds both an accepted propose_segment and ask_user keeps the proposal.
 func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools llm.SegmentTools) (llm.SegmentResult, error) {
 	pkg := c.segment
 	oc, err := outputConfig(pkg)
 	if err != nil {
 		return llm.SegmentResult{}, err
 	}
-	user, err := marshal(segmentUser{Brief: in.Brief, ContextNotes: in.ContextNotes})
+	user, err := marshal(segmentUser{
+		Brief: in.Brief, ContextNotes: in.ContextNotes, Clarifications: clarificationsOf(in.Clarifications), QuestionsLeft: in.QuestionsLeft,
+	})
 	if err != nil {
 		return llm.SegmentResult{}, errorf("segment: encode input: %w", err)
 	}
@@ -61,9 +94,15 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 		proposes int
 		lastErrs []*dsl.Error
 		lastWhy  string
+		// accepted is the proposal of an earlier turn that waits for its summary.
+		accepted *llm.SegmentResult
 	)
 	exhausted := func() error {
 		return &llm.RepairExhaustedError{Attempts: proposes, Errors: lastErrs, Reason: lastWhy}
+	}
+	finish := func(res *llm.SegmentResult, turn int) llm.SegmentResult {
+		res.Turns, res.ProposeAttempts, res.Usage = turn, proposes, usage
+		return *res
 	}
 
 	for turn := 1; turn <= llm.MaxSegmentTurns; turn++ {
@@ -79,15 +118,40 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 			Messages:     messages,
 		})
 		if err != nil {
+			if accepted != nil {
+				// The proposal stands; only the summary turn failed.
+				cl.report(nil, llm.OutcomeAPIError, nil, asAPIError(llm.PurposeSegment, err).Error())
+				return finish(accepted, turn-1), nil
+			}
 			return llm.SegmentResult{}, cl.failed(nil, err)
 		}
 		usage = usage.Add(usageOf(msg.Usage))
 
 		// Branch on the stop reason before reading content.
 		if msg.StopReason == sdk.StopReasonRefusal {
+			if accepted != nil {
+				cl.report(msg, llm.OutcomeRefusal, nil, "refusal in the summary turn")
+				return finish(accepted, turn), nil
+			}
 			return llm.SegmentResult{}, cl.refused(msg)
 		}
 		uses := toolUses(msg)
+
+		if accepted != nil {
+			// The summary turn: only send_summary matters; anything else ends the loop without one.
+			var calls []toolCall
+			for _, tu := range uses {
+				calls = append(calls, toolCall{Name: tu.Name, Input: validJSON(tu.Input)})
+				if tu.Name != toolSummary || accepted.Summary != "" {
+					continue
+				}
+				if md, perr := parseSummaryInput(tu.Input); perr == nil {
+					accepted.Summary = md
+				}
+			}
+			cl.report(msg, llm.OutcomeAccepted, callsJSON(calls), "")
+			return finish(accepted, turn), nil
+		}
 
 		if msg.StopReason == sdk.StopReasonMaxTokens {
 			// A cut-off turn is a failed attempt; there is no retry with a higher limit. A tool_use
@@ -126,15 +190,16 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 		var (
 			results  []sdk.ContentBlockParamUnion
 			calls    []toolCall
-			accepted *llm.SegmentResult
+			question *llm.Question
+			summary  string
 			failure  string
 		)
 		for _, tu := range uses {
 			calls = append(calls, toolCall{Name: tu.Name, Input: validJSON(tu.Input)})
-			dslText, perr := parseDSLInput(tu.Input)
 			switch tu.Name {
 			case toolPropose:
 				proposes++
+				dslText, perr := parseDSLInput(tu.Input)
 				if perr != nil {
 					lastErrs, lastWhy, failure = nil, perr.Error(), perr.Error()
 					results = append(results, sdk.NewToolResultBlock(tu.ID, perr.Error(), true))
@@ -151,9 +216,11 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 					continue
 				}
 				if accepted == nil {
-					accepted = &llm.SegmentResult{DSL: dslText, Filter: f, Preview: p}
+					accepted = &llm.SegmentResult{DSL: dslText, Filter: f, Preview: p, Turn: turn}
 				}
+				results = append(results, sdk.NewToolResultBlock(tu.ID, acceptedResult(p), false))
 			case toolCount:
+				dslText, perr := parseDSLInput(tu.Input)
 				if perr != nil {
 					failure = perr.Error()
 					results = append(results, sdk.NewToolResultBlock(tu.ID, perr.Error(), true))
@@ -171,16 +238,53 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 					continue
 				}
 				results = append(results, sdk.NewToolResultBlock(tu.ID, llm.FormatPreview(p), false))
+			case toolAsk:
+				q, perr := parseQuestionInput(tu.Input)
+				if perr == nil && in.QuestionsLeft <= 0 {
+					perr = errors.New(llm.QuestionLimitProblem)
+				}
+				if perr != nil {
+					// A rejected question costs a propose attempt (D-069, D-088).
+					proposes++
+					lastErrs, lastWhy, failure = nil, perr.Error(), perr.Error()
+					results = append(results, sdk.NewToolResultBlock(tu.ID, perr.Error(), true))
+					continue
+				}
+				if question == nil {
+					question = q
+				}
+				results = append(results, sdk.NewToolResultBlock(tu.ID, `{"ok":true,"next":"The question was sent to the marketer. Stop."}`, false))
+			case toolSummary:
+				md, perr := parseSummaryInput(tu.Input)
+				if perr != nil {
+					failure = perr.Error()
+					results = append(results, sdk.NewToolResultBlock(tu.ID, perr.Error(), true))
+					continue
+				}
+				if summary == "" {
+					summary = md
+				}
+				results = append(results, sdk.NewToolResultBlock(tu.ID, summaryResult, false))
 			default:
 				failure = "unknown tool " + tu.Name
-				results = append(results, sdk.NewToolResultBlock(tu.ID, "unknown tool "+tu.Name+"; use propose_segment or count_audience", true))
+				results = append(results, sdk.NewToolResultBlock(tu.ID, "unknown tool "+tu.Name+"; use propose_segment, count_audience, ask_user or send_summary", true))
 			}
 		}
 
 		if accepted != nil {
 			cl.report(msg, llm.OutcomeAccepted, callsJSON(calls), "")
-			accepted.Turn, accepted.Turns, accepted.ProposeAttempts, accepted.Usage = turn, turn, proposes, usage
-			return *accepted, nil
+			accepted.Summary = summary
+			if summary != "" || turn == llm.MaxSegmentTurns {
+				return finish(accepted, turn), nil
+			}
+			// One more turn for send_summary (D-088); whatever it brings, the loop ends there.
+			messages = append(messages, msg.ToParam(), sdk.NewUserMessage(results...))
+			continue
+		}
+		if question != nil {
+			// ask_user ends the loop: the step waits for the marketer (D-088).
+			cl.report(msg, llm.OutcomeAccepted, callsJSON(calls), "")
+			return finish(&llm.SegmentResult{Question: question}, turn), nil
 		}
 		outcome := llm.OutcomeAccepted
 		if failure != "" {
@@ -193,7 +297,20 @@ func (c *Client) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools 
 		// The assistant turn goes back unchanged, thinking blocks included, then the results.
 		messages = append(messages, msg.ToParam(), sdk.NewUserMessage(results...))
 	}
+	if accepted != nil {
+		return finish(accepted, llm.MaxSegmentTurns), nil
+	}
 	return llm.SegmentResult{}, &llm.TurnLimitError{Turns: llm.MaxSegmentTurns}
+}
+
+// acceptedResult is the tool result of an accepted propose_segment: the audience it selects (the
+// view of llm.FormatPreview) and what to do next.
+func acceptedResult(p *customer.Preview) string {
+	preview := "{}"
+	if p != nil {
+		preview = llm.FormatPreview(p)
+	}
+	return `{"accepted":true,"audience":` + preview + `,"next":"The filter is accepted. Call send_summary once with a short summary for the marketer, then stop."}`
 }
 
 func toolUses(msg *sdk.Message) []sdk.ToolUseBlock {
@@ -233,6 +350,52 @@ func parseDSLInput(raw json.RawMessage) (string, error) {
 		return "", errors.New(`the tool input needs a non-empty "dsl" string`)
 	}
 	return *in.DSL, nil
+}
+
+// parseQuestionInput reads the ask_user input {"question": "...", "options": [...] | null} and
+// checks it with llm.CheckQuestion (D-088).
+func parseQuestionInput(raw json.RawMessage) (*llm.Question, error) {
+	var in struct {
+		Question *string   `json:"question"`
+		Options  *[]string `json:"options"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		return nil, fmt.Errorf(`the tool input must be a JSON object {"question": "<text>", "options": [...] or null}: %v`, err)
+	}
+	if in.Question == nil {
+		return nil, errors.New(`the tool input needs a "question" string`)
+	}
+	q := &llm.Question{Text: *in.Question}
+	if in.Options != nil {
+		q.Options = *in.Options
+	}
+	if problems := llm.CheckQuestion(q); len(problems) > 0 {
+		return nil, errors.New("the question was rejected: " + strings.Join(problems, "; "))
+	}
+	return q, nil
+}
+
+// parseSummaryInput reads the send_summary input {"markdown": "..."} and checks it with
+// llm.CheckSummary (D-088).
+func parseSummaryInput(raw json.RawMessage) (string, error) {
+	var in struct {
+		Markdown *string `json:"markdown"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		return "", fmt.Errorf(`the tool input must be a JSON object {"markdown": "<text>"}: %v`, err)
+	}
+	if in.Markdown == nil {
+		return "", errors.New(`the tool input needs a "markdown" string`)
+	}
+	md, problems := llm.CheckSummary(*in.Markdown)
+	if len(problems) > 0 {
+		return "", errors.New("the summary was rejected: " + strings.Join(problems, "; "))
+	}
+	return md, nil
 }
 
 // validJSON returns raw when it is JSON, otherwise a JSON string holding it, so a record never

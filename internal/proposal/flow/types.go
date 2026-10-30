@@ -229,8 +229,11 @@ type ScheduleContent struct {
 
 // CampaignInfo is a campaign row.
 type CampaignInfo struct {
-	ID        uuid.UUID `json:"id" validate:"required" format:"uuid"`
-	Brief     string    `json:"brief" validate:"required"`
+	ID    uuid.UUID `json:"id" validate:"required" format:"uuid"`
+	Brief string    `json:"brief" validate:"required"`
+	// Title is the short name the pre-screen gave the campaign (D-088); empty until the screen
+	// answered, or when it gave none that passed the checks.
+	Title     string    `json:"title,omitempty" maxLength:"60"`
 	Status    string    `json:"status" validate:"required" enums:"drafting,scheduled,sending,completed,cancelled"`
 	CreatedAt time.Time `json:"created_at" validate:"required" format:"date-time"`
 	UpdatedAt time.Time `json:"updated_at" validate:"required" format:"date-time"`
@@ -271,11 +274,38 @@ type NoteView struct {
 	CreatedAt time.Time  `json:"created_at" validate:"required" format:"date-time"`
 }
 
+// Chat message kinds (D-088): the agent's questions and summaries, the marketer's answers.
+const (
+	MessageKindQuestion = "question"
+	MessageKindAnswer   = "answer"
+	MessageKindSummary  = "summary"
+)
+
+// ChatMessageView is a chat_message row (D-088): a clarifying question of the agent, the
+// marketer's answer to one, or a summary the agent posted when a step was generated.
+type ChatMessageView struct {
+	ID         uuid.UUID `json:"id" validate:"required" format:"uuid"`
+	CampaignID uuid.UUID `json:"campaign_id" validate:"required" format:"uuid"`
+	// StepID is the step the message belongs to.
+	StepID *uuid.UUID `json:"step_id,omitempty" format:"uuid"`
+	Kind   string     `json:"kind" validate:"required" enums:"question,answer,summary"`
+	// Body is the text: the question, the answer, or the summary in markdown.
+	Body string `json:"body" validate:"required"`
+	// Options are the suggested answers of a question (2 to 4), when it has any.
+	Options []string `json:"options,omitempty"`
+	// ReplyTo is the question an answer belongs to.
+	ReplyTo   *uuid.UUID `json:"reply_to,omitempty" format:"uuid"`
+	CreatedAt time.Time  `json:"created_at" validate:"required" format:"date-time"`
+}
+
 // StepView is a current step with its live variants and the state of its generation.
 type StepView struct {
 	StepInfo
 	// Variants are the draft, approved and rejected variants, oldest first.
 	Variants []VariantView `json:"variants" validate:"required"`
+	// PendingQuestion is the latest question of the agent in this step that has no answer yet
+	// (D-088): the step waits for POST /messages/{id}/answer. Nil when there is none.
+	PendingQuestion *ChatMessageView `json:"pending_question,omitempty"`
 	// Generating: a generation of this step is queued or running in this process.
 	Generating bool `json:"generating" validate:"required"`
 	// Failed: the last generation of the step failed (a refusal, an exhausted repair loop, an
@@ -293,6 +323,8 @@ type CampaignView struct {
 	Steps []StepView `json:"steps" validate:"required"`
 	// Notes are all context notes, oldest first.
 	Notes []NoteView `json:"notes" validate:"required"`
+	// Messages are all chat messages of the campaign, oldest first (D-088).
+	Messages []ChatMessageView `json:"messages" validate:"required"`
 	// Cost is the estimated cost of the live content variants (D-071).
 	Cost CostSummary `json:"cost" validate:"required"`
 }

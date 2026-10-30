@@ -25,6 +25,8 @@ type Content struct {
 	// GenerateFunc, when set, replaces the default behaviour. It runs before the record is
 	// reported; return the content and an error as the real generator would.
 	GenerateFunc func(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error)
+	// Summary is the summary every default answer carries ("[fake] summary" when empty).
+	Summary string
 	// ValidateFunc, when set, replaces the default Validate, which accepts any JSON object with a
 	// non-empty "text" string and returns it unchanged.
 	ValidateFunc func(req flow.ContentRequest, content json.RawMessage) (json.RawMessage, error)
@@ -39,8 +41,9 @@ var _ flow.ContentGenerator = (*Content)(nil)
 // fakeSHA is a well-formed prompt hash for the records the fake reports.
 var fakeSHA = strings.Repeat("0", 64)
 
-// Generate records req and returns the scripted or default content.
-func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error) {
+// Generate records req and returns the scripted or default content. The summary is Summary, or
+// "[fake] summary <language>/<channel>".
+func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (flow.Generated, error) {
 	c.mu.Lock()
 	c.requests = append(c.requests, req)
 	if c.counts == nil {
@@ -75,7 +78,14 @@ func (c *Content) Generate(ctx context.Context, req flow.ContentRequest, onDelta
 		rec.Outcome, rec.Response, rec.Error = llm.OutcomeAPIError, nil, err.Error()
 	}
 	llm.Report(ctx, rec)
-	return raw, err
+	if err != nil {
+		return flow.Generated{}, err
+	}
+	summary := c.Summary
+	if summary == "" {
+		summary = "[fake] summary " + key
+	}
+	return flow.Generated{Content: raw, Summary: summary}, nil
 }
 
 // Validate accepts a JSON object with a non-empty "text" string and returns it unchanged, or runs

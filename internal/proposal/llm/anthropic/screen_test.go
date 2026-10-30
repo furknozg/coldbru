@@ -12,14 +12,14 @@ import (
 )
 
 func screenReply(verdict, reason string) llmtest.Response {
-	return llmtest.JSON(msg(llmtest.Text(`{"verdict":"` + verdict + `","reason":"` + reason + `"}`)))
+	return llmtest.JSON(msg(llmtest.Text(`{"verdict":"` + verdict + `","reason":"` + reason + `","title":"Kampanya"}`)))
 }
 
 func TestScreenAllow(t *testing.T) {
 	t.Parallel()
 	srv := llmtest.NewMessagesServer(t, llmtest.JSON(llmtest.Message{
 		Model:  "claude-haiku-5-5",
-		Blocks: []llmtest.Block{llmtest.Text(`{"verdict":"allow","reason":"Sıradan bir pazarlama isteği."}`)},
+		Blocks: []llmtest.Block{llmtest.Text(`{"verdict":"allow","reason":"Sıradan bir pazarlama isteği.","title":" İstanbul sepet hatırlatması %30 "}`)},
 		Usage:  llmtest.Usage{Input: 120, Output: 18, CacheRead: 100, CacheCreation: 7},
 	}))
 	ctx, col := withRecorder(t)
@@ -27,8 +27,8 @@ func TestScreenAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Screen: %v", err)
 	}
-	if res.Verdict != llm.VerdictAllow || res.Reason != "Sıradan bir pazarlama isteği." {
-		t.Errorf("result = %+v", res)
+	if res.Verdict != llm.VerdictAllow || res.Reason != "Sıradan bir pazarlama isteği." || res.Title != "İstanbul sepet hatırlatması %30" {
+		t.Errorf("result = %+v (the title is trimmed, D-088)", res)
 	}
 	// The brief travels as one JSON object in the user message, not in the system text.
 	body := srv.Requests()[0].JSON()
@@ -43,7 +43,7 @@ func TestScreenAllow(t *testing.T) {
 	r := recs[0]
 	if r.Purpose != llm.PurposeScreen || r.Outcome != llm.OutcomeAccepted || r.Attempt != 1 || r.Model != "claude-haiku-5-5" ||
 		r.StopReason != "end_turn" || r.Usage != (llm.Usage{InputTokens: 120, OutputTokens: 18, CacheReadTokens: 100, CacheCreationTokens: 7}) ||
-		r.Prompt.Name != "screen" || r.Prompt.Version != "1.0.0" || len(r.Prompt.SHA256) != 64 || r.Error != "" {
+		r.Prompt.Name != "screen" || r.Prompt.Version != "2.0.0" || len(r.Prompt.SHA256) != 64 || r.Error != "" {
 		t.Errorf("record = %+v", r)
 	}
 	if !strings.Contains(string(r.Response), `"allow"`) {
@@ -205,4 +205,38 @@ func TestScreenCancelledContext(t *testing.T) {
 	if !errors.As(err, &ae) || ae.Status != 0 || !ae.Retryable() || !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want an APIError wrapping context.Canceled", err)
 	}
+}
+
+// A blocked brief carries a title too (the list shows cancelled campaigns), and an answer without
+// one is unusable like one without a verdict (D-088).
+func TestScreenTitle(t *testing.T) {
+	t.Parallel()
+	t.Run("block keeps the title", func(t *testing.T) {
+		t.Parallel()
+		srv := llmtest.NewMessagesServer(t, screenReplyRaw(`{"verdict":"block","reason":"Rule 2.","title":"Herkese gönderim isteği"}`))
+		res, err := newClient(t, srv).Screen(t.Context(), "b")
+		if !errors.Is(err, llm.ErrScreenBlocked) || res.Title != "Herkese gönderim isteği" || res.Verdict != llm.VerdictBlock {
+			t.Errorf("res = %+v, err = %v", res, err)
+		}
+	})
+	t.Run("missing title", func(t *testing.T) {
+		t.Parallel()
+		srv := llmtest.NewMessagesServer(t, screenReplyRaw(`{"verdict":"allow","reason":"ok"}`))
+		_, err := newClient(t, srv).Screen(t.Context(), "b")
+		if !errors.Is(err, llm.ErrInvalidOutput) || !strings.Contains(err.Error(), "title") {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("over-long title is passed on for the flow to drop", func(t *testing.T) {
+		t.Parallel()
+		long := strings.Repeat("a", 61)
+		srv := llmtest.NewMessagesServer(t, screenReplyRaw(`{"verdict":"allow","reason":"ok","title":"`+long+`"}`))
+		res, err := newClient(t, srv).Screen(t.Context(), "b")
+		if err != nil || res.Title != long {
+			t.Errorf("res = %+v, err = %v", res, err)
+		}
+		if _, cerr := llm.CheckTitle(res.Title); cerr == nil {
+			t.Error("CheckTitle accepted 61 characters")
+		}
+	})
 }

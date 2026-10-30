@@ -44,6 +44,11 @@ func (s *Service) runStart(ctx context.Context, campaignID uuid.UUID) {
 	cctx, col := collect(ctx)
 	res, err := s.llm.Screen(cctx, camp.Brief)
 	s.persistLoose(ctx, campaignID, nil, col.Records())
+	if ctx.Err() == nil {
+		// The title is stored for an allowed and a blocked brief alike (the list shows both); a
+		// title that fails the checks is dropped, never a reason to fail the screen (D-088).
+		s.setTitle(ctx, campaignID, res.Title)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -82,6 +87,31 @@ func (s *Service) runStart(ctx context.Context, campaignID uuid.UUID) {
 	done := s.markGenerating(step.ID)
 	defer done()
 	s.runFill(ctx, campaignID, step.ID)
+}
+
+// setTitle stores the title the screen gave the campaign and publishes CampaignTitled (D-088). An
+// empty or invalid title is logged and skipped.
+func (s *Service) setTitle(ctx context.Context, campaignID uuid.UUID, title string) {
+	if strings.TrimSpace(title) == "" {
+		return
+	}
+	title, err := llm.CheckTitle(title)
+	if err != nil {
+		s.log.Warn("flow: dropping the campaign title the screen gave", "campaign", campaignID, "error", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+	err = s.inTx(ctx, campaignID, func(t *txn, camp store.Campaign) error {
+		if _, err := t.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: camp.ID, Title: text(title)}); err != nil {
+			return err
+		}
+		t.emit(CampaignTitled{Meta: s.meta(camp.ID), Title: title})
+		return nil
+	})
+	if err != nil {
+		s.log.Error("flow: cannot store the campaign title", "campaign", campaignID, "error", err)
+	}
 }
 
 // cancelCampaign moves a drafting campaign to cancelled and publishes why (D-033, D-069).
@@ -146,6 +176,58 @@ type fillCtx struct {
 	missing   []Slot
 	// rejected maps a slot to its latest rejected variant, whose reason goes to the model.
 	rejected map[Slot]store.ProposalVariant
+	// clarifications are the answered questions of the step, oldest first (D-088); questions is
+	// how many questions the step asked, answered or not; answers is how many answers the step
+	// had, to notice one that arrived while the model was working (summaries posted by this very
+	// generation do not count).
+	clarifications []llm.Clarification
+	questions      int
+	answers        int
+}
+
+// questionsLeft is how many questions the step may still ask (D-088).
+func (fc *fillCtx) questionsLeft() int {
+	return max(llm.MaxQuestionsPerStep-fc.questions, 0)
+}
+
+// chatOf reads the chat of a step: the answered questions as clarifications, the number of
+// questions and of answers.
+func chatOf(ctx context.Context, q *store.Queries, stepID uuid.UUID) (clar []llm.Clarification, questions, answers int, err error) {
+	msgs, err := q.ListChatMessagesOfStep(ctx, &stepID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	byQuestion := map[uuid.UUID]string{}
+	for _, m := range msgs {
+		if m.Kind == MessageKindAnswer && m.ReplyTo != nil {
+			byQuestion[*m.ReplyTo] = m.Body
+		}
+	}
+	for _, m := range msgs {
+		if m.Kind != MessageKindQuestion {
+			continue
+		}
+		questions++
+		if a, ok := byQuestion[m.ID]; ok {
+			clar = append(clar, llm.Clarification{Question: m.Body, Answer: a})
+		}
+	}
+	return clar, questions, len(byQuestion), nil
+}
+
+// countAnswers counts the answers of a step.
+func countAnswers(ctx context.Context, q *store.Queries, stepID uuid.UUID) (int, error) {
+	msgs, err := q.ListChatMessagesOfStep(ctx, &stepID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, m := range msgs {
+		if m.Kind == MessageKindAnswer {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // approvedContent decodes the content of the approved variant of the live step of kind into out.
@@ -236,9 +318,14 @@ func (s *Service) loadFill(ctx context.Context, stepID uuid.UUID) (*fillCtx, err
 	if err != nil {
 		return nil, err
 	}
+	clar, questions, answers, err := chatOf(ctx, s.q, step.ID)
+	if err != nil {
+		return nil, err
+	}
 	fc := &fillCtx{
 		campaign: camp, step: step, noteCount: len(notes), live: live, audience: aud, plan: plan,
 		expected: expected, missing: missingSlots(expected, live), rejected: map[Slot]store.ProposalVariant{},
+		clarifications: clar, questions: questions, answers: answers,
 	}
 	for _, n := range notes {
 		fc.notes = append(fc.notes, n.Body)
@@ -300,14 +387,20 @@ func (s *Service) runFill(ctx context.Context, campaignID, stepID uuid.UUID) {
 func (s *Service) genAudience(ctx context.Context, fc *fillCtx) {
 	slot := Slot{}
 	cctx, col := collect(ctx)
-	res, err := s.llm.ProposeSegment(cctx, llm.SegmentInput{Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(slot)}, s.tools)
+	res, err := s.llm.ProposeSegment(cctx, llm.SegmentInput{
+		Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(slot), Clarifications: fc.clarifications, QuestionsLeft: fc.questionsLeft(),
+	}, s.tools)
 	if err != nil {
 		s.failed(ctx, fc, slot, err, col.Records())
 		return
 	}
+	if res.Question != nil {
+		s.askQuestion(ctx, fc, slot, res.Question, col)
+		return
+	}
 	content, err := NewAudienceContent(res.DSL, res.Filter, res.Preview)
 	if err == nil {
-		err = s.storeVariants(ctx, fc, []newVariant{{slot: slot}}, col, content)
+		err = s.storeVariants(ctx, fc, []newVariant{{slot: slot, summary: res.Summary}}, col, content)
 	}
 	if err != nil {
 		s.failed(ctx, fc, slot, err, col.Records())
@@ -320,14 +413,19 @@ func (s *Service) genPlan(ctx context.Context, fc *fillCtx) {
 	cctx, col := collect(ctx)
 	res, err := s.llm.ProposeChannelPlan(cctx, llm.ChannelPlanInput{
 		Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(slot), Coverage: aud.Preview(),
+		Clarifications: fc.clarifications, QuestionsLeft: fc.questionsLeft(),
 	}, func(p llm.ChannelPlan) error { return llm.NewProblemsError(PlanProblems(p, aud)) })
 	if err != nil {
 		s.failed(ctx, fc, slot, err, col.Records())
 		return
 	}
+	if res.Question != nil {
+		s.askQuestion(ctx, fc, slot, res.Question, col)
+		return
+	}
 	content, err := NewPlanContent(res.Plan, aud)
 	if err == nil {
-		err = s.storeVariants(ctx, fc, []newVariant{{slot: slot}}, col, content)
+		err = s.storeVariants(ctx, fc, []newVariant{{slot: slot, summary: res.Summary}}, col, content)
 	}
 	if err != nil {
 		s.failed(ctx, fc, slot, err, col.Records())
@@ -343,11 +441,16 @@ func (s *Service) genSchedule(ctx context.Context, fc *fillCtx) {
 	cctx, col := collect(ctx)
 	res, err := s.llm.ProposeSchedule(cctx, llm.ScheduleInput{
 		Brief: fc.campaign.Brief, ContextNotes: fc.modelNotes(fc.missing...), Locales: locales, Now: s.clock.Now(),
+		Clarifications: fc.clarifications, QuestionsLeft: fc.questionsLeft(),
 	}, func(e []llm.ScheduleEntry) error {
 		return llm.NewProblemsError(ScheduleProblems(e, locales, s.clock.Now()))
 	})
 	if err != nil {
 		s.failed(ctx, fc, Slot{}, err, col.Records())
+		return
+	}
+	if res.Question != nil {
+		s.askQuestion(ctx, fc, Slot{}, res.Question, col)
 		return
 	}
 	byLocale := map[Slot]llm.ScheduleEntry{}
@@ -356,13 +459,18 @@ func (s *Service) genSchedule(ctx context.Context, fc *fillCtx) {
 	}
 	items := make([]newVariant, 0, len(fc.missing))
 	contents := make([]any, 0, len(fc.missing))
-	for _, sl := range fc.missing {
+	for i, sl := range fc.missing {
 		e, ok := byLocale[sl]
 		if !ok {
 			s.failed(ctx, fc, sl, fmt.Errorf("the model returned no entry for %s", sl), col.Records())
 			return
 		}
-		items = append(items, newVariant{slot: sl})
+		item := newVariant{slot: sl}
+		if i == 0 {
+			// One summary covers every locale; it is posted without a slot.
+			item.summary, item.summarySlot = res.Summary, &Slot{}
+		}
+		items = append(items, item)
 		contents = append(contents, ScheduleContent{SendAt: e.SendAt, Rationale: e.Rationale})
 	}
 	if err := s.storeVariants(ctx, fc, items, col, contents...); err != nil {
@@ -388,12 +496,12 @@ func (s *Service) genContent(ctx context.Context, fc *fillCtx) {
 			req.RejectionReason = v.RejectionReason.String
 		}
 		cctx, col := collect(ctx)
-		raw, err := s.content.Generate(cctx, req, s.deltaSink(fc.campaign.ID, fc.step.ID, slot))
+		gen, err := s.content.Generate(cctx, req, s.deltaSink(fc.campaign.ID, fc.step.ID, slot))
 		if err == nil {
-			err = checkObject(raw)
+			err = checkObject(gen.Content)
 		}
 		if err == nil {
-			err = s.storeVariants(ctx, fc, []newVariant{{slot: slot}}, col, json.RawMessage(raw))
+			err = s.storeVariants(ctx, fc, []newVariant{{slot: slot, summary: gen.Summary}}, col, json.RawMessage(gen.Content))
 			if errors.Is(err, errStale) {
 				return // the step changed under us; the job that changed it regenerates
 			}
@@ -446,11 +554,88 @@ func checkObject(raw json.RawMessage) error {
 	return nil
 }
 
-type newVariant struct{ slot Slot }
+// newVariant is one variant to store, with the agent's summary of it when it gave one (D-088): the
+// summary is posted in the chat under summarySlot, or the variant's slot when summarySlot is nil.
+type newVariant struct {
+	slot        Slot
+	summary     string
+	summarySlot *Slot
+}
 
 // errStale reports that the result of a generation was dropped because the state it was made for
-// changed: the step is no longer open, a note arrived, or the slot is filled.
+// changed: the step is no longer open, a note or an answer arrived, or the slot is filled.
 var errStale = errors.New("flow: generation result is stale")
+
+// stale reports whether the state a generation worked from changed under it.
+func (fc *fillCtx) stale(ctx context.Context, q *store.Queries, camp store.Campaign, step store.ProposalStep) (bool, error) {
+	if camp.Status != CampaignStatusDrafting || step.Status != StepStatusOpen {
+		return true, nil
+	}
+	notes, err := q.ListContextNotes(ctx, camp.ID)
+	if err != nil {
+		return false, err
+	}
+	answers, err := countAnswers(ctx, q, step.ID)
+	if err != nil {
+		return false, err
+	}
+	return len(notes) != fc.noteCount || answers != fc.answers, nil
+}
+
+// askQuestion stores the agent's question as a chat message, publishes QuestionAsked and leaves
+// the step open without variants: it waits for Answer (D-088). The call's records are stored in
+// the same transaction. A question beyond llm.MaxQuestionsPerStep is not stored: the generation is
+// reported failed instead (the adapters refuse it earlier, this is the backstop). A stale state
+// drops the question like storeVariants drops a variant.
+func (s *Service) askQuestion(ctx context.Context, fc *fillCtx, slot Slot, q *llm.Question, col *llm.Collector) {
+	if fc.questions >= llm.MaxQuestionsPerStep {
+		s.failed(ctx, fc, slot, fmt.Errorf("the model asked a question after the %d allowed for this step", llm.MaxQuestionsPerStep), col.Records())
+		return
+	}
+	if problems := llm.CheckQuestion(q); len(problems) > 0 {
+		s.failed(ctx, fc, slot, fmt.Errorf("the model asked an invalid question: %s", strings.Join(problems, "; ")), col.Records())
+		return
+	}
+	var options []byte
+	if q.Options != nil {
+		b, err := json.Marshal(q.Options)
+		if err != nil {
+			s.failed(ctx, fc, slot, fmt.Errorf("encode the question options: %w", err), col.Records())
+			return
+		}
+		options = b
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+	recs := col.Records()
+	stale := false
+	err := s.inTx(ctx, fc.campaign.ID, func(t *txn, camp store.Campaign) error {
+		step, err := t.q.GetStep(ctx, fc.step.ID)
+		if err != nil {
+			return err
+		}
+		if stale, err = fc.stale(ctx, t.q, camp, step); err != nil {
+			return err
+		}
+		if !stale {
+			m, err := t.q.InsertChatMessage(ctx, store.InsertChatMessageParams{
+				CampaignID: camp.ID, StepID: &step.ID, Kind: MessageKindQuestion, Body: q.Text, Options: options,
+			})
+			if err != nil {
+				return err
+			}
+			t.emit(QuestionAsked{Meta: s.meta(camp.ID), StepID: step.ID, MessageID: m.ID, Question: q.Text, Options: q.Options})
+		}
+		return t.persistCalls(ctx, s, camp.ID, &step.ID, recs, nil)
+	})
+	if err != nil {
+		s.recordFailure(fc.campaign.ID, fc.step.ID, fc.step.Kind, slot, err)
+		return
+	}
+	if stale {
+		s.log.Info("flow: dropped a stale question", "campaign", fc.campaign.ID, "step", fc.step.ID)
+	}
+}
 
 // storeVariants stores the generated variants of one model call together with the call's records
 // in one transaction (D-060, D-070). contents has one value per item, or one for a single item.
@@ -482,11 +667,9 @@ func (s *Service) storeVariants(ctx context.Context, fc *fillCtx, items []newVar
 		if err != nil {
 			return err
 		}
-		notes, err := t.q.ListContextNotes(ctx, camp.ID)
-		if err != nil {
+		if stale, err = fc.stale(ctx, t.q, camp, step); err != nil {
 			return err
 		}
-		stale = camp.Status != CampaignStatusDrafting || step.Status != StepStatusOpen || len(notes) != fc.noteCount
 		var made []store.ProposalVariant
 		if !stale {
 			live, err := t.q.ListLiveVariants(ctx, step.ID)
@@ -517,6 +700,15 @@ func (s *Service) storeVariants(ctx context.Context, fc *fillCtx, items []newVar
 				t.emit(VariantCreated{
 					Meta: s.meta(camp.ID), StepID: step.ID, VariantID: v.ID, Kind: step.Kind, Slot: it.slot, Content: v.Content,
 				})
+				if it.summary != "" {
+					sl := it.slot
+					if it.summarySlot != nil {
+						sl = *it.summarySlot
+					}
+					if err := t.postSummary(ctx, s, camp.ID, step.ID, sl, it.summary); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		var accepted *uuid.UUID
@@ -532,6 +724,23 @@ func (s *Service) storeVariants(ctx context.Context, fc *fillCtx, items []newVar
 		s.log.Info("flow: dropped a stale generation result", "campaign", fc.campaign.ID, "step", fc.step.ID)
 		return errStale
 	}
+	return nil
+}
+
+// postSummary stores the agent's summary of a generated variant as a chat message and emits
+// SummaryPosted (D-088). A summary that fails llm.CheckSummary is logged and dropped; the variant
+// stands.
+func (t *txn) postSummary(ctx context.Context, s *Service, campaign, step uuid.UUID, slot Slot, markdown string) error {
+	md, problems := llm.CheckSummary(markdown)
+	if len(problems) > 0 {
+		s.log.Warn("flow: dropping the summary the model gave", "campaign", campaign, "step", step, "problems", strings.Join(problems, "; "))
+		return nil
+	}
+	m, err := t.q.InsertChatMessage(ctx, store.InsertChatMessageParams{CampaignID: campaign, StepID: &step, Kind: MessageKindSummary, Body: md})
+	if err != nil {
+		return err
+	}
+	t.emit(SummaryPosted{Meta: s.meta(campaign), StepID: step, MessageID: m.ID, Slot: slot, Markdown: md})
 	return nil
 }
 

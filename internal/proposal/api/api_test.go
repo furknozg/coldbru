@@ -227,6 +227,8 @@ func TestErrorMapping(t *testing.T) {
 		{"schedule not approved inside a failed confirmation", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrScheduleNotApproved), 409, api.CodeScheduleNotApproved},
 		{"not drafting inside a failed confirmation", fmt.Errorf("%w: %w", flow.ErrConfirm, flow.ErrNotDrafting), 409, api.CodeCampaignNotDrafting},
 		{"not cancellable", flow.ErrNotCancellable, 409, api.CodeNotCancellable},
+		{"not a question", flow.ErrNotQuestion, 409, api.CodeNotQuestion},
+		{"already answered", flow.ErrAlreadyAnswered, 409, api.CodeAlreadyAnswered},
 		{"invalid input", fmt.Errorf("%w: a rejection needs a reason", flow.ErrInvalidInput), 422, api.CodeInvalidInput},
 		{"confirm failed", fmt.Errorf("%w: %w", flow.ErrConfirm, errors.New("outbox: connection refused")), 502, api.CodeConfirmFailed},
 		{"unknown", errors.New("pq: password authentication failed for user proposal_svc"), 500, api.CodeInternal},
@@ -584,5 +586,52 @@ func TestCancelEndpoint(t *testing.T) {
 			h, _ := newRouter(t, f)
 			wantProblem(t, call(t, h, http.MethodPost, path, "", ""), tt.status, tt.code)
 		})
+	}
+}
+
+func TestAnswer(t *testing.T) {
+	t.Parallel()
+	f := &fakeFlow{}
+	h, _ := newRouter(t, f)
+	path := "/messages/" + otherID.String() + "/answer"
+	rec := postJSON(t, h, path, `{"answer":"  Yalnızca son 30 günde alışveriş yapanlar  "}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	// The body is the campaign the answer's message named.
+	if v := decodeAs[flow.CampaignView](t, rec); v.ID != campID {
+		t.Errorf("view = %+v", v)
+	}
+	if got := f.calls(); len(got) != 2 || got[0] != "answer "+otherID.String()+" Yalnızca son 30 günde alışveriş yapanlar" || got[1] != "get "+campID.String() {
+		t.Errorf("calls = %q: the answer must arrive trimmed, then the view is read", got)
+	}
+	for body, want := range map[string]string{
+		`{}`:            "answer: must not be empty",
+		`{"answer":""}`: "answer: must not be empty",
+		`{"answer":"` + strings.Repeat("x", api.MaxAnswerChars+1) + `"}`: "at most 1000",
+		`{"answer":"x","option":1}`:                                      "unknown field",
+	} {
+		p := wantProblem(t, postJSON(t, h, path, body), 422, api.CodeInvalidRequest)
+		if len(p.Problems) == 0 || !strings.Contains(p.Problems[0], want) {
+			t.Errorf("body %.40s: problems = %q, want %q", body, p.Problems, want)
+		}
+	}
+	wantProblem(t, call(t, h, http.MethodPost, path, "", ""), 415, api.CodeUnsupportedMedia)
+	wantProblem(t, postJSON(t, h, "/messages/not-a-uuid/answer", `{"answer":"x"}`), 400, api.CodeInvalidID)
+	// Errors of the flow.
+	for err, want := range map[error]struct {
+		status int
+		code   string
+	}{
+		flow.ErrNotFound:        {404, api.CodeNotFound},
+		flow.ErrNotQuestion:     {409, api.CodeNotQuestion},
+		flow.ErrAlreadyAnswered: {409, api.CodeAlreadyAnswered},
+		flow.ErrNotOpen:         {409, api.CodeStepNotOpen},
+		flow.ErrNotDrafting:     {409, api.CodeCampaignNotDrafting},
+	} {
+		f.answer = func(context.Context, uuid.UUID, string) (flow.ChatMessageView, error) {
+			return flow.ChatMessageView{}, err
+		}
+		wantProblem(t, postJSON(t, h, path, `{"answer":"x"}`), want.status, want.code)
 	}
 }

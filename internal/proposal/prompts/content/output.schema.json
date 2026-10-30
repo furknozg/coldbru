@@ -52,8 +52,12 @@
         {"type": "null"}
       ],
       "description": "The email when the requested channel is email, otherwise null."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One sentence for the marketer, in the language of the brief, on the tone and the offer of the text; markdown allowed (bold), no links, no HTML, no headings."
     }
   },
-  "required": ["sms", "email"],
+  "required": ["sms", "email", "summary"],
   "additionalProperties": false
 }

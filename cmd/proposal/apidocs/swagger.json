@@ -1,6 +1,21 @@
 {
     "components": {
         "schemas": {
+            "api.AnswerRequest": {
+                "properties": {
+                    "answer": {
+                        "description": "Answer is the marketer's answer to the agent's question: one of its options or free text. At most 1000 characters.",
+                        "example": "Yalnızca son 30 günde alışveriş yapanlar",
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "answer"
+                ],
+                "type": "object"
+            },
             "api.CampaignList": {
                 "properties": {
                     "items": {
@@ -82,6 +97,9 @@
             },
             "api.EventCatalog": {
                 "properties": {
+                    "answer_given": {
+                        "$ref": "#/components/schemas/flow.AnswerGiven"
+                    },
                     "campaign_cancelled": {
                         "$ref": "#/components/schemas/flow.CampaignCancelled"
                     },
@@ -90,6 +108,9 @@
                     },
                     "campaign_status": {
                         "$ref": "#/components/schemas/flow.CampaignStatus"
+                    },
+                    "campaign_titled": {
+                        "$ref": "#/components/schemas/flow.CampaignTitled"
                     },
                     "content_delta": {
                         "$ref": "#/components/schemas/flow.ContentDelta"
@@ -109,6 +130,9 @@
                     "ping": {
                         "$ref": "#/components/schemas/api.PingEvent"
                     },
+                    "question_asked": {
+                        "$ref": "#/components/schemas/flow.QuestionAsked"
+                    },
                     "screen_result": {
                         "$ref": "#/components/schemas/flow.ScreenResult"
                     },
@@ -124,6 +148,9 @@
                     "step_superseded": {
                         "$ref": "#/components/schemas/flow.StepSuperseded"
                     },
+                    "summary_posted": {
+                        "$ref": "#/components/schemas/flow.SummaryPosted"
+                    },
                     "variant_approved": {
                         "$ref": "#/components/schemas/flow.VariantApproved"
                     },
@@ -138,20 +165,24 @@
                     }
                 },
                 "required": [
+                    "answer_given",
                     "campaign_cancelled",
                     "campaign_confirmed",
                     "campaign_status",
+                    "campaign_titled",
                     "content_delta",
                     "content_reset",
                     "context_added",
                     "generation_failed",
                     "generation_started",
                     "ping",
+                    "question_asked",
                     "screen_result",
                     "snapshot",
                     "step_approved",
                     "step_opened",
                     "step_superseded",
+                    "summary_posted",
                     "variant_approved",
                     "variant_created",
                     "variant_rejected",
@@ -255,6 +286,42 @@
                 ],
                 "type": "object"
             },
+            "flow.AnswerGiven": {
+                "properties": {
+                    "answer": {
+                        "type": "string"
+                    },
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "message_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "question_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "answer",
+                    "at",
+                    "campaign_id",
+                    "message_id",
+                    "question_id",
+                    "step_id"
+                ],
+                "type": "object"
+            },
             "flow.CampaignCancelled": {
                 "properties": {
                     "at": {
@@ -324,6 +391,11 @@
                         ],
                         "type": "string"
                     },
+                    "title": {
+                        "description": "Title is the short name the pre-screen gave the campaign (D-088); empty until the screen\nanswered, or when it gave none that passed the checks.",
+                        "maxLength": 60,
+                        "type": "string"
+                    },
                     "updated_at": {
                         "format": "date-time",
                         "type": "string"
@@ -363,6 +435,27 @@
                 ],
                 "type": "object"
             },
+            "flow.CampaignTitled": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "title"
+                ],
+                "type": "object"
+            },
             "flow.CampaignView": {
                 "properties": {
                     "brief": {
@@ -379,6 +472,14 @@
                     "id": {
                         "format": "uuid",
                         "type": "string"
+                    },
+                    "messages": {
+                        "description": "Messages are all chat messages of the campaign, oldest first (D-088).",
+                        "items": {
+                            "$ref": "#/components/schemas/flow.ChatMessageView"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     },
                     "notes": {
                         "description": "Notes are all context notes, oldest first.",
@@ -406,6 +507,11 @@
                         "type": "array",
                         "uniqueItems": false
                     },
+                    "title": {
+                        "description": "Title is the short name the pre-screen gave the campaign (D-088); empty until the screen\nanswered, or when it gave none that passed the checks.",
+                        "maxLength": 60,
+                        "type": "string"
+                    },
                     "updated_at": {
                         "format": "date-time",
                         "type": "string"
@@ -416,10 +522,65 @@
                     "cost",
                     "created_at",
                     "id",
+                    "messages",
                     "notes",
                     "status",
                     "steps",
                     "updated_at"
+                ],
+                "type": "object"
+            },
+            "flow.ChatMessageView": {
+                "properties": {
+                    "body": {
+                        "description": "Body is the text: the question, the answer, or the summary in markdown.",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "kind": {
+                        "enum": [
+                            "question",
+                            "answer",
+                            "summary"
+                        ],
+                        "type": "string"
+                    },
+                    "options": {
+                        "description": "Options are the suggested answers of a question (2 to 4), when it has any.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "reply_to": {
+                        "description": "ReplyTo is the question an answer belongs to.",
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "description": "StepID is the step the message belongs to.",
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "body",
+                    "campaign_id",
+                    "created_at",
+                    "id",
+                    "kind"
                 ],
                 "type": "object"
             },
@@ -639,6 +800,44 @@
                     "body",
                     "created_at",
                     "id"
+                ],
+                "type": "object"
+            },
+            "flow.QuestionAsked": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "message_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "options": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "question": {
+                        "type": "string"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "message_id",
+                    "question",
+                    "step_id"
                 ],
                 "type": "object"
             },
@@ -908,6 +1107,10 @@
                         "type": "array",
                         "uniqueItems": false
                     },
+                    "pending_question": {
+                        "$ref": "#/components/schemas/flow.ChatMessageView",
+                        "description": "PendingQuestion is the latest question of the agent in this step that has no answer yet\n(D-088): the step waits for POST /messages/{id}/answer. Nil when there is none."
+                    },
                     "status": {
                         "enum": [
                             "open",
@@ -938,6 +1141,41 @@
                     "status",
                     "variants",
                     "version"
+                ],
+                "type": "object"
+            },
+            "flow.SummaryPosted": {
+                "properties": {
+                    "at": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "markdown": {
+                        "type": "string"
+                    },
+                    "message_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "slot": {
+                        "$ref": "#/components/schemas/flow.Slot"
+                    },
+                    "step_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "at",
+                    "campaign_id",
+                    "markdown",
+                    "message_id",
+                    "slot",
+                    "step_id"
                 ],
                 "type": "object"
             },
@@ -1733,7 +1971,7 @@
         },
         "/campaigns/{id}/events": {
             "get": {
-                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nLifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).\n\nThe response is not JSON; the schema below only documents the data of each event.",
+                "description": "Opens a text/event-stream. The first event is `snapshot`: the whole campaign view, the same JSON as GET /campaigns/{id}. After it come the events of the flow, each as `event: \u003cname\u003e` and `data: \u003cJSON\u003e`, in the order they happened; the data of every event is documented as a property of api.EventCatalog. A `ping` event is sent every 15 seconds.\n\nThe server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.\n\nEvents of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.\n\nChat events (D-088): `campaign_titled` (the pre-screen named the campaign), `question_asked` (the agent asked a clarifying question instead of proposing; the step waits for POST /messages/{message_id}/answer and shows it as `pending_question`), `answer_given` (the marketer answered; the step is generated again) and `summary_posted` (the agent summarised a generated step in markdown; `slot` names the content slot, and is empty for the other steps).\n\nLifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).\n\nThe response is not JSON; the schema below only documents the data of each event.",
                 "parameters": [
                     {
                         "description": "Campaign id",
@@ -2001,6 +2239,122 @@
                 "summary": "Liveness probe",
                 "tags": [
                     "platform"
+                ]
+            }
+        },
+        "/messages/{id}/answer": {
+            "post": {
+                "description": "Records the marketer's answer to a clarifying question the agent asked (a chat message of kind `question`), and generates the step again with the question and the answer as context (202). Returns the updated campaign. A question takes one answer; the options of the question are suggestions, free text is accepted.",
+                "parameters": [
+                    {
+                        "description": "Message id of the question",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.AnswerRequest",
+                                "summary": "request",
+                                "description": "The answer"
+                            }
+                        }
+                    },
+                    "description": "The answer",
+                    "required": true
+                },
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.CampaignView"
+                                }
+                            }
+                        },
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "No such message"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "message_not_question; question_already_answered; step_not_open: the step of the question is no longer open; campaign_not_drafting"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Missing or too long answer"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Answer a question of the agent",
+                "tags": [
+                    "messages"
                 ]
             }
         },

@@ -50,6 +50,7 @@ func (m *LLM) StreamStructured(ctx context.Context, pkg *prompts.Package, userJS
 	if err != nil {
 		return nil, llm.Usage{}, err
 	}
+	doc.Summary = contentSummary
 	raw := marshal(doc)
 
 	for _, chunk := range split(string(raw), streamChunks) {
@@ -100,11 +101,16 @@ func split(s string, n int) []string {
 	return out
 }
 
-// document is the content@1 answer: exactly one of the channels is filled.
+// document is the content@2 answer: exactly one of the channels is filled, and a one-sentence
+// summary (D-088).
 type document struct {
-	SMS   *smsDoc   `json:"sms"`
-	Email *emailDoc `json:"email"`
+	SMS     *smsDoc   `json:"sms"`
+	Email   *emailDoc `json:"email"`
+	Summary string    `json:"summary"`
 }
+
+// contentSummary is the "[mock]" summary of every text.
+const contentSummary = "[mock] Brief'teki ton korundu, teklif yalnızca brief'te yazıldığı kadar; bu bir mock özettir (mock summary)."
 
 type smsDoc struct {
 	Text string `json:"text"`

@@ -15,3 +15,6 @@ UPDATE campaign SET status = $2, updated_at = now() WHERE id = $1 RETURNING *;
 -- Newest first, for the campaign list of the UI (D-072). Not indexed on purpose: the list is small
 -- and a campaign table of this service stays small.
 SELECT * FROM campaign ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2;
+
+-- name: SetCampaignTitle :one
+UPDATE campaign SET title = $2, updated_at = now() WHERE id = $1 RETURNING *;

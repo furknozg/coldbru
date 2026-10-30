@@ -2,28 +2,28 @@
   "prompts": [
     {
       "name": "channel_plan",
-      "version": "1.0.0",
-      "sha256": "7cc700b2cb9e9d3a15a1f91ac4d83db33edd01bcfdd07b87a2912a11343e61b7"
+      "version": "2.0.0",
+      "sha256": "a563c5a685f83973fcf98aaf7ac04410404f62ae672d0f0da21592d3a2a3678d"
     },
     {
       "name": "content",
-      "version": "1.0.0",
-      "sha256": "84ba65be7245cfefc7f52b7a29d3e4a7c91e4c030aae444bc707ebd962a51daf"
+      "version": "2.0.0",
+      "sha256": "7b38553fae943576ebaa9990c51a6c4cd9ec5007ff7182751943e34ed968f592"
     },
     {
       "name": "schedule",
-      "version": "2.0.0",
-      "sha256": "30419c3cc77aa0c11689f51069107c92f6167c864fa28880bd0c45408f35340a"
+      "version": "3.0.0",
+      "sha256": "62b307c93e4edc2c32d329464676e516f108a9d100b9d4d7678c41a1b8baa197"
     },
     {
       "name": "screen",
-      "version": "1.0.0",
-      "sha256": "fe0dfe95c6c768c9cac6dc1912bc0b93cda9a51057c17fa52839b43e10ebfce4"
+      "version": "2.0.0",
+      "sha256": "24a9052b1944c3dbf083b439fea5956e280bce3a1cfb956ba295ab69d7b6d56a"
     },
     {
       "name": "segment",
-      "version": "1.0.0",
-      "sha256": "d564e2b07d544480597c4a273222b3854f2bbe6de98e433ffe1233a6fa29ed90"
+      "version": "2.0.0",
+      "sha256": "e80ae1755c6b6a42d779cbd6fabe313729c857c6505990409ebd6c9648521353"
     }
   ]
 }

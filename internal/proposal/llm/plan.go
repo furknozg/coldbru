@@ -66,11 +66,18 @@ type ChannelPlanInput struct {
 	ContextNotes []string
 	// Coverage is the coverage table SQL computed for the approved audience: the model never counts.
 	Coverage *customer.Preview
+	// Clarifications and QuestionsLeft are as in SegmentInput (D-088).
+	Clarifications []Clarification
+	QuestionsLeft  int
 }
 
-// ChannelPlanResult is a plan that passed validate.
+// ChannelPlanResult is a plan that passed validate, or the agent's question (D-088): when Question
+// is set, Plan and Summary are empty.
 type ChannelPlanResult struct {
-	Plan ChannelPlan
+	Question *Question
+	Plan     ChannelPlan
+	// Summary is the agent's markdown summary of the plan (required with a plan, D-088).
+	Summary string
 	// Attempts is the number of model calls used, the accepted one included.
 	Attempts int
 	Usage    Usage
@@ -102,11 +109,18 @@ type ScheduleInput struct {
 	Locales []ScheduleLocale
 	// Now is the current time; the adapter sends it as RFC 3339 in UTC.
 	Now time.Time
+	// Clarifications and QuestionsLeft are as in SegmentInput (D-088).
+	Clarifications []Clarification
+	QuestionsLeft  int
 }
 
-// ScheduleResult is a schedule that passed validate.
+// ScheduleResult is a schedule that passed validate, or the agent's question (D-088): when
+// Question is set, Entries and Summary are empty.
 type ScheduleResult struct {
+	Question *Question
 	Entries  []ScheduleEntry
+	// Summary is the agent's markdown summary of the schedule (required with entries, D-088).
+	Summary  string
 	Attempts int
 	Usage    Usage
 }

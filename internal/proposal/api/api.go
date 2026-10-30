@@ -23,6 +23,8 @@ const (
 	MaxNoteChars = 2000
 	// MaxReasonChars is the longest rejection reason.
 	MaxReasonChars = 1000
+	// MaxAnswerChars is the longest answer to a question of the agent (D-088).
+	MaxAnswerChars = 1000
 	// DefaultListLimit and MaxListLimit bound GET /campaigns.
 	DefaultListLimit = 20
 	MaxListLimit     = 100
@@ -48,6 +50,7 @@ type Flow interface {
 	Regenerate(ctx context.Context, stepID uuid.UUID) error
 	Confirm(ctx context.Context, campaignID uuid.UUID) error
 	Cancel(ctx context.Context, campaignID uuid.UUID, reason string) error
+	Answer(ctx context.Context, questionID uuid.UUID, answer string) (flow.ChatMessageView, error)
 	CampaignOfVariant(ctx context.Context, variantID uuid.UUID) (uuid.UUID, error)
 	CampaignOfStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	// Hub is the event hub the event stream subscribes to.
@@ -117,6 +120,7 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/variants/{id}/reject", h.reject)
 	r.Post("/variants/{id}/edit", h.edit)
 	r.Post("/steps/{id}/regenerate", h.regenerateStep)
+	r.Post("/messages/{id}/answer", h.answer)
 }
 
 // writeJSON writes v as JSON with the given status.

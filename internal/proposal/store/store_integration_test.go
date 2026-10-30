@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -169,7 +170,7 @@ func TestMigrations_Applied(t *testing.T) {
 			name: "tables in schema proposal",
 			sql:  "SELECT tablename FROM pg_tables WHERE schemaname = 'proposal' ORDER BY tablename",
 			want: []string{
-				"campaign", "context_note", "goose_db_version", "goose_platform_version", "llm_call",
+				"campaign", "chat_message", "context_note", "goose_db_version", "goose_platform_version", "llm_call",
 				"outbox", "processed_event", "proposal_step", "proposal_variant",
 			},
 		},
@@ -181,7 +182,7 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "service versions",
 			sql:  "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id",
-			want: []string{"1", "2", "3", "4"},
+			want: []string{"1", "2", "3", "4", "5", "6"},
 		},
 		{
 			name: "platform versions",
@@ -193,8 +194,10 @@ func TestMigrations_Applied(t *testing.T) {
 			sql: `SELECT indexname FROM pg_indexes WHERE schemaname = 'proposal'
 				AND indexname IN ('proposal_step_live_kind_key', 'proposal_variant_live_slot_key', 'proposal_variant_step_id_idx',
 					'context_note_campaign_id_idx', 'context_note_step_id_idx',
-					'llm_call_campaign_id_idx', 'llm_call_step_id_idx', 'llm_call_variant_id_idx') ORDER BY indexname`,
+					'llm_call_campaign_id_idx', 'llm_call_step_id_idx', 'llm_call_variant_id_idx',
+					'chat_message_campaign_id_idx', 'chat_message_step_id_idx', 'chat_message_reply_to_key') ORDER BY indexname`,
 			want: []string{
+				"chat_message_campaign_id_idx", "chat_message_reply_to_key", "chat_message_step_id_idx",
 				"context_note_campaign_id_idx", "context_note_step_id_idx",
 				"llm_call_campaign_id_idx", "llm_call_step_id_idx", "llm_call_variant_id_idx",
 				"proposal_step_live_kind_key", "proposal_variant_live_slot_key", "proposal_variant_step_id_idx",
@@ -203,7 +206,7 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "append-only triggers",
 			sql:  "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE '%append_only' ORDER BY tgname",
-			want: []string{"context_note_append_only", "llm_call_append_only"},
+			want: []string{"chat_message_append_only", "context_note_append_only", "llm_call_append_only"},
 		},
 	}
 	for _, tt := range tests {
@@ -248,8 +251,11 @@ func TestMigrations_DownThenUp(t *testing.T) {
 	if got := queryStrings(t, pool, "SELECT proname FROM pg_proc WHERE proname = 'reject_row_change'"); len(got) != 0 {
 		t.Errorf("functions after Down = %v, want none", got)
 	}
-	if got := queryStrings(t, pool, "SELECT indexname FROM pg_indexes WHERE schemaname = 'proposal' AND indexname LIKE ANY (ARRAY['proposal\\_%', 'context\\_note\\_%', 'llm\\_call\\_%'])"); len(got) != 0 {
+	if got := queryStrings(t, pool, "SELECT indexname FROM pg_indexes WHERE schemaname = 'proposal' AND indexname LIKE ANY (ARRAY['proposal\\_%', 'context\\_note\\_%', 'llm\\_call\\_%', 'chat\\_message\\_%'])"); len(got) != 0 {
 		t.Errorf("indexes after Down = %v, want none", got)
+	}
+	if got := queryStrings(t, pool, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'proposal' AND table_name = 'campaign' AND column_name = 'title'"); len(got) != 0 {
+		t.Errorf("campaign.title after Down = %v, want gone", got)
 	}
 
 	if err := migrate.Up(ctx, pool, store.Migrations(), discardLogger()); err != nil {
@@ -392,6 +398,30 @@ func TestConstraints_Campaign(t *testing.T) {
 		{name: "empty brief", run: insert("", "drafting"), want: "campaign_brief_check"},
 		{name: "blank brief", run: insert("  \t", "drafting"), want: "campaign_brief_check"},
 		{name: "unknown status", run: insert("b", "paused"), want: "campaign_status_check"},
+		// campaign.title (00005, D-088): NULL, or non-blank and at most 60 characters.
+		{name: "title at the cap", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: f.campaign, Title: pgtype.Text{String: strings.Repeat("ö", 60), Valid: true}})
+			return err
+		}},
+		{name: "title one over the cap", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: f.campaign, Title: pgtype.Text{String: strings.Repeat("ö", 61), Valid: true}})
+			return err
+		}, want: "campaign_title_check"},
+		{name: "blank title", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: f.campaign, Title: pgtype.Text{String: " \t", Valid: true}})
+			return err
+		}, want: "campaign_title_check"},
+		{name: "title back to null", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			mustExec(t, f.exec(ctx, "UPDATE campaign SET title = 'x' WHERE id = $1", f.campaign))
+			c, err := f.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: f.campaign})
+			if err != nil {
+				return err
+			}
+			if c.Title.Valid {
+				t.Errorf("title = %+v, want NULL", c.Title)
+			}
+			return nil
+		}},
 		{name: "default status is drafting", run: func(t *testing.T, ctx context.Context, f fixture) error {
 			c, err := f.q.GetCampaign(ctx, f.campaign)
 			if err != nil {
@@ -679,6 +709,161 @@ func TestConstraints_ContextNote(t *testing.T) {
 	})
 }
 
+// chat inserts a chat_message row for f; nil fields are NULL.
+func (f fixture) chat(ctx context.Context, step *uuid.UUID, kind, body string, options any, replyTo *uuid.UUID) (store.ChatMessage, error) {
+	var opts []byte
+	if options != nil {
+		opts = []byte(options.(string))
+	}
+	return f.q.InsertChatMessage(ctx, store.InsertChatMessageParams{CampaignID: f.campaign, StepID: step, Kind: kind, Body: body, Options: opts, ReplyTo: replyTo})
+}
+
+// Constraints of chat_message (00006, D-088): kinds, non-blank body, options only on a question
+// and as an array of strings, reply_to exactly on answers, one answer per question.
+func TestConstraints_ChatMessage(t *testing.T) {
+	question := func(f fixture, ctx context.Context) uuid.UUID {
+		q, err := f.chat(ctx, &f.audience, "question", "Hangi şehir?", `["Ankara","İzmir"]`, nil)
+		if err != nil {
+			panic(err)
+		}
+		return q.ID
+	}
+	runConstraintCases(t, []constraintCase{
+		{name: "question with options", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "question", "Hangi şehir?", `["Ankara","İzmir"]`, nil)
+			return err
+		}},
+		{name: "question without options", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "question", "Hangi şehir?", nil, nil)
+			return err
+		}},
+		{name: "summary without step", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, nil, "summary", "**Kitle**: 46 kişi.", nil, nil)
+			return err
+		}},
+		{name: "answer to a question", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			q := question(f, ctx)
+			_, err := f.chat(ctx, &f.audience, "answer", "Ankara", nil, &q)
+			return err
+		}},
+		{name: "second answer to the same question", run: func(t *testing.T, ctx context.Context, f fixture) error {
+			q := question(f, ctx)
+			_, err := f.chat(ctx, &f.audience, "answer", "Ankara", nil, &q)
+			mustExec(t, err)
+			_, err = f.chat(ctx, &f.audience, "answer", "İzmir", nil, &q)
+			return err
+		}, want: "chat_message_reply_to_key"},
+		{name: "answer without reply_to", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "answer", "Ankara", nil, nil)
+			return err
+		}, want: "chat_message_reply_to_check"},
+		{name: "question with reply_to", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			q := question(f, ctx)
+			_, err := f.chat(ctx, &f.audience, "question", "Yine mi?", nil, &q)
+			return err
+		}, want: "chat_message_reply_to_check"},
+		{name: "summary with reply_to", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			q := question(f, ctx)
+			_, err := f.chat(ctx, &f.audience, "summary", "x", nil, &q)
+			return err
+		}, want: "chat_message_reply_to_check"},
+		{name: "reply_to unknown message", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			unknown := uuid.New()
+			_, err := f.chat(ctx, &f.audience, "answer", "Ankara", nil, &unknown)
+			return err
+		}, want: "chat_message_reply_to_fkey"},
+		{name: "unknown kind", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "note", "x", nil, nil)
+			return err
+		}, want: "chat_message_kind_check"},
+		{name: "blank body", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "summary", "  \n", nil, nil)
+			return err
+		}, want: "chat_message_body_check"},
+		{name: "options on a summary", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "summary", "x", `["a","b"]`, nil)
+			return err
+		}, want: "chat_message_options_check"},
+		{name: "options on an answer", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			q := question(f, ctx)
+			_, err := f.chat(ctx, &f.audience, "answer", "x", `["a","b"]`, &q)
+			return err
+		}, want: "chat_message_options_check"},
+		{name: "options not an array", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "question", "x?", `{"a":1}`, nil)
+			return err
+		}, want: "chat_message_options_check"},
+		{name: "options with a non-string", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.chat(ctx, &f.audience, "question", "x?", `["a",2]`, nil)
+			return err
+		}, want: "chat_message_options_check"},
+		{name: "unknown campaign", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			_, err := f.q.InsertChatMessage(ctx, store.InsertChatMessageParams{CampaignID: uuid.New(), Kind: "summary", Body: "x"})
+			return err
+		}, want: "chat_message_campaign_id_fkey"},
+		{name: "unknown step", run: func(_ *testing.T, ctx context.Context, f fixture) error {
+			unknown := uuid.New()
+			_, err := f.chat(ctx, &unknown, "summary", "x", nil, nil)
+			return err
+		}, want: "chat_message_step_id_fkey"},
+	})
+}
+
+// The chat queries (D-088): per campaign and per step in id order, the answer of a question, and
+// the title on the campaign.
+func TestQueries_ChatMessage(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	f := newFixture(t, pool)
+
+	q1, err := f.chat(ctx, &f.audience, "question", "Hangi şehir?", `["Ankara","İzmir"]`, nil)
+	mustExec(t, err)
+	a1, err := f.chat(ctx, &f.audience, "answer", "Ankara", nil, &q1.ID)
+	mustExec(t, err)
+	s1, err := f.chat(ctx, &f.audience, "summary", "**Kitle**: Ankara.", nil, nil)
+	mustExec(t, err)
+	s2, err := f.chat(ctx, &f.content, "summary", "Samimi ton.", nil, nil)
+	mustExec(t, err)
+
+	all, err := f.q.ListChatMessages(ctx, f.campaign)
+	mustExec(t, err)
+	if len(all) != 4 || all[0].ID != q1.ID || all[1].ID != a1.ID || all[2].ID != s1.ID || all[3].ID != s2.ID {
+		t.Errorf("ListChatMessages = %+v, want the four messages oldest first", all)
+	}
+	if string(all[0].Options) != `["Ankara", "İzmir"]` || all[1].Options != nil || all[1].ReplyTo == nil || *all[1].ReplyTo != q1.ID {
+		t.Errorf("options/reply_to = %s / %v / %v", all[0].Options, all[1].Options, all[1].ReplyTo)
+	}
+	aud, err := f.q.ListChatMessagesOfStep(ctx, &f.audience)
+	mustExec(t, err)
+	if len(aud) != 3 || aud[2].ID != s1.ID {
+		t.Errorf("ListChatMessagesOfStep(audience) = %+v", aud)
+	}
+	got, err := f.q.GetAnswerOfQuestion(ctx, &q1.ID)
+	mustExec(t, err)
+	if got.ID != a1.ID {
+		t.Errorf("GetAnswerOfQuestion = %+v", got)
+	}
+	if _, err := f.q.GetAnswerOfQuestion(ctx, &s1.ID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("GetAnswerOfQuestion(summary) error = %v, want no rows", err)
+	}
+	m, err := f.q.GetChatMessage(ctx, a1.ID)
+	mustExec(t, err)
+	if m.Kind != "answer" || m.Body != "Ankara" || m.StepID == nil || *m.StepID != f.audience {
+		t.Errorf("GetChatMessage = %+v", m)
+	}
+
+	c, err := f.q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: f.campaign, Title: pgtype.Text{String: "İstanbul sepet hatırlatması %30", Valid: true}})
+	mustExec(t, err)
+	if !c.Title.Valid || c.Title.String != "İstanbul sepet hatırlatması %30" || !c.UpdatedAt.Time.After(c.CreatedAt.Time) {
+		t.Errorf("SetCampaignTitle = %+v", c)
+	}
+	list, err := f.q.ListCampaigns(ctx, store.ListCampaignsParams{Limit: 10})
+	mustExec(t, err)
+	if len(list) != 1 || list[0].Title.String != "İstanbul sepet hatırlatması %30" {
+		t.Errorf("ListCampaigns = %+v", list)
+	}
+}
+
 const testSHA256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 // llmCall returns a valid accepted call for f; mutate adjusts it before insert.
@@ -774,6 +959,8 @@ func TestAppendOnly(t *testing.T) {
 
 	note, err := f.q.InsertContextNote(ctx, store.InsertContextNoteParams{CampaignID: f.campaign, Body: "original"})
 	mustExec(t, err)
+	msg, err := f.chat(ctx, &f.audience, "summary", "original", nil, nil)
+	mustExec(t, err)
 	mustExec(t, f.llmCall(ctx, nil))
 	calls, err := f.q.ListLLMCalls(ctx, f.campaign)
 	mustExec(t, err)
@@ -791,6 +978,8 @@ func TestAppendOnly(t *testing.T) {
 		{name: "delete context_note", table: "context_note", sql: "DELETE FROM context_note WHERE id = $1", id: note.ID},
 		{name: "update llm_call", table: "llm_call", sql: "UPDATE llm_call SET attempt = 2 WHERE id = $1", id: calls[0].ID},
 		{name: "delete llm_call", table: "llm_call", sql: "DELETE FROM llm_call WHERE id = $1", id: calls[0].ID},
+		{name: "update chat_message", table: "chat_message", sql: "UPDATE chat_message SET body = 'edited' WHERE id = $1", id: msg.ID},
+		{name: "delete chat_message", table: "chat_message", sql: "DELETE FROM chat_message WHERE id = $1", id: msg.ID},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -813,7 +1002,55 @@ func TestAppendOnly(t *testing.T) {
 		if len(gotCalls) != 1 || gotCalls[0].Attempt != 1 {
 			t.Errorf("calls = %+v, want the one original call", gotCalls)
 		}
+		gotMsgs, err := f.q.ListChatMessages(ctx, f.campaign)
+		mustExec(t, err)
+		if len(gotMsgs) != 1 || gotMsgs[0].Body != "original" {
+			t.Errorf("messages = %+v, want the one original message", gotMsgs)
+		}
 	})
+}
+
+// Migrations 00005 and 00006 (D-088) go down and up cleanly on their own: the title column and the
+// chat table appear and disappear without touching the older tables.
+func TestMigration00005And00006_RoundTrip(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	provider := provider00004(t, pool)
+	q := store.New(pool)
+	camp, err := q.CreateCampaign(ctx, "brief")
+	mustExec(t, err)
+	if _, err := q.SetCampaignTitle(ctx, store.SetCampaignTitleParams{ID: camp.ID, Title: pgtype.Text{String: "t", Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.InsertChatMessage(ctx, store.InsertChatMessageParams{CampaignID: camp.ID, Kind: "summary", Body: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 4); err != nil {
+		t.Fatalf("DownTo(4) error = %v", err)
+	}
+	if got := queryStrings(t, pool, "SELECT tablename FROM pg_tables WHERE schemaname = 'proposal' AND tablename = 'chat_message'"); len(got) != 0 {
+		t.Errorf("chat_message after Down = %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'proposal' AND table_name = 'campaign' AND column_name = 'title'"); len(got) != 0 {
+		t.Errorf("campaign.title after Down = %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE '%append_only' ORDER BY tgname"); !slices.Equal(got, []string{"context_note_append_only", "llm_call_append_only"}) {
+		t.Errorf("triggers after Down = %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT brief FROM campaign"); !slices.Equal(got, []string{"brief"}) {
+		t.Errorf("campaign rows after Down = %v, want untouched", got)
+	}
+	if err := migrate.Up(ctx, pool, store.Migrations(), discardLogger()); err != nil {
+		t.Fatalf("Up() after Down error = %v", err)
+	}
+	c, err := q.GetCampaign(ctx, camp.ID)
+	mustExec(t, err)
+	if c.Title.Valid {
+		t.Errorf("title after re-up = %+v, want NULL (the column was dropped)", c.Title)
+	}
+	if _, err := q.InsertChatMessage(ctx, store.InsertChatMessageParams{CampaignID: camp.ID, Kind: "summary", Body: "again"}); err != nil {
+		t.Errorf("InsertChatMessage after re-up error = %v", err)
+	}
 }
 
 func TestQueries(t *testing.T) {
@@ -1205,8 +1442,10 @@ func TestMigration00004_BackfillAndRoundTrip(t *testing.T) {
 		t.Fatalf("timezone exists before 00004: %v", got)
 	}
 	q := store.New(pool)
-	camp, err := q.CreateCampaign(ctx, "brief")
-	mustExec(t, err)
+	// Plain SQL: the sqlc campaign queries read campaign.title, which 00005 adds later.
+	var campID uuid.UUID
+	mustExec(t, pool.QueryRow(ctx, "INSERT INTO campaign (brief) VALUES ('brief') RETURNING id").Scan(&campID))
+	camp := store.Campaign{ID: campID}
 	sched, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "schedule", Version: 1})
 	mustExec(t, err)
 	content, err := q.CreateStep(ctx, store.CreateStepParams{CampaignID: camp.ID, Kind: "content", Version: 1})

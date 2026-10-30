@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/furknozg/coldbru/internal/proposal/customer"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/prompts"
 )
@@ -101,25 +102,49 @@ func cancelled(ctx context.Context, purpose llm.Purpose) error {
 	return nil
 }
 
-// Screen always allows.
-func (m *LLM) Screen(ctx context.Context, _ string) (llm.ScreenResult, error) {
+// Screen always allows and titles the campaign with the title of the brief's case, or "[mock]"
+// and the start of the brief (D-088).
+func (m *LLM) Screen(ctx context.Context, brief string) (llm.ScreenResult, error) {
 	if err := cancelled(ctx, llm.PurposeScreen); err != nil {
 		return llm.ScreenResult{}, err
 	}
 	started := time.Now()
-	res := llm.ScreenResult{Verdict: llm.VerdictAllow, Reason: "mock"}
+	c, _ := Match(brief)
+	res := llm.ScreenResult{Verdict: llm.VerdictAllow, Reason: "mock", Title: c.Title}
 	record(ctx, llm.PurposeScreen, prompts.Screen(), started, llm.OutcomeAccepted,
 		marshal(struct {
 			Verdict llm.Verdict `json:"verdict"`
 			Reason  string      `json:"reason"`
-		}{res.Verdict, res.Reason}), "")
+			Title   string      `json:"title"`
+		}{res.Verdict, res.Reason, res.Title}), "")
 	return res, nil
+}
+
+// answerOf returns the marketer's latest answer in the clarifications, "" when there is none.
+func answerOf(cs []llm.Clarification) string {
+	if len(cs) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(cs[len(cs)-1].Answer)
+}
+
+// segmentSummary is the "[mock]" summary of an accepted filter.
+func segmentSummary(dslText string, p *customer.Preview, answer string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s Kitle: **%d ulaşılabilir kişi** (e-posta %d, SMS %d). Filtre: `%s`.", mockTag, p.Count, p.Coverage.Both+p.Coverage.EmailOnly, p.Coverage.Both+p.Coverage.SmsOnly, dslText)
+	if answer != "" {
+		fmt.Fprintf(&b, " Cevabın dikkate alındı: *%s*.", answer)
+	}
+	b.WriteString(" Bu bir mock özettir (mock summary); gerçek model kitleyi brief'e göre açıklar.")
+	return b.String()
 }
 
 // ProposeSegment proposes the hand-written filter of the brief, or DefaultDSL, and runs it through
 // tools.Validate like the real loop. A filter that does not validate (a changed catalog, an empty
 // audience) ends the call with *llm.RepairExhaustedError after one attempt: the mock has nothing
-// else to propose.
+// else to propose. For a brief with a question mark (AsksQuestion) the first call asks Question
+// instead, when the step may still ask; once answered, an answer that names the 30-day option
+// switches the filter to QuestionDSL (D-088). Every accepted filter comes with a "[mock]" summary.
 func (m *LLM) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools llm.SegmentTools) (llm.SegmentResult, error) {
 	if err := cancelled(ctx, llm.PurposeSegment); err != nil {
 		return llm.SegmentResult{}, err
@@ -127,26 +152,36 @@ func (m *LLM) ProposeSegment(ctx context.Context, in llm.SegmentInput, tools llm
 	started := time.Now()
 	pkg := prompts.Segment()
 	c, _ := Match(in.Brief)
-	calls := marshal([]struct {
-		Name  string `json:"name"`
-		Input struct {
-			DSL string `json:"dsl"`
-		} `json:"input"`
-	}{{Name: "propose_segment", Input: struct {
-		DSL string `json:"dsl"`
-	}{c.DSL}}})
+	type call struct {
+		Name  string         `json:"name"`
+		Input map[string]any `json:"input"`
+	}
+	if AsksQuestion(in.Brief) && len(in.Clarifications) == 0 && in.QuestionsLeft > 0 {
+		q := Question
+		q.Options = append([]string(nil), q.Options...)
+		record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeAccepted,
+			marshal([]call{{Name: "ask_user", Input: map[string]any{"question": q.Text, "options": q.Options}}}), "")
+		return llm.SegmentResult{Question: &q, Turns: 1}, nil
+	}
+	dslText, answer := c.DSL, answerOf(in.Clarifications)
+	if strings.Contains(answer, "30") {
+		dslText = QuestionDSL
+	}
+	calls := []call{{Name: "propose_segment", Input: map[string]any{"dsl": dslText}}}
 
-	f, p, errs, err := tools.Validate(ctx, c.DSL)
+	f, p, errs, err := tools.Validate(ctx, dslText)
 	switch {
 	case err != nil:
-		record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeAPIError, calls, "tools: "+err.Error())
+		record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeAPIError, marshal(calls), "tools: "+err.Error())
 		return llm.SegmentResult{}, &llm.ToolsError{Err: err}
 	case len(errs) > 0:
-		record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeValidationFailed, calls, "propose_segment was rejected")
+		record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeValidationFailed, marshal(calls), "propose_segment was rejected")
 		return llm.SegmentResult{}, &llm.RepairExhaustedError{Attempts: 1, Errors: errs, Reason: "the mock has one filter per brief and it was rejected"}
 	}
-	record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeAccepted, calls, "")
-	return llm.SegmentResult{DSL: c.DSL, Filter: f, Preview: p, Turn: 1, Turns: 1, ProposeAttempts: 1}, nil
+	summary := segmentSummary(dslText, p, answer)
+	calls = append(calls, call{Name: "send_summary", Input: map[string]any{"markdown": summary}})
+	record(ctx, llm.PurposeSegment, pkg, started, llm.OutcomeAccepted, marshal(calls), "")
+	return llm.SegmentResult{DSL: dslText, Filter: f, Preview: p, Summary: summary, Turn: 1, Turns: 1, ProposeAttempts: 1}, nil
 }
 
 // ProposeChannelPlan proposes primary_fallback with the channel that reaches more people as the
@@ -165,11 +200,25 @@ func (m *LLM) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInput, v
 		Mode: llm.ModePrimaryFallback, Primary: primary,
 		Rationale: regenerated(in.ContextNotes, fmt.Sprintf("%s Bu bir mock yanıt (mock response): %s birincil kanal, daha çok kişiye ulaşıyor; ona ulaşamadığı kişilere diğer kanaldan gönderilir.", mockTag, primary)),
 	}
+	emailReach, smsReach := 0, 0
+	if cv := in.Coverage; cv != nil {
+		emailReach, smsReach = cv.Coverage.Both+cv.Coverage.EmailOnly, cv.Coverage.Both+cv.Coverage.SmsOnly
+	}
+	summary := fmt.Sprintf("%s Plan: **%s birincil**, ulaşılamayanlara %s. E-posta %d, SMS %d kişiye ulaşıyor; herkes tek mesaj alır. Bu bir mock özettir (mock summary).",
+		mockTag, primary, primary.Other(), emailReach, smsReach)
 	out := marshal(struct {
+		Question *struct{} `json:"question"`
+		Plan     struct {
+			Mode      llm.PlanMode `json:"mode"`
+			Primary   llm.Channel  `json:"primary"`
+			Rationale string       `json:"rationale"`
+		} `json:"plan"`
+		Summary string `json:"summary"`
+	}{Plan: struct {
 		Mode      llm.PlanMode `json:"mode"`
 		Primary   llm.Channel  `json:"primary"`
 		Rationale string       `json:"rationale"`
-	}{plan.Mode, plan.Primary, plan.Rationale})
+	}{plan.Mode, plan.Primary, plan.Rationale}, Summary: summary})
 	if validate != nil {
 		if err := validate(plan); err != nil {
 			record(ctx, llm.PurposeChannelPlan, pkg, started, llm.OutcomeValidationFailed, out, err.Error())
@@ -177,7 +226,7 @@ func (m *LLM) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInput, v
 		}
 	}
 	record(ctx, llm.PurposeChannelPlan, pkg, started, llm.OutcomeAccepted, out, "")
-	return llm.ChannelPlanResult{Plan: plan, Attempts: 1}, nil
+	return llm.ChannelPlanResult{Plan: plan, Summary: summary, Attempts: 1}, nil
 }
 
 // ProposeSchedule proposes "send immediately" for every (language, timezone) pair (D-076).
@@ -200,9 +249,12 @@ func (m *LLM) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, validat
 		entries[i] = llm.ScheduleEntry{Language: loc.Language, Timezone: loc.Timezone, Rationale: why}
 		items[i] = item{Language: loc.Language, Timezone: loc.Timezone, Rationale: why}
 	}
+	summary := fmt.Sprintf("%s Zamanlama: **hemen gönderim**; %d yerel ayarın (dil ve saat dilimi) hepsi onaylanınca yola çıkar. Bu bir mock özettir (mock summary).", mockTag, len(in.Locales))
 	out := marshal(struct {
-		Entries []item `json:"entries"`
-	}{items})
+		Question *struct{} `json:"question"`
+		Entries  []item    `json:"entries"`
+		Summary  string    `json:"summary"`
+	}{Entries: items, Summary: summary})
 	if validate != nil {
 		if err := validate(entries); err != nil {
 			record(ctx, llm.PurposeSchedule, pkg, started, llm.OutcomeValidationFailed, out, err.Error())
@@ -210,5 +262,5 @@ func (m *LLM) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, validat
 		}
 	}
 	record(ctx, llm.PurposeSchedule, pkg, started, llm.OutcomeAccepted, out, "")
-	return llm.ScheduleResult{Entries: entries, Attempts: 1}, nil
+	return llm.ScheduleResult{Entries: entries, Summary: summary, Attempts: 1}, nil
 }

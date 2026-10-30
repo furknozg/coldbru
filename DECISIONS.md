@@ -72,8 +72,8 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-066 | Proposal kataloğu: make generate ile şemadan + metadata'dan üretilir, commit edilir, tazelik testi; sabit değer listeleri Proposal'da, şehir Customer'da; açıklamalar İngilizce | LLM entegrasyonu | Kabul edildi |
 | D-067 | DSL → GraphQL derleyicisi AST'ye bire bir; elle yazılmış Customer istemcisi; 10 sn, 3 deneme; filterPath DSL konumuna çevrilir | LLM entegrasyonu | Kabul edildi |
 | D-068 | proposal_db şeması: taslak + denetim kolonları, kısmi unique ve FK indeksleri, CHECK'ler, ekleme-yalnız trigger; sqlc ve açılışta migration | LLM entegrasyonu | Kabul edildi; llm_call.purpose listesi yerini aldı → D-070; canlı varyant yuvası unique'i yerini aldı → D-076 |
-| D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi |
-| D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi; dil → saat dilimi eşlemesi yerini aldı → D-076 |
+| D-069 | LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de | LLM entegrasyonu | Kabul edildi; ajanın soru ve özet araçları eklendi → D-088 |
+| D-070 | Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle | LLM entegrasyonu | Kabul edildi; dil → saat dilimi eşlemesi yerini aldı → D-076; plan ve zamanlama çıktısına soru ve özet alanları eklendi → D-088 |
 | D-071 | Metin: yuvalı HTML e-posta şablonu, yalnız {{first_name}}, en uzun ad Customer'dan, 1 + 2 onarım, yapılandırılabilir fiyat ve CTA | LLM entegrasyonu | Kabul edildi; SMS'te link yasağı ve 160 bütçesi yerini aldı → D-082; maliyet para birimi yerini aldı → D-083 |
 | D-072 | Proposal REST kaynak + eylem uçları, problem+json; SSE snapshot + canlı olaylar; demo'da kimlik doğrulama yok; LLM_MODE=auto ile anahtarsız mock | Takip ve altyapı | Kabul edildi |
 | D-073 | DSL vs GraphQL JSON ölçümü: token sayımı canlı deneyde, make bench + bench-smoke, string içinde JSON kolu, pilot sonra tam; compose bench profili, llm_call maliyet raporu, LLM/DSL/SSE metrikleri, bayraklı pprof | Test ve kapsam | Kabul edildi |
@@ -90,7 +90,9 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 | D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
 | D-086 | Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri | Takip ve altyapı | Kabul edildi |
-| D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi |
+| D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 |
+| D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
+| D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1136,7 +1138,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-069: LLM katmanı: aynı konuşmada tool_result onarımı (1 + 2), 8 tur; ön eleme fail-closed; thinking/effort/max_tokens; refusal'da fallback yok; prompt paketleri T-022'de
 
-- **Durum:** Kabul edildi · 2026-10-28
+- **Durum:** Kabul edildi · 2026-10-28; ajanın soru ve özet araçları eklendi → D-088 · 2026-10-30
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-026 modelleri, D-027 strict tool döngüsünü, structured outputs'u ve "en fazla 3 deneme"yi, D-047 SDK'yı, D-059 ve D-060 prompt paketlerini belirledi. Onarımın nasıl yapılacağı, ön elemenin sonucu, çağrı parametreleri, refusal davranışı, tur sınırı ve görevin kapsamı açıktı (T-022).
 - **Karar:**
@@ -1161,7 +1163,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-070: Teklif akışı: plan ve zamanlamayı Haiku önerir, kod doğrular (1 + 2 onarım); elle düzenleme yeni varyant; süreç içi asenkron + olay dağıtıcısı; metin üreticisi arayüzle
 
-- **Durum:** Kabul edildi · 2026-10-28; dil → saat dilimi eşlemesi yerini aldı → D-076 · 2026-10-29
+- **Durum:** Kabul edildi · 2026-10-28; dil → saat dilimi eşlemesi yerini aldı → D-076 · 2026-10-29; plan ve zamanlama çıktısına soru ve özet alanları eklendi → D-088 · 2026-10-30
 - **Alan:** LLM entegrasyonu
 - **Bağlam:** D-009, D-010, D-022, D-033 ve D-034 adımları, varyantları ve durum makinelerini; D-069 segment ve ön eleme çağrılarını belirledi. Kanal planını ve zamanlamayı kimin önereceği, elle düzenleme, uzun LLM adımlarının nasıl çalışacağı ve metin adımının T-024 ile sınırı açıktı (T-023). Brief "pazarlamacı önizler, gerekirse düzenler ve onaylar" diyor.
 - **Karar:**
@@ -1539,7 +1541,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-087: Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme
 
-- **Durum:** Kabul edildi · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 · 2026-10-30
 - **Alan:** Takip ve altyapı
 - **Bağlam:** Kullanıcı T-035'ten önce bir yerleşim taslağı (`web/application_draft_ui.png`) önerdi: solda logo, arama, kampanyalar, Analytics özeti ve profil; ortada markdown çizebilen, yeniden boyutlandırılabilen bir sohbet alanı; sağda adımları ve varyantları gösteren, açılıp kapanabilen bir önizleme paneli. İncelemede şunlar çıktı: backend serbest bir sohbet değil, yapılandırılmış bir adım akışı; profil bloğu D-072'deki kimlik doğrulama yokluğuyla çelişiyor; e-posta HTML'ini Go çiziyor ve bunun için bir uç yok; arama için API yok; canlı gönderim panosunun yeri tanımsız. Kullanıcı taslak yerine kod üzerinden ilerlemeyi seçti (T-035).
 - **Karar:**
@@ -1560,6 +1562,52 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Biçimli metin yoktur. Arama yalnız yüklenen sayfada çalışır. Dar ekranda panel çekmeceye döner. Önizleme ucu T-036'da Proposal API'sine eklenir. Yeni bağımlılık: `vue-i18n`.
 - **Doğrulama:** 2026-10-30'da (T-035): `pnpm -C web lint`, `type-check`, `build` ve 107 Vitest testi (12 dosya) geçti: liste ve Türkçe harf duyarsız istemci araması, kampanya oluşturma ve 422 sorunları, zaman çizelgesi sırası ve tek SSE bağlantısı, adım paneli eylemleri (onay, gerekçeli red, kitle ve plan düzenleme, yeniden üret, yeniden aç, iptal, onayı yeniden dene), açık adım varken panelin kapanmaması, dar ekranda çekmeceler, eksik i18n anahtarında ve `tr.json` dışında Türkçe harfte kırılan i18n testi. `make test` geçti. Canlı yığında `localhost:8080`: kampanya listesi, tamamlanmış ve zamanlanmış kampanyaların adımları ve zaman çizelgesi, Europe/Istanbul ve Europe/London zamanlama yuvaları, `LLM: anthropic` rozeti tarayıcıda kontrol edildi; kampanya açılmadı.
 - **Uygulama notu:** `vue-i18n` 11.4.14 (tam sürüm); shadcn-vue 2.8.2 ile `button`, `input`, `textarea`, `badge`, `dialog`, `sheet`, `label`, `separator`, `skeleton`. Plan düzenlemede yerel `<select>`. `snapshot` view'ın yerine geçer, diğer olaylar 150 ms birleştirilmiş bir yeniden okuma tetikler. 1024 px altında liste ve panel `Sheet` olur. Eski varyantlardaki `estimated_cost_gbp` kendi para birimiyle gösterilir. Ctrl/Cmd+Enter gönderir.
+
+## D-088: Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** Kullanıcı T-035'ten sonra sohbet ağırlıklı bir arayüz ve ajanın kullanıcıyla konuşabilmesini istedi: ajan kullanıcıya soru sorabilmeli, ara adımların sonunda bir özet göndermeli, taslaklar küçük bir modelle başlık almalı ve başlıklar sohbette görünmeli. D-069 segment tool döngüsünü ve onarımı, D-070 plan ve zamanlama çağrılarını, D-071 metin çağrısını, D-087 düz metni belirlemişti. İş T-046 olarak ayrıldı.
+- **Karar:**
+  - Soru: segment döngüsüne `ask_user {question, options?}` aracı, plan ve zamanlama şemalarına isteğe bağlı `question` alanı eklenir; metin adımında soru yoktur. Ajan soru sorunca adım "cevap bekliyor" olur ve soru sohbette görünür. Kullanıcı cevaplayınca soru ve cevap bağlam notu olarak modele gider ve adım yeni bir çağrıyla yeniden üretilir; konuşma durumu saklanmaz, D-069'daki onarım mantığı korunur. Adım başına en fazla 2 soru; sonra ajan karar vermek zorundadır.
+  - Özet: segment ajanına `send_summary {markdown}` aracı; plan, zamanlama ve metin şemalarına `summary` alanı eklenir; özet aynı çağrıda üretilir.
+  - Başlık: ön eleme (Haiku) çıktısına `title` (en fazla 60 karakter, brief'in dilinde) eklenir (`screen@2.0.0`); `campaign.title` sütununda saklanır. Ek çağrı yoktur.
+  - Saklama (kodlama kuralı 7, kullanıcı onayladı): `chat_message(id, campaign_id, step_id, kind question | answer | summary, body, options jsonb, created_at)`, ekleme-yalnız (D-068 trigger'ı), indeks `(campaign_id)`; `campaign.title` sütunu. Sohbet geçmişi yeniden açılışta da görünür.
+  - Kullanıcı ayrıca onayladı: `chat_message.reply_to uuid NULL REFERENCES chat_message(id)`, CHECK `kind = 'answer'` ⇔ `reply_to IS NOT NULL`, `UNIQUE (reply_to)` (bir soruya tek cevap); `campaign.title` için CHECK (boş olamaz, en fazla 60 karakter). Adım başına üçüncü soru bir doğrulama hatasıdır: saklanmaz, aynı konuşmada "soru hakkın doldu, şimdi karar ver" sorunu döner ve bir onarım denemesi harcar (D-069).
+  - Ajan özetleri ve soruları arayüzde markdown olarak çizilir: `markdown-it` (HTML kapalı) + DOMPurify, linkler `rel="noopener"`. Kullanıcı mesajları ve brief düz metin kalır (D-087'den kısmi sapma).
+  - Değişen prompt paketlerinin sürümleri D-059'a göre artar (şema değiştiği için MAJOR).
+- **Alternatifler:**
+  - Her şeyi T-035'e eklemek — reddedildi: görev çok büyürdü.
+  - Konuşmayı saklayıp kaldığı yerden sürdürmek — reddedildi: konuşma tablosu, thinking bloklarının saklanması ve karmaşık kurtarma.
+  - Adım sonunda ayrı bir Haiku özet çağrısı — reddedildi: adım başına ek çağrı ve gecikme.
+  - Ayrı başlık çağrısı — reddedildi: kampanya başına bir çağrı daha ve iki migration.
+  - Düz metin — reddedildi: özetlerde liste ve vurgu olmazdı.
+  - `context_note`'a `kind` sütunu — reddedildi: notlar ve ajan mesajları karışırdı.
+  - Soru yalnız kitle adımında — reddedildi: zaman ve kanal belirsizliğinde soru sorulamazdı.
+- **Sonuçlar / bedel:** Soru cevaplanınca adımın önceki ara çıktıları yeniden üretilir. Beş prompt paketi değişir, önbellek bir kez soğur. Ön eleme prompt'u iki iş yapar. Bir tablo ve bir sütun eklenir. İki web bağımlılığı (`markdown-it`, `dompurify`).
+- **Uygulama notu (T-046, kullanıcı onayladı):**
+  - Migration'lar: `00005_campaign_title.sql` (`campaign_title_check`), `00006_chat_message.sql`. D-068'in her FK'ye indeks kuralı gereği `chat_message_step_id_idx` de eklendi. `chat_message_options_check` jsonpath ile `options`'a yalnız `kind = 'question'` satırında ve yalnız dize dizisi olarak izin verir.
+  - Şema biçimi: plan ve zamanlama çıktısı `{question, plan | entries, summary}`; üç alan da zorunlu ama `null` olabilir (isteğe bağlı alan yerine, `send_at` örneği). Seçenek sayısı (2–4) Go'da denetlenir. Sınırlar `llm.MaxQuestionsPerStep = 2`, `MaxTitleChars = 60`, `MaxQuestionChars = 500`, `MaxOptionChars = 100`, `MaxSummaryChars = 2000`; REST cevabı `api.MaxAnswerChars = 1000`. Soru ve özetlerde link, HTML ve başlık reddedilir.
+  - Segment özeti: kabul edilen `propose_segment` turunda `send_summary` yoksa 8 tur sınırı içinde bir tur daha istenir. Bu turdaki hata öneriyi bozmaz, yalnız özet düşer. Bedeli: segment çağrısı başına pratikte bir Sonnet turu.
+  - Kural dışı özet: segment, plan ve zamanlamada onarım sorunu olur; metin özeti ve geçersiz başlık sessizce düşer (log), adım başarısız olmaz.
+  - Soru hakkı cevaplansın cevaplanmasın sorulan her soruyla düşer; yalnız cevaplananlar `clarifications` olarak modele gider. Cevap taslak varyantları geçersiz kılmaz, yeniden üretimi tetikler; kapalı adıma cevap `step_not_open`. Engellenen brief'e de başlık yazılır; `campaign_titled` olayı `screen_result`'tan önce gelir.
+  - Uç: `POST /messages/{id}/answer` → 202; yeni sorun kodları `message_not_question`, `question_already_answered`. Olaylar: `question_asked`, `answer_given`, `summary_posted`, `campaign_titled`. `ContentGenerator.Generate` artık `flow.Generated{Content, Summary}` döner.
+  - Prompt sürümleri: `screen@2.0.0`, `segment@2.0.0`, `channel_plan@2.0.0`, `schedule@3.0.0`, `content@2.0.0`.
+- **Doğrulama:** `make test` geçti (50 Go paketi, web 107 test); `internal/proposal/flow/chat_integration_test.go` (`TestAudienceQuestionWaitsForTheAnswer`, `TestThirdQuestionIsBlocked`, `TestPlanAndScheduleQuestions`, `TestTitleAndSummaryChecks`, `TestAnswerDuringGenerationDropsTheStaleResult`), `internal/proposal/llm/chat_test.go`, store migration ve kısıt testleri. Canlı (geçici mock modu): soru içeren brief bekleyen soru ve iki seçenek gösterdi, cevap 202 ile kitleyi değiştirdi, ikinci cevap 409 `question_already_answered`; örnek brief başlık ve adım özetleriyle geldi.
+
+## D-089: Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** T-035'in arayüzünü gören kullanıcı arayüzün sadeleşmesini, yan panel yerine sohbet ağırlıklı bir düzeni ve metin taslağında kullanmak için e-posta önizlemesini istedi. D-087 istemci aramasını, durum filtresini ve sağdaki adım panelini; T-036 e-posta önizleme ucunu öngörüyordu. İş T-045 olarak ayrıldı.
+- **Karar:**
+  - Sol menü sadeleşir: yeni kampanya bir `+` ikon düğmesidir; brief araması ve durum filtresi şimdilik kaldırılır.
+  - Adım paneli sohbete taşınır: tamamlanan adımlar sohbette akordiyon olarak gösterilir, açık adım ve eylemleri sohbet akışındadır; kampanya başlıkları sohbette görünür (D-088).
+  - E-posta HTML'i Proposal'a eklenen bir önizleme ucuyla `internal/content` üzerinden çizilir ve sohbette gösterilir; önizlemede metin düzenlenebilir ve mevcut `edit` ucuyla gönderilir.
+- **Alternatifler:**
+  - D-087'deki yan panel ve istemci araması — reddedildi: kullanıcı sohbet ağırlıklı ve sade bir arayüz istedi.
+- **Sonuçlar / bedel:** Arama ve filtre yoktur. Uzun kampanyalarda sohbet uzar; akordiyon bunu sınırlar. Proposal API'sine bir önizleme ucu eklenir.
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (T-045).
 
 ---
 

@@ -108,11 +108,13 @@ func TestRequestBodyScreen(t *testing.T) {
 
 func TestRequestBodySegment(t *testing.T) {
 	t.Parallel()
-	srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))))
+	srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))), summaryTurn())
 	if _, err := newClient(t, srv).ProposeSegment(t.Context(), brief, &llmtest.Tools{}); err != nil {
 		t.Fatal(err)
 	}
 	body := requestShape(t, srv.Requests()[0], prompts.Segment(), true)
+	// The four tools of segment@2 (D-088) travel with every turn, the summary turn included.
+	requestShape(t, srv.Requests()[1], prompts.Segment(), true)
 	if body["max_tokens"] != float64(4096) {
 		t.Errorf("max_tokens = %v", body["max_tokens"])
 	}
@@ -153,11 +155,11 @@ func TestRequestBodyStream(t *testing.T) {
 func TestRepeatedCallsSendIdenticalPrefixBytes(t *testing.T) {
 	t.Parallel()
 	srv := llmtest.NewMessagesServer(t,
-		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))),
-		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))),
+		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))), summaryTurn(),
+		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))), summaryTurn(),
 	)
 	c := newClient(t, srv)
-	for _, in := range []llm.SegmentInput{{Brief: "birinci"}, {Brief: "ikinci", ContextNotes: []string{"not"}}} {
+	for _, in := range []llm.SegmentInput{{Brief: "birinci"}, {Brief: "ikinci", ContextNotes: []string{"not"}, Clarifications: []llm.Clarification{{Question: "q", Answer: "a"}}, QuestionsLeft: 1}} {
 		if _, err := c.ProposeSegment(t.Context(), in, &llmtest.Tools{}); err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +175,7 @@ func TestRepeatedCallsSendIdenticalPrefixBytes(t *testing.T) {
 		return string(b.Tools) + string(b.System)
 	}
 	reqs := srv.Requests()
-	if prefix(reqs[0]) != prefix(reqs[1]) {
+	if prefix(reqs[0]) != prefix(reqs[2]) {
 		t.Error("tools and system differ between two briefs: the cache would miss")
 	}
 }

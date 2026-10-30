@@ -3,10 +3,13 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/furknozg/coldbru/internal/platform/events"
 	"github.com/furknozg/coldbru/internal/platform/outbox"
@@ -375,6 +378,61 @@ func (s *Service) AddContext(ctx context.Context, campaignID uuid.UUID, body str
 	}
 	s.enqueue(job{kind: jobFill, campaign: campaignID, step: step.ID})
 	return noteView(note), nil
+}
+
+// Answer records the marketer's answer to a question of the agent and generates the step again
+// with it (D-088): the answer becomes a chat message that replies to the question, the question
+// and the answer go to the model as a clarification, and the step's empty slots are filled like
+// Regenerate does. It returns at once. Errors: ErrInvalidInput (empty answer), ErrNotFound,
+// ErrNotQuestion, ErrAlreadyAnswered, ErrNotOpen (the step of the question is not open),
+// ErrNotDrafting.
+func (s *Service) Answer(ctx context.Context, questionID uuid.UUID, answer string) (ChatMessageView, error) {
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return ChatMessageView{}, fmt.Errorf("%w: the answer is empty", ErrInvalidInput)
+	}
+	q, err := s.q.GetChatMessage(ctx, questionID)
+	if err != nil {
+		return ChatMessageView{}, notFound(err)
+	}
+	if q.Kind != MessageKindQuestion || q.StepID == nil {
+		return ChatMessageView{}, ErrNotQuestion
+	}
+	var out store.ChatMessage
+	err = s.inTx(ctx, q.CampaignID, func(t *txn, camp store.Campaign) error {
+		if camp.Status != CampaignStatusDrafting {
+			return ErrNotDrafting
+		}
+		st, err := t.q.GetStep(ctx, *q.StepID)
+		if err != nil {
+			return notFound(err)
+		}
+		if st.Status != StepStatusOpen {
+			return ErrNotOpen
+		}
+		if _, err := t.q.GetAnswerOfQuestion(ctx, &q.ID); err == nil {
+			return ErrAlreadyAnswered
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		out, err = t.q.InsertChatMessage(ctx, store.InsertChatMessageParams{
+			CampaignID: camp.ID, StepID: &st.ID, Kind: MessageKindAnswer, Body: answer, ReplyTo: &q.ID,
+		})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return ErrAlreadyAnswered // a concurrent answer won the row lock race
+			}
+			return err
+		}
+		t.emit(AnswerGiven{Meta: s.meta(camp.ID), StepID: st.ID, MessageID: out.ID, QuestionID: q.ID, Answer: answer})
+		return nil
+	})
+	if err != nil {
+		return ChatMessageView{}, err
+	}
+	s.enqueue(job{kind: jobFill, campaign: q.CampaignID, step: *q.StepID})
+	return messageView(out), nil
 }
 
 // openStepOf returns the open step of a campaign, ErrNotOpen when there is none.
