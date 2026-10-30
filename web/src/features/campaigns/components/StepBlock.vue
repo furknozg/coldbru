@@ -9,6 +9,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 
+import { carouselGroups } from '../carousel'
 import type { StreamingSlot } from '../composables/useCampaign'
 import { useLabels } from '../labels'
 import type { TimelineItem } from '../timeline'
@@ -16,12 +17,15 @@ import type { CampaignStatus, CostSummary, StepView } from '../types'
 import StepCost from './StepCost.vue'
 import StepLog from './StepLog.vue'
 import VariantCard from './VariantCard.vue'
+import VariantCarousel from './VariantCarousel.vue'
 
 /**
  * One step in the chat (D-091). One accordion holds the step's events and actions: open while the
  * step is open, closed once it is approved. The variants are the only cards: the drafts of the open
  * step with their actions, and, once the step is approved, only the approved ones. Rejected and
- * replaced variants are listed in the accordion.
+ * replaced variants are listed in the accordion. The text step's cards sit in one carousel per
+ * channel and the schedule step's in one (D-095), each with a count of the slots still waiting for
+ * an approval while the step is open.
  */
 const props = defineProps<{
   step: StepView
@@ -54,6 +58,13 @@ const cards = computed(() =>
     : [],
 )
 const listed = computed(() => props.step.variants.filter((v) => !cards.value.includes(v)))
+
+// The text and schedule steps show their cards in carousels (D-095): the text step one per channel.
+const carousels = computed(() =>
+  props.step.kind === 'content' || props.step.kind === 'schedule'
+    ? carouselGroups(props.step, cards.value, isOpen.value)
+    : [],
+)
 
 const title = computed(() =>
   props.step.version > 1
@@ -96,7 +107,19 @@ const title = computed(() =>
       </AccordionItem>
     </Accordion>
 
-    <div v-if="cards.length" class="flex flex-col gap-3">
+    <template v-if="carousels.length">
+      <VariantCarousel
+        v-for="group in carousels"
+        :key="group.key"
+        :data-carousel="group.key"
+        :variants="group.variants"
+        :kind="step.kind"
+        :actionable="isOpen && drafting"
+        :pending="group.pending"
+        :label="group.channel ? labels.channel(group.channel) : undefined"
+      />
+    </template>
+    <div v-else-if="cards.length" class="flex flex-col gap-3">
       <VariantCard
         v-for="variant in cards"
         :key="variant.id"

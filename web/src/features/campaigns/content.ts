@@ -21,7 +21,6 @@ export interface LocaleAudience {
 }
 
 export interface AudienceContent {
-  dsl: string
   count: number
   coverage: Coverage
   byLanguage: LocaleAudience[]
@@ -109,7 +108,6 @@ function locales(value: unknown): LocaleAudience[] {
 export function audienceContent(variant: VariantView): AudienceContent {
   const c = raw(variant)
   return {
-    dsl: str(c.dsl),
     count: num(c.count),
     coverage: coverage(c.coverage),
     byLanguage: locales(c.by_language),

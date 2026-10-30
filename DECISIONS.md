@@ -90,12 +90,16 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 | D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
 | D-086 | Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri | Takip ve altyapı | Kabul edildi |
-| D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 |
+| D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089; LLM rozeti → D-094 |
 | D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
 | D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; liste görünümü ve sohbet kart/akordiyon yerleşimi yerini aldı → D-091 |
 | D-090 | E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri | Takip ve altyapı | Kabul edildi |
-| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi |
+| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi; LLM rozeti yerini aldı → D-094 |
 | D-092 | Kitle ve plan dağılımları shadcn-vue chart pasta grafikleriyle; sayılar lejantta, tablolar kalkar | Takip ve altyapı | Kabul edildi |
+| D-093 | Metin varyantları tek yatay kaydırıcıda (shadcn-vue carousel); onaydan sonra sıradaki bekleyen slayt, köşede kalan yuva sayısı | Takip ve altyapı | Kabul edildi; tek kaydırıcı yerini aldı → D-095 |
+| D-094 | Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo | Takip ve altyapı | Kabul edildi |
+| D-095 | Metin adımında kanal başına ayrı kaydırıcı (önce e-posta, sonra SMS); zamanlama adımı da kaydırıcıda | Takip ve altyapı | Kabul edildi |
+| D-096 | Kitle adımında kural (DSL) ve kitle düzenleme arayüzden kalkar; API değişmez | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1544,7 +1548,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-087: Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme
 
-- **Durum:** Kabul edildi · 2026-10-30; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 · 2026-10-30; başlıktaki LLM modu rozeti yerini aldı → D-094 · 2026-10-30
 - **Alan:** Takip ve altyapı
 - **Bağlam:** Kullanıcı T-035'ten önce bir yerleşim taslağı (`web/application_draft_ui.png`) önerdi: solda logo, arama, kampanyalar, Analytics özeti ve profil; ortada markdown çizebilen, yeniden boyutlandırılabilen bir sohbet alanı; sağda adımları ve varyantları gösteren, açılıp kapanabilen bir önizleme paneli. İncelemede şunlar çıktı: backend serbest bir sohbet değil, yapılandırılmış bir adım akışı; profil bloğu D-072'deki kimlik doğrulama yokluğuyla çelişiyor; e-posta HTML'ini Go çiziyor ve bunun için bir uç yok; arama için API yok; canlı gönderim panosunun yeri tanımsız. Kullanıcı taslak yerine kod üzerinden ilerlemeyi seçti (T-035).
 - **Karar:**
@@ -1635,7 +1639,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-091: Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda
 
-- **Durum:** Kabul edildi · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; LLM modu rozeti yerini aldı → D-094 · 2026-10-30
 - **Alan:** Takip ve altyapı
 - **Bağlam:** T-045'i gören kullanıcı arayüzün daha da sadeleşmesini istedi: kenar çubuğundaki kampanyalar akordiyonla açılıp kapanmalı ve duruma göre alt akordiyonlarda ayrılmalı, satırlarda yalnız başlık ve satır içi tarih olmalı; sohbette mesaj ve varyantlar dışındaki olaylar ve eylemler akordiyonda durmalı, bu bileşenlerde ve ajan cevaplarında kart kullanılmamalı, iç içe kart olmamalı. D-089 adımları onay kartında akordiyon olarak gösteriyordu (T-047).
 - **Karar:**
@@ -1668,6 +1672,68 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** İki yeni web bağımlılığı. Ayrıntılı tablo görünümü kaybolur; sayılar yalnız lejantta okunur.
 - **Uygulama notu (T-048, kullanıcı onayladı):** `@unovis/vue` 1.7.1 ve `@unovis/ts` 1.7.1 (tam sürüm); shadcn-vue `chart` bileşeni (`src/components/ui/chart/`, CLI çıktısı olduğu gibi, yalnız bu klasöre dar bir lint istisnası) ile `VisSingleContainer` + `VisDonut`. Ortak bileşen `src/components/DistributionPie.vue`; yardımcılar `src/features/campaigns/distribution.ts`. Beşten fazla dilimde en büyük dördü kalır, kalanlar nötr "Diğer" diliminde toplanır. Kanallar her pastada aynı renktedir (e-posta `--chart-1`, SMS `--chart-2`, ikisi `--chart-3`, ulaşılamayan nötr); dil ve yerel ayar renkleri büyüklük sırasına göredir. Halka ortasında toplam yoktur; yüzdeler dilim toplamına göredir (`percent` biçimi, `%45,8`). Kapsama pastası ulaşılamayanları da içerdiği için toplamı kitle sayısından (yalnız ulaşılabilenler) büyük olabilir. Pasta bileşeni `defineAsyncComponent` ile ayrı parçada geç yüklenir.
 - **Doğrulama:** `make test` geçti (50 Go paketi; web 18 dosya, 173 test; geç yükleme öncesi). Geç yüklemeden sonra `pnpm -C web lint`, `type-check`, `build` ve 175 Vitest testi (19 dosya) geçti: `src/components/__tests__/DistributionPie.spec.ts`, `ChartPlaceholder.spec.ts`, `features/campaigns/__tests__/distribution.spec.ts`, `AudienceBody.spec.ts`, `PlanBody.spec.ts`. Build: unovis ayrı parçada (`DistributionPie-*.js`, 111 kB), ana parça 612 kB'tan 503 kB'a indi. Canlı: `localhost:8080`'de onaylı bir kampanyanın kitle kartında üç pasta ve plan kartında kanal pastası tarayıcıda görüldü (yalnız açık tema).
+
+## D-093: Metin varyantları tek yatay kaydırıcıda (shadcn-vue carousel); onaydan sonra sıradaki bekleyen slayt, köşede kalan yuva sayısı
+
+- **Durum:** Kabul edildi · 2026-10-30; tek kaydırıcı ve tüm metinlerde ortak sıra yerini aldı → D-095 · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Metin adımında her dil, saat dilimi ve kanal yuvası için birer varyant kartı alt alta diziliyor, sohbet uzuyordu. Kullanıcı e-posta ve SMS varyantlarının gruplanıp oklarla yatay gezilmesini, tek tek onaylanmasını ve kaç onay kaldığının kartın köşesinde yuvarlak bir sayıyla gösterilmesini istedi (T-049).
+- **Karar:**
+  - Açık metin adımının e-posta ve SMS varyantları tek bir yatay kaydırıcıdadır (shadcn-vue `carousel`, `embla-carousel-vue` tam sürüm sabitlenir); bir anda bir varyant görünür, oklar ve klavye ile gezilir.
+  - Bir varyant onaylanınca kaydırıcı onay bekleyen sonraki slayta kendisi geçer.
+  - Kartın köşesindeki yuvarlak rozet, henüz onaylı varyantı olmayan yuvaların (dil + saat dilimi + kanal) sayısıdır; 0 olunca kaybolur. Bu rozet D-091'in kenar çubuğu için koyduğu rozetsiz satır kuralının dışındadır.
+- **Alternatifler:**
+  - Elle yazılmış slayt — reddedildi: dokunmatik kaydırma ve geçiş elle yazılırdı.
+  - Kanal başına ayrı kaydırıcı — reddedildi: kullanıcı tek kaydırıcı istedi.
+  - Onaydan sonra yerinde kalmak — reddedildi: her onaydan sonra elle ilerlemek gerekirdi. Rozetin taslak varyant sayması — reddedildi: yeniden üretimle sayı yapılacak onaydan büyük görünürdü.
+- **Sonuçlar / bedel:** Yeni web bağımlılığı `embla-carousel-vue`. Varyantlar yan yana karşılaştırılamaz. Otomatik geçiş kullanıcıyı şaşırtabilir. E-posta ve SMS aynı sırada karışık gezilir.
+- **Uygulama notu (T-049, kullanıcı onayladı):** `embla-carousel-vue` 8.6.0 (tam sürüm); shadcn-vue `carousel` (`src/components/ui/carousel/`). Yardımcılar `src/features/campaigns/carousel.ts` (`pendingSlotCount`, `nextPendingIndex`), bileşen `VariantCarousel.vue`. Slaytlar önce kanala (e-posta, sonra SMS), sonra dile ve saat dilimine göre sıralanır. Oklar ve "3 / 6" yazısı kartın üstündedir, tek slaytta gizlidir. Otomatik geçiş yalnız görünen slayt onaylanınca olur ve onaylı yuvaya ait taslakları atlar. Rozet yalnız reddedilmiş ve henüz üretilmemiş (`missing`) yuvaları da sayar. Görünmeyen slaytlar `inert` olur ve yerleşim oturunca çöker; e-posta formundaki ok tuşları slayt değiştirmez.
+- **Doğrulama:** `make test`: Go'da yalnız seed'li Postgres container'ının 60 sn içinde hazır olmamasından düşen `proposal/confirm`, `proposal/customer`, `proposal/flow` tek başına sırayla koşunca geçti; web 211 Vitest testi (21 dosya), `lint`, `type-check`, `build` geçti. `src/features/campaigns/__tests__/carousel.spec.ts`, `src/views/__tests__/CampaignPage.carousel.spec.ts` (tek slayt ve konum yazısı, oklar ve klavye, rozetin yuva sayması, sıradaki bekleyen yuvaya geçiş, onaylı adımda rozetsiz kaydırıcı, tek kart katmanı). Canlı: açık metin adımında konum yazısı ve köşe rozeti tarayıcıda görüldü.
+
+## D-094: Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kullanıcı `13f2fe7` commit'iyle (`web/src/layouts/AppShell.vue`) masaüstündeki üst başlığı ve LLM modu rozetini kaldırdı; mobilde üst çubuk menü düğmesi ve logoyu gösteriyor. D-087 ve D-091 rozetin başlıkta kalmasını öngörüyordu. Bu sapma T-049 sırasında soruldu; kullanıcı rozetin kaldırılmış kalmasını seçti.
+- **Karar:**
+  - Masaüstünde üst başlık yoktur; logo kenar çubuğundadır. Mobilde üst çubuk menü düğmesi ve logodan (`app.logoAlt`) oluşur.
+  - LLM modu arayüzde gösterilmez; mod log'da ve `/readyz` kontrolünde görünür kalır (D-072).
+- **Alternatifler:**
+  - Rozetin kenar çubuğuna taşınması — reddedildi: kullanıcı sade kabuğu tercih etti.
+  - Rozetin yalnız mock modda gösterilmesi — reddedildi: aynı nedenle.
+- **Sonuçlar / bedel:** Mock modda çalışıldığı arayüzden anlaşılmaz; `/readyz` veya log'a bakmak gerekir.
+- **Doğrulama:** `pnpm -C web lint` geçti (kullanılmayan `LlmModeBadge` ve `mode` kalktı; `LlmModeBadge.vue`, `useLlmMode.ts` ve `getLlmMode()` silindi). `src/__tests__/App.spec.ts`: masaüstünde üst başlık ve `h1` yok, logo ve "+" kenar çubuğunda; dar ekranda menü düğmesi ve logolu üst çubuk.
+
+## D-095: Metin adımında kanal başına ayrı kaydırıcı (önce e-posta, sonra SMS); zamanlama adımı da kaydırıcıda
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-093 e-posta ve SMS varyantlarını tek kaydırıcıya koydu. Uygulamayı gören kullanıcı kanalların ayrılmasını ve aynı kaydırıcının zamanlama adımında da kullanılmasını istedi (T-049).
+- **Karar:**
+  - Açık veya onaylanmış metin adımında iki kaydırıcı alt alta durur: önce E-posta, sonra SMS (varyantı olmayan kanal gösterilmez). Her birinin kendi "1 / N" yazısı, kendi kalan yuva rozeti ve kendi otomatik geçişi vardır; geçiş yalnız aynı kanal içindedir. Kanal içinde sıra dil, sonra saat dilimidir.
+  - Zamanlama adımı da aynı kaydırıcıdadır: her slayt bir (dil, saat dilimi) yuvasının zamanıdır, sıra dil sonra saat dilimidir, köşedeki rozet onaylı varyantı olmayan yuvaları sayar, onaydan sonra sıradaki bekleyen yuvaya geçilir. Onaylanmış zamanlama da kaydırıcıda, rozetsiz gösterilir.
+  - D-093'ün kütüphane, rozet ve otomatik geçiş kuralları aynen geçerlidir.
+- **Alternatifler:**
+  - Tek alanda E-posta / SMS sekmeleri — reddedildi: bir kanalın bekleyen onayı sekme değiştirmeden görünmezdi.
+  - Zamanlamada rozetsiz ve otomatik geçişsiz kaydırıcı — reddedildi: metin adımıyla davranış farkı olurdu.
+- **Sonuçlar / bedel:** Metin adımı sohbette iki kart boyu yer kaplar. Kanallar arası otomatik geçiş yoktur.
+- **Uygulama notu (T-049, kullanıcı onayladı):** `carouselGroups` (`src/features/campaigns/carousel.ts`) metin adımında kanal başına, zamanlamada tek grup üretir; `pendingSlotCount(step, channel)` kanal başına sayar. Her grup kendi `VariantCarousel` örneğidir (`data-carousel` = `email`, `sms`, `schedule`). Kanal kaydırıcılarının görünür başlığı vardır; zamanlama kaydırıcısı başlıksızdır (adımın akordiyon başlığı zaten "Zamanlama"). Gösterilecek kartı olmayan ama bekleyen yuvası (yalnız reddedilmiş veya üretilmemiş) olan grup başlığı, rozeti ve "bekleyen taslak yok" satırıyla görünür; hiç yuvası olmayan grup gizlenir.
+- **Doğrulama:** `make test`: Go'da yalnız seed'li Postgres container'ının 60 sn içinde hazır olmamasından düşen `proposal/confirm`, `proposal/customer`, `proposal/flow` tek başına sırayla koşunca geçti; web 211 Vitest testi (21 dosya), `lint`, `type-check`, `build` geçti. `CampaignPage.carousel.spec.ts`: iki kanal kaydırıcısı ve ayrı rozetler, kanal içinde kalan otomatik geçiş, zamanlama kaydırıcısı (sıra, rozet, geçiş, onaylıda rozetsiz), boş kanal satırı (yalnız reddedilmiş, üretilmemiş, yuvasız gizli). Canlı: açık metin adımında E-posta ("1 / 2", rozet 2) ve SMS (rozet 1) kaydırıcıları, zamanlanmış kampanyada zamanlama kaydırıcısı görüldü; açık zamanlama adımı ve boş kanal yalnız testle doğrulandı.
+
+## D-096: Kitle adımında kural (DSL) ve kitle düzenleme arayüzden kalkar; API değişmez
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kitle varyant kartı segment kuralını (DSL) gösteriyor ve elle düzenleme formu sunuyordu (D-070'in elle düzenleme kuralı, D-087'nin kitle düzenleme eylemi). Kullanıcı T-049 sırasında sorgunun ve düzenlemenin arayüzden kaldırılmasını istedi.
+- **Karar:**
+  - Kitle kartında DSL gösterilmez; kişi sayısı ve dağılım pastaları (D-092) kalır.
+  - Kitle varyantı için düzenleme eylemi ve formu arayüzde yoktur. Pazarlamacı kitleyi bağlam notu, red gerekçesi veya ajan sorusunun cevabıyla yönlendirir. Plan ve metin düzenlemesi kalır.
+  - Proposal API'si değişmez: kitle `edit` ucu ve DSL alanı backend'de durur.
+- **Alternatifler:**
+  - DSL'in yalnız akordiyonda gösterilmesi — reddedildi: kullanıcı arayüzden tamamen kaldırılmasını istedi.
+  - Kitle `edit` ucunun da kaldırılması — reddedildi: istek arayüzle sınırlı; API ve testleri değişmeden kalır.
+- **Sonuçlar / bedel:** Pazarlamacı uygulanan kuralı göremez ve doğrudan düzeltemez; yalnız sohbetle yönlendirir. Kullanılmayan bir API ucu kalır.
+- **Doğrulama:** `AudienceBody.spec.ts` (DSL ve `pre` yok), `CampaignPage.steps.spec.ts` ("offers no edit for the audience": Onayla ve Reddet var, Düzenle ve form yok); `AudienceEditForm.vue` silindi. Canlı: kitle kartında `pre` yok, üç pasta duruyor.
 
 ---
 

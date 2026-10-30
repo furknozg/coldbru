@@ -2,6 +2,8 @@ import { afterEach, vi } from 'vitest'
 
 // The charts cannot draw in jsdom (no layout); every test gets the stub instead.
 vi.mock('@unovis/vue', () => import('./unovis-stub'))
+// The carousel scrolls by layout, which jsdom lacks; the stub keeps the slide index and the events.
+vi.mock('embla-carousel-vue', () => import('./embla-stub'))
 
 /**
  * jsdom has no `matchMedia`. The default is a desktop-wide window; a test for the drawer layout

@@ -16,7 +16,7 @@ import {
 import { useLabels } from '../labels'
 import type { VariantView } from '../types'
 
-/** The audience proposal: the rule, how many people it reaches and on which channels (D-010). */
+/** The audience proposal: how many people it reaches and on which channels (D-010); the rule is not shown (D-096). */
 const props = defineProps<{ variant: VariantView }>()
 
 const { t, n } = useI18n()
@@ -66,10 +66,6 @@ const locales = computed(() =>
 
 <template>
   <div class="flex flex-col gap-3 text-sm">
-    <pre
-      class="border-caramel/40 max-h-40 overflow-auto border-l-2 pl-2 font-mono text-xs break-all whitespace-pre-wrap"
-      :aria-label="t('audience.dsl')"
-      >{{ audience.dsl }}</pre>
     <p>
       <span class="text-lg font-semibold tabular-nums">{{ n(audience.count, 'int') }}</span>
       <span class="text-muted-foreground"> {{ t('audience.people') }}</span>

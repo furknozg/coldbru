@@ -17,10 +17,6 @@
     "network": "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.",
     "unknown": "Beklenmeyen bir hata oluştu."
   },
-  "llm": {
-    "mode": "LLM: {mode}",
-    "title": "Metinleri üreten model modu"
-  },
   "list": {
     "title": "Kampanyalar",
     "new": "Yeni kampanya",
@@ -148,6 +144,17 @@
     "reject": "Reddet",
     "edit": "Düzenle"
   },
+  "carousel": {
+    "label": "Varyantlar",
+    "group": "Varyantlar: {name}",
+    "previous": "Önceki varyant",
+    "next": "Sonraki varyant",
+    "position": "{current} / {total}",
+    "slide": "Varyant {current} / {total}",
+    "empty": "Bekleyen taslak yok; adımı yeniden üretin.",
+    "pending": "{count} onay kaldı",
+    "pendingFor": "{name}: {count} onay kaldı"
+  },
   "reject": {
     "title": "Teklif reddedilsin mi?",
     "description": "{target} için yeni bir teklif üretilir; gerekçeniz modele iletilir.",
@@ -156,8 +163,6 @@
     "confirm": "Reddet"
   },
   "audience": {
-    "dsl": "Kitle kuralı",
-    "editLabel": "Kitle kuralı (DSL)",
     "people": "kişi",
     "coverage": "Kanal kapsaması",
     "coverageKind": {

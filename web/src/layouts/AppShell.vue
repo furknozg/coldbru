@@ -14,9 +14,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import CampaignSidebar from '@/features/campaigns/components/CampaignSidebar.vue'
-import LlmModeBadge from '@/features/campaigns/components/LlmModeBadge.vue'
 import { provideCampaignList } from '@/features/campaigns/composables/campaignList'
-import { useLlmMode } from '@/features/campaigns/composables/useLlmMode'
 import { useCampaignAnalytics } from '@/features/analytics/useCampaignAnalytics'
 
 /**
@@ -28,7 +26,6 @@ const route = useRoute()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
 
 const list = provideCampaignList()
-const { mode } = useLlmMode()
 
 const selectedId = computed(() => (route.name === 'campaign' ? String(route.params.id) : null))
 const selectedStatus = computed(
