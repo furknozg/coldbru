@@ -26,6 +26,13 @@ export default defineConfigWithVueTs(
     files: ['src/**/__tests__/*'],
   },
 
+  {
+    // shadcn-vue copies components under their own single-word names (Button, Dialog, ...).
+    name: 'app/shadcn-components',
+    files: ['src/components/ui/**/*.vue'],
+    rules: { 'vue/multi-word-component-names': 'off' },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,

@@ -90,6 +90,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 | D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
 | D-086 | Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri | Takip ve altyapı | Kabul edildi |
+| D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -275,7 +276,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Pinia — reddedildi: sunucudaki teklif durumunun istemcide ikinci kopyası olurdu. Paylaşılan durum büyürse sonradan eklenebilir.
   - Reka UI (headless) veya bileşen kütüphanesi olmadan — reddedildi: tarih seçici, diyalog ve tabloları elle stillemek bir haftalık süreye ağır.
 - **Sonuçlar / bedel:** shadcn-vue bileşenleri kopyalandığı için bakımı bizde; sürümü iskelet kurulurken doğrulanacak. create-vue iskeleti Vite ile gelir. Sürümler iskelet kurulurken `package.json` ve `pnpm-lock.yaml` ile sabitlenir. Tek depoda Go ve pnpm araç zincirleri yan yana; `make test` ikisini de çalıştırmalı.
-- **Doğrulama:** Doğrulanmadı — henüz `web/` iskeleti yok. Sürümler 2026-10-27'de npm registry'den okundu.
+- **Doğrulama:** 2026-10-30'da (T-035, D-087): Vue 3 + TS, Tailwind ve shadcn-vue bileşenleri, Vue Router ve feature composable'larıyla ilk ekranlar; global store yok. Sürümler 2026-10-27'de npm registry'den okundu.
 
 ## D-013: Frontend ↔ backend: istek/yanıt REST, canlı güncellemeler SSE
 
@@ -1535,6 +1536,30 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Logo kahvesini (`#7f4a2a` civarı) primary yapmak — reddedildi: kullanıcının verdiği `#9D6638` beyazla AA'yı zaten geçiyor.
 - **Sonuçlar / bedel:** Token'lar oklch yerine hex/`var()`; shadcn CLI teması yeniden yazarsa bu blok elle korunmalı. Karamel üstünde beyaz metin 4,78:1 ile AA'yı ancak geçer; küçük ince metinde karamel yerine espresso tercih edilmeli. Koyu tema görsel olarak denenmedi.
 - **Doğrulama:** 2026-10-30: `pnpm build` ve `pnpm lint` geçti. Kontrast: beyaz/karamel 4,78, krem/espresso 11,92, beyaz/`#6b5d52` 6,34, beyaz/ink 18,88. Arayüzde henüz yalnız `App.vue` başlığı olduğundan bileşen üstünde görsel kontrol yapılmadı.
+
+## D-087: Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kullanıcı T-035'ten önce bir yerleşim taslağı (`web/application_draft_ui.png`) önerdi: solda logo, arama, kampanyalar, Analytics özeti ve profil; ortada markdown çizebilen, yeniden boyutlandırılabilen bir sohbet alanı; sağda adımları ve varyantları gösteren, açılıp kapanabilen bir önizleme paneli. İncelemede şunlar çıktı: backend serbest bir sohbet değil, yapılandırılmış bir adım akışı; profil bloğu D-072'deki kimlik doğrulama yokluğuyla çelişiyor; e-posta HTML'ini Go çiziyor ve bunun için bir uç yok; arama için API yok; canlı gönderim panosunun yeri tanımsız. Kullanıcı taslak yerine kod üzerinden ilerlemeyi seçti (T-035).
+- **Karar:**
+  - Arayüz dili Türkçedir; metinler `vue-i18n` ile `src/locales/tr.json`'dadır, sonra başka diller eklenebilir.
+  - Yerleşim üç kolondur: solda kampanya listesi ve Analytics özeti; ortada bir olay zaman çizelgesi; sağda adım ve varyant paneli. Orta alan serbest bir sohbet değildir: kullanıcı mesajlarını (brief, bağlam notu, red gerekçesi) ve SSE olaylarından üretilen kartları (adım açıldı, varyant hazır, hata, durum) gösterir; giriş kutusu bağlama göre brief veya bağlam notu gönderir. Metin düz çizilir (satır sonları korunur); markdown yoktur.
+  - Onay, red ve düzenleme eylemleri sağ paneldedir. Açık bir adım beklerken panel kapatılamaz, yalnız daraltılır; zaman çizelgesindeki bir kart panelde ilgili adıma odaklanır. Dar ekranda panel çekmeceye döner.
+  - Kampanya araması istemci tarafındadır: yüklenen listede brief ve durumla filtreler; backend değişmez.
+  - Profil bloğu yoktur. LLM modu (`/readyz`; mock ise görünür, D-072) küçük bir rozetle başlıkta gösterilir.
+  - E-posta HTML'i Proposal'a eklenecek bir önizleme ucuyla `internal/content` üzerinden çizilir (T-036); önizlemede düzenleme yapılabilir ve mevcut `edit` ucuyla gönderilir. Canlı gönderim panosu ve grafikler (shadcn-vue chart) T-037'de kod üzerinden tasarlanır.
+  - Kullanıcı ayrıca onayladı: shadcn-vue bileşenlerinin getirdiği `@vueuse/core` kalır. Bildirimler (toast) modül düzeyinde tek bir listededir; bunlar sunucu durumu değil geçici arayüz bildirimi olduğu için D-012'yle uyumlu sayılır. Zaman çizelgesi view'dan türetilebilenleri (brief, notlar, adımlar, varyantlar, redler, başarısız adım nedeni) her zaman, ön eleme sonucu, üretim başlangıcı ve gönderim durumu gibi olayları yalnız açık bağlantı süresince gösterir; olay geçmişi saklanmaz.
+- **Alternatifler:**
+  - Elle yazılmış küçük bir `t()` — reddedildi: çoğul, interpolasyon ve biçimler elle yazılırdı.
+  - Markdown + DOMPurify — reddedildi: iki bağımlılık ve güvenilmeyen metin için temizleme sorumluluğu.
+  - Eylemlerin zaman çizelgesi kartlarında olması — reddedildi: çok varyantlı adımda kartlar uzardı.
+  - Backend araması (`GET /campaigns?q=`) — kullanıcı önce seçti, sonra istemci aramasına döndü.
+  - Profil yer tutucusu — reddedildi: kimlik doğrulama yok (D-072).
+  - TS'de kopya e-posta şablonu — reddedildi: Go ve TS şablonları ayrışırdı.
+- **Sonuçlar / bedel:** Biçimli metin yoktur. Arama yalnız yüklenen sayfada çalışır. Dar ekranda panel çekmeceye döner. Önizleme ucu T-036'da Proposal API'sine eklenir. Yeni bağımlılık: `vue-i18n`.
+- **Doğrulama:** 2026-10-30'da (T-035): `pnpm -C web lint`, `type-check`, `build` ve 107 Vitest testi (12 dosya) geçti: liste ve Türkçe harf duyarsız istemci araması, kampanya oluşturma ve 422 sorunları, zaman çizelgesi sırası ve tek SSE bağlantısı, adım paneli eylemleri (onay, gerekçeli red, kitle ve plan düzenleme, yeniden üret, yeniden aç, iptal, onayı yeniden dene), açık adım varken panelin kapanmaması, dar ekranda çekmeceler, eksik i18n anahtarında ve `tr.json` dışında Türkçe harfte kırılan i18n testi. `make test` geçti. Canlı yığında `localhost:8080`: kampanya listesi, tamamlanmış ve zamanlanmış kampanyaların adımları ve zaman çizelgesi, Europe/Istanbul ve Europe/London zamanlama yuvaları, `LLM: anthropic` rozeti tarayıcıda kontrol edildi; kampanya açılmadı.
+- **Uygulama notu:** `vue-i18n` 11.4.14 (tam sürüm); shadcn-vue 2.8.2 ile `button`, `input`, `textarea`, `badge`, `dialog`, `sheet`, `label`, `separator`, `skeleton`. Plan düzenlemede yerel `<select>`. `snapshot` view'ın yerine geçer, diğer olaylar 150 ms birleştirilmiş bir yeniden okuma tetikler. 1024 px altında liste ve panel `Sheet` olur. Eski varyantlardaki `estimated_cost_gbp` kendi para birimiyle gösterilir. Ctrl/Cmd+Enter gönderir.
 
 ---
 

@@ -1,0 +1,220 @@
+{
+  "app": {
+    "title": "Smart Campaign Composer",
+    "logoAlt": "coldbru",
+    "home": "Ana sayfa"
+  },
+  "common": {
+    "cancel": "Vazgeç",
+    "close": "Kapat",
+    "dismiss": "Bildirimi kapat",
+    "loading": "Yükleniyor…",
+    "retry": "Yeniden dene",
+    "save": "Kaydet",
+    "sending": "Gönderiliyor…"
+  },
+  "errors": {
+    "network": "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.",
+    "unknown": "Beklenmeyen bir hata oluştu."
+  },
+  "llm": {
+    "mode": "LLM: {mode}",
+    "title": "Metinleri üreten model modu"
+  },
+  "list": {
+    "title": "Kampanyalar",
+    "new": "Yeni kampanya",
+    "open": "Kampanya listesini aç",
+    "drawerDescription": "Kampanya listesi, arama ve analiz özeti",
+    "searchLabel": "Kampanyalarda ara",
+    "searchPlaceholder": "Brief içinde ara",
+    "statusLabel": "Duruma göre filtrele",
+    "allStatuses": "Tüm durumlar",
+    "empty": "Henüz kampanya yok.",
+    "noMatch": "Aramayla eşleşen kampanya yok.",
+    "loadMore": "Daha fazla yükle"
+  },
+  "analytics": {
+    "title": "Analiz",
+    "llmCalls": "LLM çağrısı",
+    "llmCost": "LLM maliyeti",
+    "noData": "Henüz veri yok",
+    "failed": "Analiz verisi alınamadı"
+  },
+  "home": {
+    "title": "Yeni kampanya",
+    "description": "Ne istediğinizi kendi cümlelerinizle yazın. Kitleyi, kanal planını, metinleri ve gönderim zamanını Claude önerir; son kararı siz verirsiniz.",
+    "exampleLabel": "Örnek brief",
+    "example": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "composerLabel": "Kampanya brief'i",
+    "composerPlaceholder": "Brief'inizi yazın…",
+    "submit": "Kampanyayı başlat"
+  },
+  "composer": {
+    "hint": "Ctrl+Enter ile gönderin.",
+    "counterLabel": "Karakter sayısı"
+  },
+  "campaign": {
+    "status": {
+      "drafting": "Taslak",
+      "scheduled": "Zamanlandı",
+      "sending": "Gönderiliyor",
+      "completed": "Tamamlandı",
+      "cancelled": "İptal edildi"
+    },
+    "notFound": "Bu kampanya bulunamadı.",
+    "backHome": "Yeni kampanya yaz",
+    "noteLabel": "Bağlam notu",
+    "notePlaceholder": "Açık adıma bağlam ekleyin; onaylanmamış teklifler bu notla yeniden üretilir…",
+    "noteSubmit": "Not ekle",
+    "noteDisabled": "Bu kampanyaya artık bağlam eklenemez.",
+    "noSteps": "Bu kampanya için henüz adım oluşmadı. Başlangıç yarım kalmış olabilir.",
+    "restart": "Yeniden başlat",
+    "confirmPending": "Zamanlama onaylandı ama kampanya henüz zamanlanmadı.",
+    "retryConfirm": "Onayı yeniden dene",
+    "cancel": "İptal et",
+    "cancelTitle": "Kampanya iptal edilsin mi?",
+    "cancelDescription": "İptal edilen kampanya yeniden açılamaz; gönderim başladıysa kalan mesajlar gönderilmez.",
+    "cancelReasonLabel": "İptal nedeni (isteğe bağlı)",
+    "cancelConfirm": "Kampanyayı iptal et"
+  },
+  "timeline": {
+    "title": "Olay zaman çizelgesi",
+    "brief": "Brief",
+    "note": "Bağlam notu",
+    "rejection": "Red gerekçesi · {target}",
+    "variant": "Varyant",
+    "showStep": "{title}: adımı panelde göster",
+    "reconnecting": "Canlı akış bağlantısı koptu, yeniden bağlanılıyor…",
+    "screen": {
+      "allow": "Brief ön elemeden geçti",
+      "block": "Brief ön elemede engellendi",
+      "error": "Ön eleme tamamlanamadı"
+    },
+    "stepOpened": "{step} adımı açıldı",
+    "stepApproved": "{step} adımı onaylandı",
+    "stepSuperseded": "{step} adımı geçersiz kılındı",
+    "generationStarted": "{step} için üretim başladı",
+    "generationFailed": "{target} üretilemedi",
+    "variantCreated": "{target} varyantı hazır",
+    "variantApproved": "{target} varyantı onaylandı",
+    "campaignStatus": {
+      "sending": "Gönderim başladı",
+      "completed": "Gönderim tamamlandı"
+    },
+    "campaignConfirmed": "Kampanya onaylandı ve zamanlandı: {total} alıcı ({email} e-posta, {sms} SMS)",
+    "campaignCancelled": "Kampanya iptal edildi",
+    "streaming": "{slot} yazılıyor…",
+    "streamingPlain": "Metin",
+    "attempt": "({n}. deneme)"
+  },
+  "step": {
+    "kind": {
+      "audience": "Kitle",
+      "channel_plan": "Kanal planı",
+      "content": "Metin",
+      "schedule": "Zamanlama"
+    },
+    "status": {
+      "open": "Açık",
+      "approved": "Onaylandı",
+      "superseded": "Geçersiz",
+      "waiting": "Bekliyor"
+    },
+    "version": "sürüm {version}",
+    "withVersion": "{step} (sürüm {version})",
+    "generating": "Üretiliyor…",
+    "failed": "Üretim başarısız oldu.",
+    "regenerate": "Yeniden üret",
+    "missing": "Henüz üretilmeyen: {slots}",
+    "rejectedVariants": "Reddedilenler ({count})",
+    "reopen": "Yeniden aç",
+    "reopenTitle": "{step} adımı yeniden açılsın mı?",
+    "reopenDescription": "Bu adım ve sonraki tüm adımlar geçersiz kılınır; yeni sürüm yeniden üretilir.",
+    "reopenConfirm": "Yeniden aç"
+  },
+  "panel": {
+    "title": "Adımlar",
+    "steps": "Adım sırası",
+    "open": "Adım panelini aç",
+    "collapse": "Paneli daralt",
+    "close": "Paneli kapat",
+    "expand": "Paneli genişlet",
+    "decisionWaiting": "Onay bekleyen bir adım var",
+    "noSteps": "Henüz adım yok.",
+    "drawerDescription": "Adımlar, teklifler ve onay eylemleri"
+  },
+  "variant": {
+    "status": {
+      "draft": "Taslak",
+      "approved": "Onaylandı",
+      "rejected": "Reddedildi",
+      "superseded": "Geçersiz"
+    },
+    "approve": "Onayla",
+    "reject": "Reddet",
+    "edit": "Düzenle",
+    "rejectionReason": "Red gerekçesi"
+  },
+  "reject": {
+    "title": "Teklif reddedilsin mi?",
+    "description": "{target} için yeni bir teklif üretilir; gerekçeniz modele iletilir.",
+    "reasonLabel": "Red gerekçesi",
+    "reasonPlaceholder": "Neyi değiştirmek istediğinizi yazın…",
+    "confirm": "Reddet"
+  },
+  "audience": {
+    "dsl": "Kitle kuralı",
+    "editLabel": "Kitle kuralı (DSL)",
+    "people": "kişi",
+    "coverage": "Kanal kapsaması",
+    "coverageKind": {
+      "both": "İkisi de",
+      "email_only": "Yalnız e-posta",
+      "sms_only": "Yalnız SMS",
+      "unreachable": "Ulaşılamaz"
+    },
+    "breakdown": "Dil ve saat dilimi kırılımı",
+    "language": "Dil",
+    "timezone": "Saat dilimi"
+  },
+  "plan": {
+    "mode": {
+      "label": "Mod",
+      "single": "Tek kanal",
+      "primary_fallback": "Birincil + yedek",
+      "both": "İki kanal birden"
+    },
+    "primary": "Birincil kanal",
+    "rationale": "Gerekçe",
+    "recipients": "Kanal başına alıcılar",
+    "total": "Toplam {total}"
+  },
+  "channel": {
+    "email": "E-posta",
+    "sms": "SMS"
+  },
+  "language": {
+    "tr": "Türkçe",
+    "en": "İngilizce"
+  },
+  "content": {
+    "encoding": "Kodlama",
+    "segments": "Segment",
+    "length": "Karakter",
+    "subject": "Konu",
+    "preheader": "Ön başlık",
+    "headline": "Başlık",
+    "paragraphs": "Paragraflar",
+    "cta": "Buton metni",
+    "estimatedCost": "Tahmini maliyet"
+  },
+  "schedule": {
+    "sendAt": "Gönderim zamanı",
+    "immediately": "Hemen gönder"
+  },
+  "cost": {
+    "title": "Tahmini maliyet",
+    "total": "Toplam"
+  }
+}

@@ -33,7 +33,7 @@ T-031,Mock SMS/email provider,"Hata, gecikme ve 429 döndüren, Idempotency-Key 
 T-032,Analytics servisi,"analytics_db migration'ları, notification.completed ve proposal.token_completed tüketicileri, rapor API'si (D-018, D-036).",docs/domain-model.md;DECISIONS.md,done
 T-033,Frontend: OpenAPI istemcisi,openapi-typescript + openapi-fetch ile web/src/api altında tipli istemci üretimi (D-016).,web/package.json;DECISIONS.md,done
 T-034,nginx: statik build ve gateway,"Vue build'ini sunan, /api ve SSE yollarını Proposal, Notification ve Analytics'e yönlendiren tek nginx; Customer dışarı açılmaz (D-015, D-036, D-043).",docker-compose.yml;DECISIONS.md,done
-T-035,Vue: brief ve teklif onayı,"Sohbet terminali, adım adım teklif onay/red, ek bağlam, kanal kapsama tablosu (D-009, D-010, D-012).",web/src/features/proposals;docs/domain-model.md;DECISIONS.md,todo
+T-035,Vue: brief ve teklif onayı,"Sohbet terminali, adım adım teklif onay/red, ek bağlam, kanal kapsama tablosu (D-009, D-010, D-012).",web/src/features/proposals;docs/domain-model.md;DECISIONS.md,done
 T-036,Vue: önizleme ve zamanlama,"SMS/e-posta önizleme, segment ve maliyet gösterimi, dil başına zaman seçici (D-009, D-028).",web/src/features/campaigns;DECISIONS.md,todo
 T-037,Vue: canlı dashboard ve raporlar,"SSE ile canlı gönderim durumu, Analytics'ten kampanya özetleri (D-036).",web/src/features/deliveries;docs/domain-model.md;DECISIONS.md,todo
 T-038,Entegrasyon testleri ve make test,"testcontainers-go ile Postgres ve NATS; örnek brief 33 kişi, iki kez gitmez ve 429 testleri; make test'e eklenir (D-025).",Makefile;docs/research/README.md;DECISIONS.md,todo
