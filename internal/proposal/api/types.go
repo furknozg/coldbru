@@ -35,6 +35,15 @@ type EditRequest struct {
 	Content json.RawMessage `json:"content" swaggertype:"object" validate:"required"`
 }
 
+// PreviewRequest is the optional body of POST /variants/{id}/preview (D-090).
+type PreviewRequest struct {
+	// Content is unsaved edited email content in the shape the edit endpoint takes for an email,
+	// {"subject","preheader","headline","paragraphs","cta_label"}; the computed fields of a stored
+	// variant may be present and are ignored. Absent, null or an empty body: the stored content is
+	// rendered.
+	Content json.RawMessage `json:"content,omitempty" swaggertype:"object"`
+}
+
 // ContextRequest is the body of POST /campaigns/{id}/context.
 type ContextRequest struct {
 	// Body is the note the marketer adds to the open step. At most 2000 characters.

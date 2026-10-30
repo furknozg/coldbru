@@ -1,10 +1,13 @@
 import type { ProposalEvents } from '@/api/events'
 
 import type { Labels, Translator } from './labels'
-import type { CampaignView, Slot, StepKind } from './types'
+import type { CampaignView, ChatMessageView, Slot, StepKind } from './types'
 import { slotKey } from './types'
 
-/** Events that become timeline cards. The rest (ping, snapshot, content stream) never do. */
+/**
+ * Events that become chat cards. The rest (ping, snapshot, content stream, campaign_titled, which
+ * only changes the title) never do.
+ */
 export const TIMELINE_EVENTS = [
   'screen_result',
   'step_opened',
@@ -16,6 +19,9 @@ export const TIMELINE_EVENTS = [
   'variant_approved',
   'variant_rejected',
   'context_added',
+  'question_asked',
+  'answer_given',
+  'summary_posted',
   'campaign_status',
   'campaign_confirmed',
   'campaign_cancelled',
@@ -35,8 +41,11 @@ export type TimelineKind =
   | 'screen'
   | 'stepOpened'
   | 'generationStarted'
+  | 'question'
+  | 'answer'
   | 'generationFailed'
   | 'variantCreated'
+  | 'summary'
   | 'variantApproved'
   | 'stepApproved'
   | 'stepSuperseded'
@@ -53,28 +62,41 @@ export interface TimelineItem {
   author: 'user' | 'system'
   tone: 'neutral' | 'success' | 'warning' | 'danger'
   title: string
-  /** Plain text, shown with its line breaks; never markup. */
+  /**
+   * The text of the card. Plain text with its line breaks, except when `markdown` is set: then it is
+   * the agent's markdown (a question, a summary, D-088), rendered through `renderMarkdown`.
+   */
   body?: string
-  /** The step the card is about; a click focuses it in the step panel. */
+  markdown?: boolean
+  /** A question of the agent: its message id, for the answer, and its suggested answers. */
+  question?: { id: string; options: readonly string[] }
+  /** The step the card is about; a click brings its block into view. */
   stepId?: string
 }
 
-/** Tie-break for cards with the same instant: the order things happen in. */
+/**
+ * Tie-break for cards of one step with the same instant: the order things happen in. Cards of
+ * different steps at the same instant (an approval that opens the next step in one transaction)
+ * are ordered by their step first; see `sequence`.
+ */
 const RANK: Record<TimelineKind, number> = {
   brief: 0,
   note: 1,
   screen: 2,
   stepOpened: 3,
   generationStarted: 4,
-  generationFailed: 5,
-  variantCreated: 6,
-  rejection: 7,
-  variantApproved: 8,
-  stepApproved: 9,
-  stepSuperseded: 10,
-  campaignConfirmed: 11,
-  campaignStatus: 12,
-  campaignCancelled: 13,
+  question: 5,
+  answer: 6,
+  generationFailed: 7,
+  variantCreated: 8,
+  summary: 9,
+  rejection: 10,
+  variantApproved: 11,
+  stepApproved: 12,
+  stepSuperseded: 13,
+  campaignConfirmed: 14,
+  campaignStatus: 15,
+  campaignCancelled: 16,
 }
 
 const instant = (at: string) => {
@@ -83,9 +105,11 @@ const instant = (at: string) => {
 }
 
 /**
- * The cards of the centre column (D-087): the marketer's messages and system cards, oldest first.
- * History comes from the view, so a campaign opened later still tells its story; what only an event
- * knows (screening, generation start and failure, supersession, sending) comes from `live`.
+ * The cards of the chat (D-087, D-089): the marketer's messages, the agent's questions and
+ * summaries, and system cards, oldest first. History comes from the view, so a campaign opened later
+ * still tells its story; what only an event knows (screening, generation start and failure,
+ * supersession, sending) comes from `live`. The steps themselves are not cards: the chat draws an
+ * approved step as an accordion on its `stepApproved` card and the open step after the last card.
  */
 export function buildTimeline(
   view: CampaignView | null,
@@ -100,9 +124,11 @@ export function buildTimeline(
   const slotOfVariant = new Map<string, Slot>()
   const stepKindOf = new Map<string, StepKind>()
   const stepVersionOf = new Map<string, number>()
-  for (const step of view?.steps ?? []) {
+  const stepIndexOf = new Map<string, number>()
+  for (const [index, step] of (view?.steps ?? []).entries()) {
     stepKindOf.set(step.id, step.kind)
     stepVersionOf.set(step.id, step.version)
+    stepIndexOf.set(step.id, index)
     for (const v of step.variants) {
       slotOfVariant.set(v.id, { language: v.language, channel: v.channel, timezone: v.timezone })
     }
@@ -115,6 +141,51 @@ export function buildTimeline(
   const target = (kind: StepKind, slot?: Slot) => {
     const slotLabel = slot ? labels.slot(slot) : ''
     return slotLabel ? `${labels.stepKind(kind)} · ${slotLabel}` : labels.stepKind(kind)
+  }
+
+  /** A chat message of the agent or the marketer (D-088) as a card; `slot` names a content slot. */
+  const message = (m: ChatMessageView, slot?: Slot): TimelineItem | null => {
+    const kind = m.step_id ? stepKindOf.get(m.step_id) : undefined
+    const stepLabel = kind ? labels.stepKind(kind) : t('timeline.variant')
+    switch (m.kind) {
+      case 'question':
+        return {
+          key: `message:${m.id}`,
+          at: m.created_at,
+          kind: 'question',
+          author: 'system',
+          tone: 'warning',
+          title: t('timeline.question', { step: stepLabel }),
+          body: m.body,
+          markdown: true,
+          question: { id: m.id, options: m.options ?? [] },
+          stepId: m.step_id,
+        }
+      case 'answer':
+        return {
+          key: `message:${m.id}`,
+          at: m.created_at,
+          kind: 'answer',
+          author: 'user',
+          tone: 'neutral',
+          title: t('timeline.answer'),
+          body: m.body,
+          stepId: m.step_id,
+        }
+      case 'summary':
+        return {
+          key: `message:${m.id}`,
+          at: m.created_at,
+          kind: 'summary',
+          author: 'system',
+          tone: 'neutral',
+          title: t('timeline.summary', { target: kind ? target(kind, slot) : stepLabel }),
+          body: m.body,
+          markdown: true,
+          stepId: m.step_id,
+        }
+    }
+    return null
   }
 
   for (const entry of live) {
@@ -257,6 +328,50 @@ export function buildTimeline(
         })
         break
       }
+      case 'question_asked': {
+        const d = entry.data
+        const item = message({
+          id: d.message_id,
+          campaign_id: d.campaign_id,
+          step_id: d.step_id,
+          kind: 'question',
+          body: d.question,
+          options: d.options,
+          created_at: d.at,
+        })
+        if (item) put(item)
+        break
+      }
+      case 'answer_given': {
+        const d = entry.data
+        const item = message({
+          id: d.message_id,
+          campaign_id: d.campaign_id,
+          step_id: d.step_id,
+          kind: 'answer',
+          body: d.answer,
+          reply_to: d.question_id,
+          created_at: d.at,
+        })
+        if (item) put(item)
+        break
+      }
+      case 'summary_posted': {
+        const d = entry.data
+        const item = message(
+          {
+            id: d.message_id,
+            campaign_id: d.campaign_id,
+            step_id: d.step_id,
+            kind: 'summary',
+            body: d.markdown,
+            created_at: d.at,
+          },
+          d.slot,
+        )
+        if (item) put(item)
+        break
+      }
       case 'campaign_status': {
         const d = entry.data
         put({
@@ -312,6 +427,10 @@ export function buildTimeline(
       title: t('timeline.brief'),
       body: view.brief,
     })
+    for (const m of view.messages ?? []) {
+      const item = message(m)
+      if (item) put(item)
+    }
     for (const note of view.notes) {
       put({
         key: `note:${note.id}`,
@@ -334,10 +453,11 @@ export function buildTimeline(
         title: t('timeline.stepOpened', { step: step(s.kind, s.version) }),
         stepId: s.id,
       })
-      if (s.approved_at) {
+      // An approved step always has approved_at; created_at covers a row from an older build.
+      if (s.status === 'approved' || s.approved_at) {
         put({
           key: `step-approved:${s.id}`,
-          at: s.approved_at,
+          at: s.approved_at ?? s.created_at,
           kind: 'stepApproved',
           author: 'system',
           tone: 'success',
@@ -383,7 +503,15 @@ export function buildTimeline(
     }
   }
 
+  // Where a card belongs among cards of the same instant: campaign-level cards that start the
+  // story first, then the steps in flow order (a step the view does not know yet last among them),
+  // then the campaign-level cards that end it.
+  const sequence = (item: TimelineItem) => {
+    if (item.stepId) return stepIndexOf.get(item.stepId) ?? Number.MAX_SAFE_INTEGER - 1
+    return RANK[item.kind] <= RANK.screen ? -1 : Number.MAX_SAFE_INTEGER
+  }
   return [...items.values()].sort(
-    (a, b) => instant(a.at) - instant(b.at) || RANK[a.kind] - RANK[b.kind],
+    (a, b) =>
+      instant(a.at) - instant(b.at) || sequence(a) - sequence(b) || RANK[a.kind] - RANK[b.kind],
   )
 }

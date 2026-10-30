@@ -7,6 +7,8 @@ type Schemas = components['schemas']
 export type CampaignInfo = Schemas['flow.CampaignInfo']
 export type CampaignView = Schemas['flow.CampaignView']
 export type VariantView = Schemas['flow.VariantView']
+export type ChatMessageView = Schemas['flow.ChatMessageView']
+export type EmailPreview = Schemas['flow.EmailPreview']
 export type StepKind = Schemas['flow.StepInfo']['kind']
 
 /** Page size of the campaign list; the backend allows 1 to 100 (D-072). */
@@ -60,6 +62,25 @@ export const editVariant = (variantId: string, content: Record<string, unknown>)
     proposalApi.POST('/variants/{id}/edit', {
       ...id(variantId),
       body: { content: content as Record<string, never> },
+    }),
+  )
+
+/** Answers a question of the agent (D-088); the step is generated again with the answer. */
+export const answerQuestion = (questionId: string, answer: string): Promise<CampaignView> =>
+  unwrap(proposalApi.POST('/messages/{id}/answer', { ...id(questionId), body: { answer } }))
+
+/**
+ * Renders an email variant as it is sent (D-090): the stored blocks, or `content`, unsaved edited
+ * blocks, which are validated like an edit; a 422 carries the problems. Nothing is stored.
+ */
+export const previewVariant = (
+  variantId: string,
+  content?: Record<string, unknown>,
+): Promise<EmailPreview> =>
+  unwrap(
+    proposalApi.POST('/variants/{id}/preview', {
+      ...id(variantId),
+      ...(content ? { body: { content: content as Record<string, never> } } : {}),
     }),
   )
 

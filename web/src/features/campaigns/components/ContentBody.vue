@@ -4,10 +4,11 @@ import { useI18n } from 'vue-i18n'
 
 import { emailContent, smsContent } from '../content'
 import type { VariantView } from '../types'
+import EmailBody from './EmailBody.vue'
 
 /**
- * A text proposal, read only here (editing is T-036). Every field is shown as plain text: the model
- * wrote it and the page never treats it as markup.
+ * A text proposal, read only here. An SMS is shown as plain text with its measurements; an email as
+ * the server renders it (D-090). The model wrote every field and the page never treats it as markup.
  */
 const props = defineProps<{ variant: VariantView }>()
 
@@ -35,37 +36,7 @@ const cost = computed(() => (isSms.value ? sms.value.cost : email.value.cost))
         <dd class="text-foreground tabular-nums">{{ n(sms.renderedLength, 'int') }}</dd>
       </dl>
     </template>
-    <template v-else>
-      <dl class="flex flex-col gap-2">
-        <div>
-          <dt class="text-muted-foreground text-xs">{{ t('content.subject') }}</dt>
-          <dd class="font-medium break-words whitespace-pre-wrap">{{ email.subject }}</dd>
-        </div>
-        <div>
-          <dt class="text-muted-foreground text-xs">{{ t('content.preheader') }}</dt>
-          <dd class="break-words whitespace-pre-wrap">{{ email.preheader }}</dd>
-        </div>
-        <div>
-          <dt class="text-muted-foreground text-xs">{{ t('content.headline') }}</dt>
-          <dd class="break-words whitespace-pre-wrap">{{ email.headline }}</dd>
-        </div>
-        <div>
-          <dt class="text-muted-foreground text-xs">{{ t('content.paragraphs') }}</dt>
-          <dd class="flex flex-col gap-1">
-            <span
-              v-for="(paragraph, index) in email.paragraphs"
-              :key="index"
-              class="bg-muted rounded-lg p-2 break-words whitespace-pre-wrap"
-              >{{ paragraph }}</span
-            >
-          </dd>
-        </div>
-        <div>
-          <dt class="text-muted-foreground text-xs">{{ t('content.cta') }}</dt>
-          <dd class="break-words whitespace-pre-wrap">{{ email.ctaLabel }}</dd>
-        </div>
-      </dl>
-    </template>
+    <EmailBody v-else :variant="variant" />
     <p v-if="cost" class="text-muted-foreground text-xs">
       {{ t('content.estimatedCost') }}:
       <span class="text-foreground tabular-nums">{{

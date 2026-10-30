@@ -51,6 +51,7 @@ type Flow interface {
 	Confirm(ctx context.Context, campaignID uuid.UUID) error
 	Cancel(ctx context.Context, campaignID uuid.UUID, reason string) error
 	Answer(ctx context.Context, questionID uuid.UUID, answer string) (flow.ChatMessageView, error)
+	PreviewEmail(ctx context.Context, variantID uuid.UUID, edited json.RawMessage) (flow.EmailPreview, error)
 	CampaignOfVariant(ctx context.Context, variantID uuid.UUID) (uuid.UUID, error)
 	CampaignOfStep(ctx context.Context, stepID uuid.UUID) (uuid.UUID, error)
 	// Hub is the event hub the event stream subscribes to.
@@ -119,6 +120,7 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/variants/{id}/approve", h.approve)
 	r.Post("/variants/{id}/reject", h.reject)
 	r.Post("/variants/{id}/edit", h.edit)
+	r.Post("/variants/{id}/preview", h.preview)
 	r.Post("/steps/{id}/regenerate", h.regenerateStep)
 	r.Post("/messages/{id}/answer", h.answer)
 }

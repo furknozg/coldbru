@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/furknozg/coldbru/internal/content"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
@@ -61,6 +62,9 @@ type Deps struct {
 	Hub *Hub
 	// Logger defaults to slog.Default.
 	Logger *slog.Logger
+	// CTAURL is the link of the email button in previews (content.Config.CTAURL, D-090);
+	// content.DefaultCTAURL when empty.
+	CTAURL string
 }
 
 // Service is the proposal flow. It is safe for concurrent use. Close it when done.
@@ -74,6 +78,7 @@ type Service struct {
 	clock   Clock
 	hub     *Hub
 	log     *slog.Logger
+	cta     string
 
 	baseCtx context.Context
 	cancel  context.CancelFunc
@@ -108,7 +113,7 @@ func New(d Deps) (*Service, error) {
 	}
 	s := &Service{
 		pool: d.Pool, slots: make(chan struct{}, maxConns/2), q: store.New(d.Pool), llm: d.LLM, tools: d.Tools, content: d.Content,
-		confirm: d.Confirmer, clock: d.Clock, hub: d.Hub, log: d.Logger,
+		confirm: d.Confirmer, clock: d.Clock, hub: d.Hub, log: d.Logger, cta: d.CTAURL,
 		runners: map[uuid.UUID]*runner{}, starting: map[uuid.UUID]bool{}, stepJobs: map[uuid.UUID]int{}, failures: map[uuid.UUID]map[Slot]string{},
 	}
 	if s.tools == nil {
@@ -125,6 +130,9 @@ func New(d Deps) (*Service, error) {
 	}
 	if s.log == nil {
 		s.log = slog.Default()
+	}
+	if s.cta == "" {
+		s.cta = content.DefaultCTAURL
 	}
 	s.baseCtx, s.cancel = context.WithCancel(context.Background())
 	return s, nil

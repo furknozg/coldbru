@@ -91,6 +91,12 @@ export function useCampaign(campaignId: MaybeRefOrGetter<string | null>) {
     snapshot(data: CampaignView) {
       applyView(data)
     },
+    // The title arrives before the screen result; the header shows it at once (D-088).
+    campaign_titled(data: ProposalEvents['campaign_titled']) {
+      if (view.value && view.value.id === data.campaign_id) {
+        view.value = { ...view.value, title: data.title }
+      }
+    },
     content_delta(data: ProposalEvents['content_delta']) {
       const key = streamKey(data.step_id, data.slot)
       const current = streams.value[key]

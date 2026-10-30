@@ -41,8 +41,13 @@ async function open(path = '/campaigns/c1') {
   return mounted
 }
 
-const kinds = () => wrapper!.findAll('li[data-kind]').map((li) => li.attributes('data-kind'))
-const timeline = () => wrapper!.get('ol[aria-label="Olay zaman çizelgesi"]')
+/** The cards of the chat in order; the row of campaign actions at the end is not a card. */
+const kinds = () =>
+  wrapper!
+    .findAll('ol[aria-label="Kampanya sohbeti"] > li[data-kind]')
+    .map((li) => li.attributes('data-kind'))
+    .filter((kind) => kind !== 'campaignActions')
+const timeline = () => wrapper!.get('ol[aria-label="Kampanya sohbeti"]')
 
 /** Lets the debounced refetch that events schedule run. */
 const settle = async () => {
@@ -86,6 +91,7 @@ describe('timeline', () => {
       'stepOpened',
       'generationStarted',
       'variantCreated',
+      'openStep',
     ])
     const text = timeline().text()
     expect(text.indexOf('İstanbul için %30 indirim hatırlatması')).toBeLessThan(
@@ -131,6 +137,7 @@ describe('timeline', () => {
       .findAll('li[data-kind]')
       .filter((li) => li.classes().includes('justify-end'))
     expect(user.map((li) => li.attributes('data-kind'))).toEqual(['brief', 'note', 'rejection'])
+    expect(kinds()[kinds().length - 1]).toBe('openStep')
     expect(user[1]!.text()).toContain('Hafta sonu kampanyası')
     expect(user[2]!.text()).toContain('Red gerekçesi · Metin · Türkçe · SMS')
     expect(user[2]!.text()).toContain('daha samimi olsun.')
@@ -217,6 +224,87 @@ describe('timeline', () => {
 
     expect(timeline().text()).toContain('Brief ön elemede engellendi')
     expect(timeline().text()).toContain('Yasa dışı içerik')
+  })
+
+  it('shows the agent’s question, the answer and the summary from the stream and the view once', async () => {
+    const audience = stepOf('audience', { id: 's1', created_at: at(1) })
+    vi.mocked(proposal.getCampaign).mockResolvedValue(
+      viewOf({ created_at: at(0), steps: [audience] }),
+    )
+    await open()
+    const es = FakeEventSource.last
+
+    es.emit('question_asked', {
+      at: at(2),
+      campaign_id: 'c1',
+      step_id: 's1',
+      message_id: 'q1',
+      question: 'Hangi *şehir*?',
+      options: ['İstanbul', 'Ankara'],
+    })
+    es.emit('answer_given', {
+      at: at(3),
+      campaign_id: 'c1',
+      step_id: 's1',
+      message_id: 'a1',
+      question_id: 'q1',
+      answer: 'İstanbul',
+    })
+    es.emit('summary_posted', {
+      at: at(5),
+      campaign_id: 'c1',
+      step_id: 's1',
+      message_id: 'm1',
+      slot: {},
+      markdown: '- **48** kişi',
+    })
+    await flushPromises()
+
+    expect(kinds()).toEqual(['brief', 'stepOpened', 'question', 'answer', 'summary', 'openStep'])
+    const text = timeline().text()
+    expect(text).toContain('Kitle için soru')
+    expect(timeline().find('li[data-kind="question"] em').text()).toBe('şehir')
+    expect(timeline().find('li[data-kind="answer"]').classes()).toContain('justify-end')
+    expect(text).toContain('Kitle özeti')
+    expect(timeline().find('li[data-kind="summary"] li strong').text()).toBe('48')
+
+    // The refetch brings the same messages in the view: still one card each.
+    vi.mocked(proposal.getCampaign).mockResolvedValue(
+      viewOf({
+        created_at: at(0),
+        steps: [audience],
+        messages: [
+          {
+            id: 'q1',
+            campaign_id: 'c1',
+            step_id: 's1',
+            kind: 'question',
+            body: 'Hangi *şehir*?',
+            options: ['İstanbul', 'Ankara'],
+            created_at: at(2),
+          },
+          {
+            id: 'a1',
+            campaign_id: 'c1',
+            step_id: 's1',
+            kind: 'answer',
+            body: 'İstanbul',
+            reply_to: 'q1',
+            created_at: at(3),
+          },
+          {
+            id: 'm1',
+            campaign_id: 'c1',
+            step_id: 's1',
+            kind: 'summary',
+            body: '- **48** kişi',
+            created_at: at(5),
+          },
+        ],
+      }),
+    )
+    await settle()
+    expect(kinds()).toEqual(['brief', 'stepOpened', 'question', 'answer', 'summary', 'openStep'])
   })
 
   it('does not duplicate a card that the stream and the view both know', async () => {
@@ -350,10 +438,14 @@ describe('timeline', () => {
     await open()
 
     expect(wrapper!.get('aside li').text()).toContain('Taslak')
-    FakeEventSource.last.emit('snapshot', viewOf({ id: 'c1', status: 'cancelled' }))
+    FakeEventSource.last.emit(
+      'snapshot',
+      viewOf({ id: 'c1', status: 'cancelled', title: 'Sepet hatırlatması' }),
+    )
     await flushPromises()
 
     expect(wrapper!.get('aside li').text()).toContain('İptal edildi')
+    expect(wrapper!.get('aside li').text()).toContain('Sepet hatırlatması')
   })
 })
 

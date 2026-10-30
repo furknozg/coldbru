@@ -21,6 +21,7 @@ const (
 	CodeNotFound            = "not_found"
 	CodeStepNotOpen         = "step_not_open"
 	CodeVariantNotDraft     = "variant_not_draft"
+	CodeVariantNotEmail     = "variant_not_email"
 	CodeCampaignNotDrafting = "campaign_not_drafting"
 	CodeCampaignHasSteps    = "campaign_has_steps"
 	CodeStepNotApproved     = "step_not_approved"
@@ -72,6 +73,7 @@ var specs = map[string]problemSpec{
 	CodeNotFound:            {http.StatusNotFound, "Not found"},
 	CodeStepNotOpen:         {http.StatusConflict, "The step is not open"},
 	CodeVariantNotDraft:     {http.StatusConflict, "The variant is not a draft"},
+	CodeVariantNotEmail:     {http.StatusConflict, "The variant is not an email"},
 	CodeCampaignNotDrafting: {http.StatusConflict, "The campaign is not a draft"},
 	CodeCampaignHasSteps:    {http.StatusConflict, "The campaign already has steps"},
 	CodeStepNotApproved:     {http.StatusConflict, "The step is not approved"},
@@ -126,6 +128,8 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 		fail(w, r, CodeStepNotOpen, "The step is not open: it is approved, replaced, or not opened yet.")
 	case errors.Is(err, flow.ErrNotDraft):
 		fail(w, r, CodeVariantNotDraft, "The variant is not a draft: it is already approved, rejected or replaced.")
+	case errors.Is(err, flow.ErrNotEmail):
+		fail(w, r, CodeVariantNotEmail, "Only an email variant of the content step can be previewed.")
 	case errors.Is(err, flow.ErrNotDrafting):
 		fail(w, r, CodeCampaignNotDrafting, "The campaign is no longer a draft: it was cancelled or confirmed.")
 	case errors.Is(err, flow.ErrHasSteps):

@@ -1256,6 +1256,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/variants/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview an email variant
+         * @description Renders an email variant of the content step the way it is sent (D-090): the stored blocks, or, when the body carries `content`, unsaved edited blocks that pass the validators of the edit endpoint. `{{first_name}}` is replaced by a sample name of the variant's language ("Ayşe" for tr, "Alex" otherwise) and the button links to the campaign's CTA URL. Nothing is stored and no variant is created; the variant may be in any state.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Variant id */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            /** @description Unsaved edited content; omit the body or `content` to render the stored one */
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["api.PreviewRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["flow.EmailPreview"];
+                    };
+                };
+                /** @description id is not a UUID, or malformed JSON */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description variant_not_email: the variant is not an email of the content step */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Request Entity Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Unsupported Media Type */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description The edited content failed validation; problems lists why */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/variants/{id}/reject": {
         parameters: {
             query?: never;
@@ -1447,6 +1557,15 @@ export interface components {
              * @description At is the time the ping was sent.
              */
             at: string;
+        };
+        "api.PreviewRequest": {
+            /**
+             * @description Content is unsaved edited email content in the shape the edit endpoint takes for an email,
+             *     {"subject","preheader","headline","paragraphs","cta_label"}; the computed fields of a stored
+             *     variant may be present and are ignored. Absent, null or an empty body: the stored content is
+             *     rendered.
+             */
+            content?: Record<string, never>;
         };
         "api.Problem": {
             /**
@@ -1640,6 +1759,12 @@ export interface components {
             email_usd: string;
             sms_usd: string;
             total_usd: string;
+        };
+        "flow.EmailPreview": {
+            html: string;
+            /** @example Sepetin seni bekliyor, Ayşe */
+            subject: string;
+            text: string;
         };
         "flow.GenerationFailed": {
             /** Format: date-time */

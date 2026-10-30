@@ -38,6 +38,8 @@ var (
 	ErrNotQuestion = errors.New("flow: message is not a question")
 	// ErrAlreadyAnswered: the question has an answer already (D-088).
 	ErrAlreadyAnswered = errors.New("flow: question is already answered")
+	// ErrNotEmail: PreviewEmail was asked for a variant that is not an email of the content step (D-090).
+	ErrNotEmail = errors.New("flow: variant is not an email")
 )
 
 // InvalidContentError is the error of an edit that did not pass the validators. Problems are

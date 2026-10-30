@@ -20,8 +20,8 @@ import { useLlmMode } from '@/features/campaigns/composables/useLlmMode'
 import { useCampaignAnalytics } from '@/features/analytics/useCampaignAnalytics'
 
 /**
- * Three columns (D-087): campaigns on the left, the routed page (timeline and step panel) beside it.
- * Below 1024px the list moves into a drawer opened from the header.
+ * Two columns (D-089): campaigns on the left, the routed page (the chat) beside it. Below 1024px
+ * the list moves into a drawer opened from the header.
  */
 const { t } = useI18n()
 const route = useRoute()

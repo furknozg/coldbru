@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
 )
 
@@ -184,4 +185,42 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeView(w, r, http.StatusAccepted, msg.CampaignID)
+}
+
+// preview godoc
+//
+//	@Summary		Preview an email variant
+//	@Description	Renders an email variant of the content step the way it is sent (D-090): the stored blocks, or, when the body carries `content`, unsaved edited blocks that pass the validators of the edit endpoint. `{{first_name}}` is replaced by a sample name of the variant's language ("Ayşe" for tr, "Alex" otherwise) and the button links to the campaign's CTA URL. Nothing is stored and no variant is created; the variant may be in any state.
+//	@Tags			variants
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Variant id"	format(uuid)
+//	@Param			request	body		api.PreviewRequest	false	"Unsaved edited content; omit the body or `content` to render the stored one"
+//	@Success		200		{object}	flow.EmailPreview
+//	@Failure		400		{object}	api.Problem	"id is not a UUID, or malformed JSON"
+//	@Failure		404		{object}	api.Problem
+//	@Failure		409		{object}	api.Problem	"variant_not_email: the variant is not an email of the content step"
+//	@Failure		413		{object}	api.Problem
+//	@Failure		415		{object}	api.Problem
+//	@Failure		422		{object}	api.Problem	"The edited content failed validation; problems lists why"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/variants/{id}/preview [post]
+func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req PreviewRequest
+	if !decodeOptional(w, r, &req) {
+		return
+	}
+	if string(bytes.TrimSpace(req.Content)) == "null" {
+		req.Content = nil
+	}
+	p, err := h.flow.PreviewEmail(r.Context(), id, req.Content)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }

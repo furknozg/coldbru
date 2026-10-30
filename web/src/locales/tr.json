@@ -25,13 +25,8 @@
     "title": "Kampanyalar",
     "new": "Yeni kampanya",
     "open": "Kampanya listesini aç",
-    "drawerDescription": "Kampanya listesi, arama ve analiz özeti",
-    "searchLabel": "Kampanyalarda ara",
-    "searchPlaceholder": "Brief içinde ara",
-    "statusLabel": "Duruma göre filtrele",
-    "allStatuses": "Tüm durumlar",
+    "drawerDescription": "Kampanya listesi ve analiz özeti",
     "empty": "Henüz kampanya yok.",
-    "noMatch": "Aramayla eşleşen kampanya yok.",
     "loadMore": "Daha fazla yükle"
   },
   "analytics": {
@@ -79,12 +74,12 @@
     "cancelConfirm": "Kampanyayı iptal et"
   },
   "timeline": {
-    "title": "Olay zaman çizelgesi",
+    "title": "Kampanya sohbeti",
     "brief": "Brief",
     "note": "Bağlam notu",
     "rejection": "Red gerekçesi · {target}",
     "variant": "Varyant",
-    "showStep": "{title}: adımı panelde göster",
+    "showStep": "{title}: adımı göster",
     "reconnecting": "Canlı akış bağlantısı koptu, yeniden bağlanılıyor…",
     "screen": {
       "allow": "Brief ön elemeden geçti",
@@ -106,7 +101,10 @@
     "campaignCancelled": "Kampanya iptal edildi",
     "streaming": "{slot} yazılıyor…",
     "streamingPlain": "Metin",
-    "attempt": "({n}. deneme)"
+    "attempt": "({n}. deneme)",
+    "question": "{step} için soru",
+    "answer": "Cevap",
+    "summary": "{target} özeti"
   },
   "step": {
     "kind": {
@@ -132,17 +130,6 @@
     "reopenTitle": "{step} adımı yeniden açılsın mı?",
     "reopenDescription": "Bu adım ve sonraki tüm adımlar geçersiz kılınır; yeni sürüm yeniden üretilir.",
     "reopenConfirm": "Yeniden aç"
-  },
-  "panel": {
-    "title": "Adımlar",
-    "steps": "Adım sırası",
-    "open": "Adım panelini aç",
-    "collapse": "Paneli daralt",
-    "close": "Paneli kapat",
-    "expand": "Paneli genişlet",
-    "decisionWaiting": "Onay bekleyen bir adım var",
-    "noSteps": "Henüz adım yok.",
-    "drawerDescription": "Adımlar, teklifler ve onay eylemleri"
   },
   "variant": {
     "status": {
@@ -207,7 +194,15 @@
     "headline": "Başlık",
     "paragraphs": "Paragraflar",
     "cta": "Buton metni",
-    "estimatedCost": "Tahmini maliyet"
+    "estimatedCost": "Tahmini maliyet",
+    "previewSample": "örnek adla çizildi",
+    "previewFrameTitle": "E-posta önizlemesi",
+    "previewLoading": "Önizleme hazırlanıyor…",
+    "previewFailed": "Önizleme alınamadı",
+    "editTitle": "E-postayı düzenle",
+    "paragraph": "{n}. paragraf",
+    "addParagraph": "Paragraf ekle",
+    "removeParagraph": "{n}. paragrafı kaldır"
   },
   "schedule": {
     "sendAt": "Gönderim zamanı",
@@ -216,5 +211,12 @@
   "cost": {
     "title": "Tahmini maliyet",
     "total": "Toplam"
+  },
+  "question": {
+    "options": "Önerilen cevaplar",
+    "hint": "Bir seçeneğe tıklayın ya da cevabınızı aşağıya yazın.",
+    "answerLabel": "Ajanın sorusuna cevap",
+    "answerPlaceholder": "Cevabınızı yazın; adım cevabınızla yeniden üretilir…",
+    "answerSubmit": "Cevapla"
   }
 }

@@ -2,8 +2,15 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import MarkdownBody from '@/components/MarkdownBody.vue'
+
 import type { TimelineItem } from '../timeline'
 
+/**
+ * One card of the chat: a message of the marketer (right, plain text) or a card of the system or
+ * the agent (left). Agent text (`item.markdown`) is drawn as sanitised markdown (D-088); a card
+ * about a step is a button that brings the step's block into view.
+ */
 const { item } = defineProps<{ item: TimelineItem }>()
 const emit = defineEmits<{ 'focus-step': [stepId: string] }>()
 
@@ -48,7 +55,8 @@ const focusable = computed(() => item.author === 'system' && Boolean(item.stepId
           {{ d(item.at, 'time') }}
         </time>
       </span>
-      <span v-if="item.body" class="mt-1 block break-words whitespace-pre-wrap">{{
+      <MarkdownBody v-if="item.body && item.markdown" class="mt-1" :source="item.body" />
+      <span v-else-if="item.body" class="mt-1 block break-words whitespace-pre-wrap">{{
         item.body
       }}</span>
     </component>

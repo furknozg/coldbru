@@ -127,6 +127,7 @@ func Setup(ctx context.Context, d *app.Deps) error {
 		Confirmer: confirmer,
 		Hub:       hub,
 		Logger:    d.Logger,
+		CTAURL:    contentCfg.CTAURL,
 	})
 	if err != nil {
 		return fmt.Errorf("flow: %w", err)
