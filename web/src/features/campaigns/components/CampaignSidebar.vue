@@ -9,7 +9,7 @@ import AnalyticsBlock from '@/features/analytics/components/AnalyticsBlock.vue'
 import { useCampaignList } from '../composables/campaignList'
 import CampaignList from './CampaignList.vue'
 
-/** The left column (D-089): logo, a `+` for a new campaign, the campaign list, the analytics block. */
+/** The left column (D-089, D-091): logo, a `+` for a new campaign, the grouped campaign list, the analytics block. */
 defineProps<{
   selectedId: string | null
   analytics: { report: CampaignReport | null; loading: boolean; failed: boolean }

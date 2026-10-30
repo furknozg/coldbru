@@ -27,7 +27,14 @@
     "open": "Kampanya listesini aç",
     "drawerDescription": "Kampanya listesi ve analiz özeti",
     "empty": "Henüz kampanya yok.",
-    "loadMore": "Daha fazla yükle"
+    "loadMore": "Daha fazla yükle",
+    "group": {
+      "drafting": "Taslak",
+      "scheduled": "Zamanlanmış",
+      "sending": "Gönderiliyor",
+      "completed": "Tamamlandı",
+      "cancelled": "İptal"
+    }
   },
   "analytics": {
     "title": "Analiz",
@@ -71,7 +78,8 @@
     "cancelTitle": "Kampanya iptal edilsin mi?",
     "cancelDescription": "İptal edilen kampanya yeniden açılamaz; gönderim başladıysa kalan mesajlar gönderilmez.",
     "cancelReasonLabel": "İptal nedeni (isteğe bağlı)",
-    "cancelConfirm": "Kampanyayı iptal et"
+    "cancelConfirm": "Kampanyayı iptal et",
+    "actionsTitle": "Kampanya eylemleri"
   },
   "timeline": {
     "title": "Kampanya sohbeti",
@@ -79,7 +87,6 @@
     "note": "Bağlam notu",
     "rejection": "Red gerekçesi · {target}",
     "variant": "Varyant",
-    "showStep": "{title}: adımı göster",
     "reconnecting": "Canlı akış bağlantısı koptu, yeniden bağlanılıyor…",
     "screen": {
       "allow": "Brief ön elemeden geçti",
@@ -119,17 +126,16 @@
       "superseded": "Geçersiz",
       "waiting": "Bekliyor"
     },
-    "version": "sürüm {version}",
     "withVersion": "{step} (sürüm {version})",
     "generating": "Üretiliyor…",
     "failed": "Üretim başarısız oldu.",
     "regenerate": "Yeniden üret",
     "missing": "Henüz üretilmeyen: {slots}",
-    "rejectedVariants": "Reddedilenler ({count})",
     "reopen": "Yeniden aç",
     "reopenTitle": "{step} adımı yeniden açılsın mı?",
     "reopenDescription": "Bu adım ve sonraki tüm adımlar geçersiz kılınır; yeni sürüm yeniden üretilir.",
-    "reopenConfirm": "Yeniden aç"
+    "reopenConfirm": "Yeniden aç",
+    "otherVariants": "Diğer varyantlar"
   },
   "variant": {
     "status": {
@@ -140,8 +146,7 @@
     },
     "approve": "Onayla",
     "reject": "Reddet",
-    "edit": "Düzenle",
-    "rejectionReason": "Red gerekçesi"
+    "edit": "Düzenle"
   },
   "reject": {
     "title": "Teklif reddedilsin mi?",

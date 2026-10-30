@@ -27,6 +27,7 @@ const DYNAMIC: Record<string, readonly string[]> = {
   'step.kind.': STEP_ORDER,
   'step.status.': ['open', 'approved', 'superseded', 'waiting'],
   'campaign.status.': CAMPAIGN_STATUSES,
+  'list.group.': CAMPAIGN_STATUSES,
   'variant.status.': ['draft', 'approved', 'rejected', 'superseded'],
   'channel.': CHANNELS,
   'plan.mode.': PLAN_MODES,

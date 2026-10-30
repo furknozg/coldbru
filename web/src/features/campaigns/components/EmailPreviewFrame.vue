@@ -21,7 +21,7 @@ const { t } = useI18n()
     </p>
     <p class="font-medium break-words" data-preview-subject>{{ subject }}</p>
     <div
-      class="bg-muted h-[28rem] min-h-40 resize-y overflow-hidden rounded-lg border"
+      class="h-[28rem] min-h-40 resize-y overflow-hidden"
       :class="loading ? 'opacity-70' : ''"
       :aria-busy="loading || undefined"
     >

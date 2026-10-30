@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import BriefComposer from '@/features/campaigns/components/BriefComposer.vue'
-import CampaignStatusBadge from '@/features/campaigns/components/CampaignStatusBadge.vue'
+import CancelCampaign from '@/features/campaigns/components/CancelCampaign.vue'
 import ChatStream from '@/features/campaigns/components/ChatStream.vue'
 import { provideCampaignActions } from '@/features/campaigns/composables/campaignActions'
 import { useCampaignList } from '@/features/campaigns/composables/campaignList'
@@ -14,13 +14,13 @@ import { useCampaign } from '@/features/campaigns/composables/useCampaign'
 import { useLabels } from '@/features/campaigns/labels'
 import { toProblem, type Problem } from '@/features/campaigns/problem'
 import { buildTimeline } from '@/features/campaigns/timeline'
-import { MAX_ANSWER_CHARS, MAX_NOTE_CHARS } from '@/features/campaigns/types'
+import { CANCELLABLE, MAX_ANSWER_CHARS, MAX_NOTE_CHARS } from '@/features/campaigns/types'
 
 /**
- * `/campaigns/:id`: one chat column (D-089). The title on top, the cards, the steps and their
- * actions in the stream, and the composer at the bottom, which sends a context note or, while the
- * agent waits for one, the answer to its question (D-090). The page owns the campaign state; the
- * cards reach the actions through the provider set up here.
+ * `/campaigns/:id`: one chat column (D-089, D-091). The title on top, the messages and the steps
+ * in the stream, and the chat bar at the bottom: it sends a context note or, while the agent waits
+ * for one, the answer to its question (D-090), and holds the cancel button. The page owns the
+ * campaign state; the parts of the chat reach the actions through the provider set up here.
  */
 const { t, te, d } = useI18n()
 const labels = useLabels()
@@ -52,6 +52,7 @@ watch(view, (current) => {
 const timeline = computed(() => buildTimeline(view.value, campaign.live.value, { t, te }, labels))
 
 const drafting = computed(() => view.value?.status === 'drafting')
+const cancellable = computed(() => (view.value ? CANCELLABLE.includes(view.value.status) : false))
 const pendingQuestion = computed(() => {
   if (!drafting.value) return null
   return view.value?.steps.find((s) => s.status === 'open')?.pending_question ?? null
@@ -91,15 +92,20 @@ const problem = computed(() => (campaign.error.value ? toProblem(campaign.error.
 <template>
   <section class="flex h-full min-h-0 flex-col" :aria-label="t('timeline.title')">
     <header v-if="view" class="flex items-center gap-3 border-b px-4 py-2">
-      <CampaignStatusBadge :status="view.status" />
       <h2
-        class="text-espresso min-w-0 flex-1 truncate text-sm font-semibold"
+        class="text-espresso min-w-0 truncate text-sm font-semibold"
         :title="view.title || view.brief"
         data-campaign-title
       >
         {{ view.title || view.brief }}
       </h2>
-      <time class="text-muted-foreground hidden text-xs sm:block" :datetime="view.created_at">
+      <span class="text-muted-foreground shrink-0 text-xs" :data-status="view.status">{{
+        labels.status(view.status)
+      }}</span>
+      <time
+        class="text-muted-foreground ml-auto hidden text-xs sm:block"
+        :datetime="view.created_at"
+      >
         {{ d(view.created_at, 'short') }}
       </time>
     </header>
@@ -155,7 +161,9 @@ const problem = computed(() => (campaign.error.value ? toProblem(campaign.error.
             :busy="composerBusy"
             :problem="textProblem"
             @submit="send"
-          />
+          >
+            <template #actions><CancelCampaign v-if="cancellable" /></template>
+          </BriefComposer>
           <BriefComposer
             v-else
             v-model="text"
@@ -168,7 +176,9 @@ const problem = computed(() => (campaign.error.value ? toProblem(campaign.error.
             :disabled-reason="t('campaign.noteDisabled')"
             :problem="textProblem"
             @submit="send"
-          />
+          >
+            <template #actions><CancelCampaign v-if="cancellable" /></template>
+          </BriefComposer>
         </div>
       </div>
     </template>

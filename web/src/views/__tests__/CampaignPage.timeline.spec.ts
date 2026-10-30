@@ -41,13 +41,22 @@ async function open(path = '/campaigns/c1') {
   return mounted
 }
 
-/** The cards of the chat in order; the row of campaign actions at the end is not a card. */
+/**
+ * The entries of the chat in order: plain lines by kind, a block per step as `step`. The events of
+ * a step are inside its accordion, so they are not in this list. The accordion of campaign actions
+ * at the end is not an entry of the story.
+ */
 const kinds = () =>
   wrapper!
     .findAll('ol[aria-label="Kampanya sohbeti"] > li[data-kind]')
     .map((li) => li.attributes('data-kind'))
     .filter((kind) => kind !== 'campaignActions')
 const timeline = () => wrapper!.get('ol[aria-label="Kampanya sohbeti"]')
+/** The kinds of the events inside one step's accordion. */
+const stepEvents = (stepId: string) =>
+  wrapper!
+    .findAll(`li[data-step-id="${stepId}"] [data-testid="step-log-${stepId}"] ol > li[data-kind]`)
+    .map((li) => li.attributes('data-kind'))
 
 /** Lets the debounced refetch that events schedule run. */
 const settle = async () => {
@@ -58,7 +67,7 @@ const settle = async () => {
 const at = (second: number) => `2026-10-30T10:00:${String(second).padStart(2, '0')}.000Z`
 
 describe('timeline', () => {
-  it('renders the brief, then the system cards of the view and the stream in time order', async () => {
+  it('renders the brief, then the lines of the view and the stream in time order, with the step events in its accordion', async () => {
     const audience = stepOf('audience', { id: 's1', created_at: at(2) })
     audience.variants = [
       variantOf({
@@ -85,14 +94,9 @@ describe('timeline', () => {
     })
     await flushPromises()
 
-    expect(kinds()).toEqual([
-      'brief',
-      'screen',
-      'stepOpened',
-      'generationStarted',
-      'variantCreated',
-      'openStep',
-    ])
+    expect(kinds()).toEqual(['brief', 'screen', 'step'])
+    // The open step's accordion is unfolded and holds the events, oldest first.
+    expect(stepEvents('s1')).toEqual(['stepOpened', 'generationStarted', 'variantCreated'])
     const text = timeline().text()
     expect(text.indexOf('İstanbul için %30 indirim hatırlatması')).toBeLessThan(
       text.indexOf('Brief ön elemeden geçti'),
@@ -133,17 +137,20 @@ describe('timeline', () => {
     )
     await open()
 
-    const user = wrapper!
-      .findAll('li[data-kind]')
-      .filter((li) => li.classes().includes('justify-end'))
+    const user = timeline().findAll('li[data-author="user"]')
     expect(user.map((li) => li.attributes('data-kind'))).toEqual(['brief', 'note', 'rejection'])
-    expect(kinds()[kinds().length - 1]).toBe('openStep')
+    expect(kinds()[kinds().length - 1]).toBe('step')
     expect(user[1]!.text()).toContain('Hafta sonu kampanyası')
     expect(user[2]!.text()).toContain('Red gerekçesi · Metin · Türkçe · SMS')
     expect(user[2]!.text()).toContain('daha samimi olsun.')
     // Line breaks are kept by CSS, not by markup: the text stays plain.
     expect(user[2]!.find('.whitespace-pre-wrap').exists()).toBe(true)
     expect(user[2]!.find('br').exists()).toBe(false)
+    // The rejected variant itself is listed, without a card, in the accordion of its step.
+    const listed = wrapper!.get('li[data-step-id="s3"] [data-variant-status="rejected"]')
+    expect(listed.element.tagName).toBe('LI')
+    expect(listed.findAll('span').map((el) => el.text())).toEqual(['Türkçe · SMS', 'Reddedildi'])
+    expect(wrapper!.find('li[data-step-id="s3"] article').exists()).toBe(false)
   })
 
   it('draws brief text literally, never as markup', async () => {
@@ -260,11 +267,11 @@ describe('timeline', () => {
     })
     await flushPromises()
 
-    expect(kinds()).toEqual(['brief', 'stepOpened', 'question', 'answer', 'summary', 'openStep'])
+    expect(kinds()).toEqual(['brief', 'question', 'answer', 'summary', 'step'])
     const text = timeline().text()
     expect(text).toContain('Kitle için soru')
     expect(timeline().find('li[data-kind="question"] em').text()).toBe('şehir')
-    expect(timeline().find('li[data-kind="answer"]').classes()).toContain('justify-end')
+    expect(timeline().find('li[data-kind="answer"]').attributes('data-author')).toBe('user')
     expect(text).toContain('Kitle özeti')
     expect(timeline().find('li[data-kind="summary"] li strong').text()).toBe('48')
 
@@ -304,10 +311,10 @@ describe('timeline', () => {
       }),
     )
     await settle()
-    expect(kinds()).toEqual(['brief', 'stepOpened', 'question', 'answer', 'summary', 'openStep'])
+    expect(kinds()).toEqual(['brief', 'question', 'answer', 'summary', 'step'])
   })
 
-  it('does not duplicate a card that the stream and the view both know', async () => {
+  it('does not duplicate an event that the stream and the view both know', async () => {
     const audience = stepOf('audience', { id: 's1', created_at: at(2) })
     vi.mocked(proposal.getCampaign).mockResolvedValue(
       viewOf({ created_at: at(0), steps: [audience] }),
@@ -323,7 +330,7 @@ describe('timeline', () => {
     })
     await settle()
 
-    expect(kinds().filter((k) => k === 'stepOpened')).toHaveLength(1)
+    expect(stepEvents('s1').filter((k) => k === 'stepOpened')).toHaveLength(1)
   })
 
   it('streams content per slot, starts over on a reset and drops the card when the variant arrives', async () => {
@@ -433,19 +440,21 @@ describe('timeline', () => {
     expect(wrapper!.get('header [data-status]').attributes('data-status')).toBe('sending')
   })
 
-  it('reflects the status of the open campaign in the list', async () => {
+  it('moves the open campaign to the group of its status in the list', async () => {
     vi.mocked(proposal.getCampaign).mockResolvedValue(viewOf({ id: 'c1', status: 'drafting' }))
     await open()
 
-    expect(wrapper!.get('aside li').text()).toContain('Taslak')
+    expect(wrapper!.find('aside [data-group="drafting"] li').exists()).toBe(true)
     FakeEventSource.last.emit(
       'snapshot',
       viewOf({ id: 'c1', status: 'cancelled', title: 'Sepet hatırlatması' }),
     )
     await flushPromises()
 
-    expect(wrapper!.get('aside li').text()).toContain('İptal edildi')
-    expect(wrapper!.get('aside li').text()).toContain('Sepet hatırlatması')
+    // The campaign moved to the group of its new status, which opens for the campaign that is open.
+    expect(wrapper!.find('aside [data-group="drafting"]').exists()).toBe(false)
+    const row = wrapper!.get('aside [data-group="cancelled"] li')
+    expect(row.text()).toContain('Sepet hatırlatması')
   })
 })
 

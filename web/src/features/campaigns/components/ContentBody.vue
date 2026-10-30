@@ -26,7 +26,9 @@ const cost = computed(() => (isSms.value ? sms.value.cost : email.value.cost))
 <template>
   <div class="flex flex-col gap-2 text-sm">
     <template v-if="isSms">
-      <p class="bg-muted rounded-lg p-2 break-words whitespace-pre-wrap">{{ sms.text }}</p>
+      <p class="border-caramel/40 border-l-2 pl-2 break-words whitespace-pre-wrap">
+        {{ sms.text }}
+      </p>
       <dl class="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
         <dt>{{ t('content.encoding') }}</dt>
         <dd class="text-foreground">{{ encoding }}</dd>

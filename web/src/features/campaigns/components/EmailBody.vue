@@ -62,7 +62,7 @@ const { preview, loading, problem, refresh } = useEmailPreview(
           <span
             v-for="(paragraph, index) in email.paragraphs"
             :key="index"
-            class="bg-muted rounded-lg p-2 break-words whitespace-pre-wrap"
+            class="border-caramel/40 border-l-2 pl-2 break-words whitespace-pre-wrap"
             >{{ paragraph }}</span
           >
         </dd>

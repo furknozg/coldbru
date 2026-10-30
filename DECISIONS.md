@@ -92,8 +92,10 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-086 | Web renk paleti logo.png'den: beyaz zemin, karamel primary, krem yalnız hover/aktif, adaçayı ve espresso destek; shadcn token'ları + Tailwind marka renkleri | Takip ve altyapı | Kabul edildi |
 | D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 |
 | D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
-| D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi |
+| D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; liste görünümü ve sohbet kart/akordiyon yerleşimi yerini aldı → D-091 |
 | D-090 | E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri | Takip ve altyapı | Kabul edildi |
+| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi |
+| D-092 | Kitle ve plan dağılımları shadcn-vue chart pasta grafikleriyle; sayılar lejantta, tablolar kalkar | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1598,7 +1600,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-089: Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme
 
-- **Durum:** Kabul edildi · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; sol menü liste görünümü ve sohbetteki kart/akordiyon yerleşimi yerini aldı → D-091 · 2026-10-30
 - **Alan:** Takip ve altyapı
 - **Bağlam:** T-035'in arayüzünü gören kullanıcı arayüzün sadeleşmesini, yan panel yerine sohbet ağırlıklı bir düzeni ve metin taslağında kullanmak için e-posta önizlemesini istedi. D-087 istemci aramasını, durum filtresini ve sağdaki adım panelini; T-036 e-posta önizleme ucunu öngörüyordu. İş T-045 olarak ayrıldı.
 - **Karar:**
@@ -1630,6 +1632,41 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Düzenleme sırasında her gecikmeli değişiklik bir istek atar. iframe yüksekliği içerikten hesaplanır. Düzenleme WYSIWYG değildir. Örnek ad uzun adlarda taşmayı göstermez; sınır backend'de zaten ölçülür (D-028). SMS önizlemesi, segment ve maliyet gösterimi ve zaman seçici T-036'da kalır.
 - **Uygulama notu (T-045, kullanıcı onayladı):** `flow.Service.PreviewEmail` (`internal/proposal/flow/preview.go`), örnek adlar `SampleFirstNameTR = "Ayşe"`, `SampleFirstNameEN = "Alex"`. Düzenlenmiş içerik `edit` ile aynı doğrulamadan geçer; hata 422 `invalid_content`. E-posta olmayan varyant 409 `variant_not_email`. Onaylanmış ve reddedilmiş varyantlar da önizlenir; `{}` veya `content: null` saklı içerik sayılır. iframe `sandbox=""` (izin yok), yüksekliği ölçülemediği için sabit 28rem ve CSS ile elle büyütülebilir. Önizleme gecikmesi `PREVIEW_DEBOUNCE_MS = 400`. E-posta varyantı salt okunur görünümde çizilmiş önizlemeyle gösterilir; istek başarısız olursa metin blokları ve yeniden dene.
 - **Doğrulama:** `make test` geçti. `internal/proposal/api/api_integration_test.go` `TestEmailPreviewOverREST` (saklı tr/en örnek adlarla, düzenlenmiş, geçersiz 422, SMS 409, bilinmeyen 404, view değişmez), `api_test.go` `TestPreview`, `flow/preview_test.go`, `CampaignPage.steps.spec.ts` (önizleme, düzenleme, 422, kaydet). Canlı (mock): curl ile saklı ve düzenlenmiş önizleme 200, geçersiz 422, SMS 409, bilinmeyen 404. Masaüstü uygulamasının tarayıcı panelinde sandbox iframe ekran görüntüsünde boş çıkıyor (opak köken iframe'in panel sınırlaması olduğu düşünülüyor); gerçek bir tarayıcıda gözle kontrol edilmedi.
+
+## D-091: Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** T-045'i gören kullanıcı arayüzün daha da sadeleşmesini istedi: kenar çubuğundaki kampanyalar akordiyonla açılıp kapanmalı ve duruma göre alt akordiyonlarda ayrılmalı, satırlarda yalnız başlık ve satır içi tarih olmalı; sohbette mesaj ve varyantlar dışındaki olaylar ve eylemler akordiyonda durmalı, bu bileşenlerde ve ajan cevaplarında kart kullanılmamalı, iç içe kart olmamalı. D-089 adımları onay kartında akordiyon olarak gösteriyordu (T-047).
+- **Karar:**
+  - Kenar çubuğu: dış akordiyon "Kampanyalar"; içinde beş durum grubu (Taslak, Zamanlanmış, Gönderiliyor, Tamamlandı, İptal). Boş gruplar gizlenir; seçili kampanyanın grubu ve Taslak açık gelir. Satırda yalnız başlık (yoksa brief) ve satır içi kısa tarih vardır; durum rozeti yoktur. LLM modu rozeti başlıkta kalır (D-072).
+  - Sohbet: mesajlar (brief, bağlam notu, ajan sorusu, cevap, özet) kartsız düz satırlardır. Varyantlar tek kart katmanıdır, kart içinde kart yoktur. Her adımın olayları (açıldı, üretiliyor, hata, onaylandı) ve eylemleri (onayla, reddet, düzenle, yeniden üret) o adımın tek akordiyonundadır; açık adımın akordiyonu açık, onaylananlarınki kapalı gelir.
+  - Onaylanan adımda adım kartı yerine yalnız onaylanan varyant(lar) kart olarak görünür; reddedilen ve yerini alan varyantlar adımın akordiyonunda kartsız listelenir.
+  - İptal düğmesi sohbet çubuğundadır. Onaylanmış bir adımı yeniden açma düğmesi o adımın akordiyonundadır; onayı yeniden dene ve yeniden başlat en sondaki "Kampanya eylemleri" akordiyonundadır.
+  - Kampanya sayfasının başlığında durum rozeti yoktur; durum başlığın yanında soluk düz metindir.
+- **Alternatifler:**
+  - Üç kova (Aktif, Gönderim, Geçmiş) — reddedildi: zamanlanmış ve gönderiliyor ayrılmazdı.
+  - Ardışık olayların tek akordiyonda toplanması — reddedildi: eylemlerin hangi adıma ait olduğu belirsizleşirdi.
+  - Onaylanan adımda tüm varyantların kart kalması — reddedildi: sohbet uzardı.
+- **Sonuçlar / bedel:** Liste sayfalı olduğu için gruplar yalnız yüklenen kampanyaları gösterir. Durum yalnız grup başlığından okunur. Olaylar varsayılan olarak gizlidir, bir tıkla açılır.
+- **Uygulama notu (T-047, kullanıcı onayladı):** İlk kararda yeniden aç da sondaki akordiyondaydı; uygulamayı gören kullanıcı onu adımın akordiyonuna aldı ve başlık rozetini düz metne çevirdi. Kullanıcı ve ajan mesajları sola hizalıdır, fark etiket rengindedir (`data-author`). Kenar çubuğu satırında yalnız gün tarihi (`i18n.ts` `date` biçimi), grup başlığında kampanya sayısı vardır. Kampanya düzeyindeki olaylar (ön eleme, durum, onay, iptal) soluk düz satırdır. Kartların içi sol çizgiyle (`border-l-2`) düzleşti; e-posta iframe'inin çerçevesi kalktı; `InlineProblems` kutusuz kırmızı metindir. Adıma odaklanma tıklaması kalktı. Kart yalnız açık veya onaylanmış adımdaki taslak/onaylı varyantlardır (`data-slot="card"`).
+- **Doğrulama:** `pnpm -C web lint`, `type-check`, `build` ve 151 Vitest testi (14 dosya) geçti: `web/src/__tests__/App.spec.ts` (durum grupları, boş grupların gizlenmesi, varsayılan açık gruplar, satırda yalnız başlık ve tarih), `web/src/views/__tests__/CampaignPage.steps.spec.ts` ("plain chat (D-091)": kartsız mesajlar, adım başına tek akordiyon, onaylanan adımda yalnız onaylanan varyant kartı, iç içe kart yok, iptal sohbet çubuğunda, yeniden aç adım akordiyonunda, son akordiyon), `features/campaigns/__tests__/chat.spec.ts`. `make test` Go tarafında yük kaynaklı testcontainers zaman aşımlarıyla düştü (customer `audience`/`consent`/`graph`, notification `intake`); bu paketler tek başına sırayla koşunca geçti. Canlı: `localhost:8080`'de kenar çubuğu grupları, satır linklerinde `text-decoration-line: none`, rozetsiz başlık ve sohbet tarayıcıda kontrol edildi.
+
+## D-092: Kitle ve plan dağılımları shadcn-vue chart pasta grafikleriyle; sayılar lejantta, tablolar kalkar
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** Kullanıcı kitle analizi gibi adımlarda kapsama dağılımının kanal, dil ve yerel ayar için pasta grafikle gösterilmesini istedi. Kitle varyantı kanal kapsamasını (`both`, `email_only`, `sms_only`, `unreachable`), dil ve yerel ayar (dil + saat dilimi, D-076) dağılımını; plan varyantı kanal başına alıcıları tablo olarak gösteriyordu. D-087 grafikler için shadcn-vue chart'ı T-037'ye bırakmıştı (T-048).
+- **Karar:**
+  - Grafikler shadcn-vue chart bileşeniyle çizilir (`@unovis/vue` + `@unovis/ts`, tam sürüm sabitlenir); renkler D-086 paletinin token'larından gelir. T-037'nin panosu da aynı bileşeni kullanır.
+  - Kitle adımında üç pasta: kanal kapsaması, dil, yerel ayar (dil + saat dilimi). Plan adımında bir pasta: kanal başına alıcı.
+  - Sayılar pastanın lejantında durur; bu dağılımların tabloları kalkar.
+- **Alternatifler:**
+  - Elle SVG pasta — reddedildi: ipucu, erişilebilirlik ve animasyon elle yazılırdı; T-037'de yine kütüphane gerekirdi.
+  - `vue-chartjs` + Chart.js — reddedildi: canvas tabanlı, shadcn temasından ayrı stil, iki bağımlılık.
+  - Pastaların tablolarla birlikte durması — reddedildi: varyant kartı uzardı. Yalnız kitle adımı — reddedildi: plan dağılımı tabloda kalırdı.
+- **Sonuçlar / bedel:** İki yeni web bağımlılığı. Ayrıntılı tablo görünümü kaybolur; sayılar yalnız lejantta okunur.
+- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (T-048).
 
 ---
 
