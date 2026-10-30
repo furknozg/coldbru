@@ -42,6 +42,9 @@ async function open(view: CampaignView) {
   vi.mocked(proposal.getCampaign).mockResolvedValue(view)
   const mounted = await mountApp(`/campaigns/${view.id}`)
   wrapper = mounted.wrapper
+  // The charts are a lazy chunk (D-092): wait for it before looking at the page.
+  await vi.dynamicImportSettled()
+  await flushPromises()
   return mounted
 }
 
@@ -172,15 +175,28 @@ describe('steps in the chat', () => {
     expect(block.querySelector('pre')!.textContent).toBe(audienceContent.dsl)
     expect(block.querySelector('pre')!.className).toContain('font-mono')
     expect(block.textContent).toContain('48')
-    const rows = [...block.querySelectorAll('table')[0]!.querySelectorAll('tr')].map((tr) =>
-      words(tr),
-    )
-    expect(rows).toEqual(['İkisi de 22', 'Yalnız e-posta 13', 'Yalnız SMS 13', 'Ulaşılamaz 3'])
-    const breakdown = block.querySelectorAll('table')[1]!.textContent!
-    expect(breakdown).toContain('Türkçe')
-    expect(breakdown).toContain('Europe/Istanbul')
-    expect(breakdown).toContain('İngilizce')
-    expect(breakdown).toContain('Europe/London')
+    // Three pies instead of tables (D-092): the numbers sit in their legends.
+    expect(block.querySelector('table')).toBeNull()
+    const pies = [...block.querySelectorAll('figure')]
+    expect(pies.map((pie) => pie.querySelector('figcaption')!.textContent)).toEqual([
+      'Kanal kapsaması',
+      'Dil',
+      'Yerel ayar',
+    ])
+    expect([...pies[0]!.querySelectorAll('li')].map((li) => words(li))).toEqual([
+      'İkisi de 22 %43,1',
+      'Yalnız e-posta 13 %25,5',
+      'Yalnız SMS 13 %25,5',
+      'Ulaşılamaz 3 %5,9',
+    ])
+    expect([...pies[1]!.querySelectorAll('li')].map((li) => words(li))).toEqual([
+      'Türkçe 42 %87,5',
+      'İngilizce 6 %12,5',
+    ])
+    expect([...pies[2]!.querySelectorAll('li')].map((li) => words(li))).toEqual([
+      'Türkçe · Europe/Istanbul 42 %87,5',
+      'İngilizce · Europe/London 6 %12,5',
+    ])
     // The open step is the last entry of the chat; with nothing to retry or restart there
     // is no accordion of campaign actions after it.
     const kinds = [...chat().querySelectorAll(':scope > li')].map((li) =>
@@ -230,9 +246,11 @@ describe('steps in the chat', () => {
     expect(text).toContain('Mod Birincil + yedek')
     expect(text).toContain('Birincil kanal E-posta')
     expect(text).toContain('E-posta daha çok kişiye ulaşıyor.')
-    expect(text).toContain('Türkçe 29 13')
-    expect(text).toContain('İngilizce 6 0')
-    expect(text).toContain('Toplam 48 35 13')
+    // One pie of recipients per channel instead of the table (D-092).
+    expect(text).toContain('Kanal başına alıcılar')
+    expect(text).toContain('E-posta 35 %72,9')
+    expect(text).toContain('SMS 13 %27,1')
+    expect(openStep()!.querySelector('table')).toBeNull()
   })
 
   it('shows SMS text with encoding, segments and cost, and an email as its rendered preview', async () => {

@@ -2,7 +2,17 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { LazyDistributionPie } from '@/components/LazyDistributionPie'
+
 import { audienceContent } from '../content'
+import {
+  bySize,
+  CHANNEL_COLORS,
+  coverageSlices,
+  foldSmallest,
+  languageTotals,
+  SERIES_COLORS,
+} from '../distribution'
 import { useLabels } from '../labels'
 import type { VariantView } from '../types'
 
@@ -14,18 +24,44 @@ const labels = useLabels()
 
 const audience = computed(() => audienceContent(props.variant))
 
-// by_locale (language + time zone, D-076) when the variant has it, else the older by_language.
-const breakdown = computed(() =>
-  audience.value.byLocale.length ? audience.value.byLocale : audience.value.byLanguage,
-)
-const hasZone = computed(() => breakdown.value.some((row) => row.timezone))
+const MAX_SLICES = SERIES_COLORS.length
 
-const coverageRows = computed(() => [
-  { key: 'both', value: audience.value.coverage.both },
-  { key: 'email_only', value: audience.value.coverage.email_only },
-  { key: 'sms_only', value: audience.value.coverage.sms_only },
-  { key: 'unreachable', value: audience.value.coverage.unreachable },
-])
+const other = computed(() => ({ key: 'other', label: t('chart.other'), value: 0 }))
+
+const coverage = computed(() =>
+  coverageSlices(audience.value.coverage, (kind) => t(`audience.coverageKind.${kind}`)).map(
+    (slice) => ({ ...slice, color: CHANNEL_COLORS[slice.key] }),
+  ),
+)
+
+const languages = computed(() =>
+  foldSmallest(
+    bySize(
+      languageTotals(audience.value).map(({ language, count }) => ({
+        key: language,
+        label: labels.language(language),
+        value: count,
+      })),
+    ),
+    MAX_SLICES,
+    other.value,
+  ),
+)
+
+// Language + time zone exists from D-076 on; an older variant has no zones to chart.
+const locales = computed(() =>
+  foldSmallest(
+    bySize(
+      audience.value.byLocale.map(({ language, timezone, count }) => ({
+        key: `${language}|${timezone ?? ''}`,
+        label: labels.slot({ language, timezone }),
+        value: count,
+      })),
+    ),
+    MAX_SLICES,
+    other.value,
+  ),
+)
 </script>
 
 <template>
@@ -39,66 +75,23 @@ const coverageRows = computed(() => [
       <span class="text-muted-foreground"> {{ t('audience.people') }}</span>
     </p>
 
-    <table class="w-full text-left text-xs">
-      <caption class="text-muted-foreground pb-1 text-left font-medium">
-        {{
-          t('audience.coverage')
-        }}
-      </caption>
-      <tbody>
-        <tr v-for="row in coverageRows" :key="row.key" class="border-t">
-          <th scope="row" class="py-1 pr-2 font-normal">
-            {{ t(`audience.coverageKind.${row.key}`) }}
-          </th>
-          <td class="py-1 text-right tabular-nums">{{ n(row.value, 'int') }}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table v-if="breakdown.length" class="w-full text-left text-xs">
-      <caption class="text-muted-foreground pb-1 text-left font-medium">
-        {{
-          t('audience.breakdown')
-        }}
-      </caption>
-      <thead>
-        <tr class="text-muted-foreground">
-          <th scope="col" class="py-1 pr-2 font-medium">{{ t('audience.language') }}</th>
-          <th v-if="hasZone" scope="col" class="py-1 pr-2 font-medium">
-            {{ t('audience.timezone') }}
-          </th>
-          <th scope="col" class="py-1 text-right font-medium">{{ t('audience.people') }}</th>
-          <th scope="col" class="py-1 pl-2 text-right font-medium">
-            {{ t('audience.coverageKind.both') }}
-          </th>
-          <th scope="col" class="py-1 pl-2 text-right font-medium">
-            {{ t('audience.coverageKind.email_only') }}
-          </th>
-          <th scope="col" class="py-1 pl-2 text-right font-medium">
-            {{ t('audience.coverageKind.sms_only') }}
-          </th>
-          <th scope="col" class="py-1 pl-2 text-right font-medium">
-            {{ t('audience.coverageKind.unreachable') }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="row in breakdown"
-          :key="`${row.language}|${row.timezone ?? ''}`"
-          class="border-t"
-        >
-          <th scope="row" class="py-1 pr-2 font-normal">{{ labels.language(row.language) }}</th>
-          <td v-if="hasZone" class="py-1 pr-2 break-all">{{ row.timezone }}</td>
-          <td class="py-1 text-right tabular-nums">{{ n(row.count, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">{{ n(row.coverage.both, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">{{ n(row.coverage.email_only, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">{{ n(row.coverage.sms_only, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">
-            {{ n(row.coverage.unreachable, 'int') }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="flex flex-wrap gap-x-8 gap-y-5">
+      <LazyDistributionPie
+        class="min-w-56 flex-1 basis-56"
+        :title="t('audience.coverage')"
+        :slices="coverage"
+      />
+      <LazyDistributionPie
+        class="min-w-56 flex-1 basis-56"
+        :title="t('audience.language')"
+        :slices="languages"
+      />
+      <LazyDistributionPie
+        v-if="locales.length"
+        class="min-w-56 flex-1 basis-56"
+        :title="t('audience.locale')"
+        :slices="locales"
+      />
+    </div>
   </div>
 </template>

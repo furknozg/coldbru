@@ -30,6 +30,8 @@ const datetimeFormats = {
 const numberFormats = {
   [LOCALE]: {
     int: { maximumFractionDigits: 0 },
+    // A share of a whole, as in the legend of a pie chart (D-092): %45,8.
+    percent: { style: 'percent', maximumFractionDigits: 1 },
     usd: {
       style: 'currency',
       currency: 'USD',

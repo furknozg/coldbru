@@ -33,6 +33,16 @@ export default defineConfigWithVueTs(
     rules: { 'vue/multi-word-component-names': 'off' },
   },
 
+  {
+    // The shadcn-vue chart is copied as published and types unovis callbacks with `any`.
+    name: 'app/shadcn-chart',
+    files: ['src/components/ui/chart/**/*.{vue,ts}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,
