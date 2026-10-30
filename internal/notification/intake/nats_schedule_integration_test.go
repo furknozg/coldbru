@@ -52,16 +52,18 @@ func TestNATSScheduling(t *testing.T) {
 			_, err := st.GetLastMsgForSubject(ctx, "fire."+id)
 			return err == nil
 		})
-		fired := time.Now()
+		msg, err := st.GetLastMsgForSubject(ctx, "fire."+id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The server stamps the target message on the clock its scheduler fires by; the host clock
+		// of the Docker VM can drift from it by a few milliseconds (D-097).
+		fired := msg.Time
 		if fired.Before(sendAt) {
 			t.Errorf("delivered at %s, before the scheduled %s", fired.Format(time.RFC3339Nano), sendAt.Format(time.RFC3339Nano))
 		}
 		if late := fired.Sub(sendAt); late > 2*time.Second {
 			t.Errorf("delivered %v after the scheduled time, want within 2s", late)
-		}
-		msg, err := st.GetLastMsgForSubject(ctx, "fire."+id)
-		if err != nil {
-			t.Fatal(err)
 		}
 		if string(msg.Data) != string(payload) {
 			t.Errorf("target payload = %s, want the schedule message's %s", msg.Data, payload)

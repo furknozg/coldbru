@@ -100,6 +100,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-094 | Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo | Takip ve altyapı | Kabul edildi |
 | D-095 | Metin adımında kanal başına ayrı kaydırıcı (önce e-posta, sonra SMS); zamanlama adımı da kaydırıcıda | Takip ve altyapı | Kabul edildi |
 | D-096 | Kitle adımında kural (DSL) ve kitle düzenleme arayüzden kalkar; API değişmez | Takip ve altyapı | Kabul edildi |
+| D-097 | `make test-go` paket paralelliğini `-p 2` ile sınırlar (`GO_TEST_P` ile değişir); `TestNATSScheduling` zamanı sunucu saatiyle ölçer | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -1734,6 +1735,24 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kitle `edit` ucunun da kaldırılması — reddedildi: istek arayüzle sınırlı; API ve testleri değişmeden kalır.
 - **Sonuçlar / bedel:** Pazarlamacı uygulanan kuralı göremez ve doğrudan düzeltemez; yalnız sohbetle yönlendirir. Kullanılmayan bir API ucu kalır.
 - **Doğrulama:** `AudienceBody.spec.ts` (DSL ve `pre` yok), `CampaignPage.steps.spec.ts` ("offers no edit for the audience": Onayla ve Reddet var, Düzenle ve form yok); `AudienceEditForm.vue` silindi. Canlı: kitle kartında `pre` yok, üç pasta duruyor.
+
+## D-097: `make test-go` paket paralelliğini `-p 2` ile sınırlar; `TestNATSScheduling` sunucu saatiyle ölçer
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Test ve kapsam
+- **Bağlam:** `make test` (D-051) birkaç görevdir yalnız paralel yükte kırılıyordu; kırılan paketler tek başına `-p 1` ile geçiyordu. Her entegrasyon paketi TestMain'de kendi konteynerlerini açar: 9 paket `pgtest` ile seed'li Postgres (initdb + `stub/` CSV'leri, tek başına ~9 sn), ~12 paket düz Postgres, ~8 paket NATS, `mockprovider` Mailpit ve MockServer. Varsayılan `-p` CPU sayısıdır (8); Docker VM'i 8 CPU / 4 GB, compose stack'i de açık. Bu yükte seed'li Postgres `BasicWaitStrategies`'in 60 sn penceresinde ikinci "ready to accept connections" satırını basamadı, MockServer da açılamadı; intake zamanlama testleri ve consent `QUERY_TIMEOUT` aynı CPU açlığından etkilendi.
+- **Karar:**
+  - `Makefile`'da `GO_TEST_P ?= 2`; `test-go` `go test -race -count=1 -p $(GO_TEST_P) -tags=integration ./...` çalıştırır. Daha güçlü veya zayıf makinede `make test GO_TEST_P=…` ile değiştirilir. Test yardımcıları, wait süreleri ve seed değişmez.
+  - Önce `-p 4` seçildi. Sessiz makinede geçti (206 sn), ama makinede başka iş yükü varken (load average 15–24, koşu 480+ sn) iki koşu farklı nedenle kırıldı: `proposal/confirm`'de seed'li Postgres 60 sn'yi kaçırdı; `TestSend_RateLimitedToAHundredPerSecond` bir saniyelik pencerede 118 istek saydı (sınır `RatePerSecond+Burst+5` = 115; toplam hız 99/s doğruydu, istekler sahte provider'a CPU açlığında kümelenerek vardı). Kullanıcı varsayılanı 2'ye indirdi.
+  - `-p 4` ile ilk koşuda ayrı bir flake çıktı: `TestNATSScheduling` hedef mesajı planlanan zamandan 4 ms önce gördü, çünkü host `time.Now()`'u NATS zamanlayıcısının Docker VM saatiyle karşılaştırıyordu. Kontrol artık hedef mesajın sunucuda saklanan zamanıyla (`jetstream.RawStreamMsg.Time`) yapılır, yani zamanlayıcıyla aynı saatle; "erken değil" ve "2 sn içinde" garantileri gevşemez (kullanıcı onayladı). `TestIntake_ScheduledScheduleFiresAtItsTime` host saatinde kalır: kontrolden önce `e.idle` beklediği için payı vardır.
+- **Alternatifler:**
+  - `-p 4` — ilk seçimdi, yerini `-p 2` aldı: paylaşılan makinede pay yetmedi (yukarıda).
+  - `-p 4` ile birlikte seed'li beklemeyi 180 sn'ye çıkarmak — reddedildi: açılış zaman aşımını kaldırır ama rate testi gibi zamanlamaya duyarlı testler yükte kırılmaya devam eder; gerçek bir takılma 3 dk sonra fark edilir.
+  - Tek seed'li Postgres'i süreçler arası paylaşıp paket başına template database — reddedildi: konteyner reuse ve Ryuk ömrü süreçler arasında kırılgan, çok daha fazla kod.
+  - Yalnız wait timeout'larını artırmak — reddedildi: açılışı maskeler, zamanlamaya duyarlı testler yükte kırılmaya devam eder.
+  - Saat kayması için host saatinde 250 ms tolerans — reddedildi: 250 ms'ye kadar erken ateşlemeyi yakalayamaz. Testi bilinen flake olarak bırakmak — reddedildi: `make test` ara sıra kırmızı kalır.
+- **Sonuçlar / bedel:** Suite yavaşlar. Dış yük yine de bir sınırdır: başka oturumlar aynı anda konteyner açarsa zamanlamaya duyarlı testler kırılabilir. Paralellik makineden bağımsız sabit; çok çekirdekli bir CI'da suite gereğinden yavaş kalabilir. `-p` derleme paralelliğini de sınırlar. Paket sayısı büyüdükçe değer yeniden ölçülmeli. `TestNATSScheduling` zamanı host saatinde değil sunucu saatinde ölçer.
+- **Doğrulama:** Aynı makinede (8 CPU, Docker VM 8 CPU / 4 GB, compose stack açık), varsayılan `-p` ile `go test -race -count=1 -tags=integration ./...`: 9 paket başarısız (`customer/{audience,consent,graph}`, `notification/sender`, `proposal/{api,confirm,customer,flow}`, `mockprovider`), 330 sn. `-p 4` ile: hepsi geçti, 206 sn; seed'li paketler 17–27 sn sürdü. `-p 4` ile `make test` iki kez yük altında kırıldı (yukarıda). `-p 2` ile ilk `make test` de kırıldı (692 sn, load average ~12): `notification/sender` 312 sn sürdü, `intake.Start` NATS consumer oluştururken `context deadline exceeded` aldı. Bu koşularda host'ta `kernel_task` ~%110 CPU kullanıyordu; makine sessiz `-p 4` koşusuna göre ~3 kat yavaştı. `TestNATSScheduling` sunucu saatiyle tek başına üç kez geçti. Üç ardışık yeşil `make test` henüz sağlanmadı: Doğrulanmadı.
 
 ---
 
