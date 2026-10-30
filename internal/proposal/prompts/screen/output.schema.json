@@ -9,8 +9,12 @@
     "reason": {
       "type": "string",
       "description": "One short sentence naming the rule that applies, in the language of the brief."
+    },
+    "title": {
+      "type": "string",
+      "description": "A concise name for the campaign, in the language of the brief: at most 60 characters, one line, no quotes, no emoji, no trailing full stop."
     }
   },
-  "required": ["verdict", "reason"],
+  "required": ["verdict", "reason", "title"],
   "additionalProperties": false
 }

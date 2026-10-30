@@ -15,6 +15,18 @@ type Campaign struct {
 	Status    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	Title     pgtype.Text
+}
+
+type ChatMessage struct {
+	ID         uuid.UUID
+	CampaignID uuid.UUID
+	StepID     *uuid.UUID
+	Kind       string
+	Body       string
+	Options    []byte
+	ReplyTo    *uuid.UUID
+	CreatedAt  pgtype.Timestamptz
 }
 
 type ContextNote struct {

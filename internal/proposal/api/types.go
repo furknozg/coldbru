@@ -47,6 +47,12 @@ type ReopenRequest struct {
 	Kind string `json:"kind" enums:"audience,channel_plan,content,schedule" example:"channel_plan" validate:"required"`
 }
 
+// AnswerRequest is the body of POST /messages/{id}/answer.
+type AnswerRequest struct {
+	// Answer is the marketer's answer to the agent's question: one of its options or free text. At most 1000 characters.
+	Answer string `json:"answer" example:"Yalnızca son 30 günde alışveriş yapanlar" minLength:"1" maxLength:"1000" validate:"required"`
+}
+
 // CancelRequest is the optional body of POST /campaigns/{id}/cancel.
 type CancelRequest struct {
 	// Reason is why the campaign is cancelled; it is recorded and sent to Notification. At most 1000 characters. Without one, "cancelled by the marketer" is used.

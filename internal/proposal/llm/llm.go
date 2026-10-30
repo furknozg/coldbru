@@ -74,9 +74,12 @@ const (
 )
 
 // ScreenResult is the pre-screen's answer. Reason is one sentence in the language of the brief.
+// Title is the campaign name the screen proposed (D-088, screen@2.0.0): at most MaxTitleChars
+// characters, in the language of the brief; the flow stores it on the campaign.
 type ScreenResult struct {
 	Verdict Verdict
 	Reason  string
+	Title   string
 }
 
 // SegmentInput is the call-specific data of the segment call. It goes to the model as one JSON
@@ -86,10 +89,23 @@ type SegmentInput struct {
 	Brief string
 	// ContextNotes are earlier remarks of the marketer about this campaign (context_note rows).
 	ContextNotes []string
+	// Clarifications are the questions the agent asked in this step and the marketer's answers
+	// (D-088). Answers override the brief where they conflict.
+	Clarifications []Clarification
+	// QuestionsLeft is how many clarifying questions the agent may still ask in this step (0 when the
+	// limit of MaxQuestionsPerStep is reached): a question beyond it is a validation failure.
+	QuestionsLeft int
 }
 
-// SegmentResult is a filter that passed Validate.
+// SegmentResult is a filter that passed Validate, or, when Question is set, the agent's clarifying
+// question (D-088): the loop ended with ask_user, nothing was proposed and the other fields are
+// empty except Turns and Usage.
 type SegmentResult struct {
+	// Question is set when the agent asked instead of proposing.
+	Question *Question
+	// Summary is the markdown the agent sent with send_summary after the accepted proposal; empty
+	// when it sent none (the step succeeds without one).
+	Summary string
 	// DSL is the filter as the model wrote it in its accepted propose_segment call.
 	DSL string
 	// Filter is the compiled filter that Validate returned for DSL.
@@ -104,6 +120,36 @@ type SegmentResult struct {
 	ProposeAttempts int
 	// Usage sums the tokens of all turns.
 	Usage Usage
+}
+
+// Limits of the agent's questions and summaries (D-088).
+const (
+	// MaxQuestionsPerStep is how many clarifying questions the agent may ask in one step; after
+	// them it must decide.
+	MaxQuestionsPerStep = 2
+	// MaxTitleChars is the longest campaign title (campaign.title CHECK).
+	MaxTitleChars = 60
+	// MaxQuestionChars, MaxOptionChars and MaxSummaryChars bound what the agent may write.
+	MaxQuestionChars = 500
+	MaxOptionChars   = 100
+	MaxSummaryChars  = 2000
+	// MinOptions and MaxOptions bound the options of a question.
+	MinOptions = 2
+	MaxOptions = 4
+)
+
+// Question is a clarifying question of the agent (D-088): the step waits for the marketer's
+// answer. Options are 2 to 4 suggested answers, or none; the marketer may answer freely.
+type Question struct {
+	Text    string
+	Options []string
+}
+
+// Clarification is one answered question of a step, given back to the model when the step is
+// generated again (D-088).
+type Clarification struct {
+	Question string
+	Answer   string
 }
 
 // Usage is the token accounting of a model call, from the API's usage object.

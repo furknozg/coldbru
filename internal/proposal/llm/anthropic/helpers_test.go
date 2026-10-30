@@ -44,6 +44,27 @@ func countBlock(id, dsl string) llmtest.Block {
 	return llmtest.ToolUse(id, "count_audience", map[string]any{"dsl": dsl})
 }
 
+func summaryBlock(id, markdown string) llmtest.Block {
+	return llmtest.ToolUse(id, "send_summary", map[string]any{"markdown": markdown})
+}
+
+func askBlock(id, question string, options []string) llmtest.Block {
+	in := map[string]any{"question": question, "options": nil}
+	if options != nil {
+		in["options"] = options
+	}
+	return llmtest.ToolUse(id, "ask_user", in)
+}
+
+// scriptedSummary is the markdown of summaryTurn.
+const scriptedSummary = "**Audience**: scripted summary of the filter."
+
+// summaryTurn is the turn that follows an accepted propose_segment (D-088): the model reads the
+// accepted result and sends the summary.
+func summaryTurn() llmtest.Response {
+	return llmtest.JSON(msg(summaryBlock("toolu_sum", scriptedSummary)))
+}
+
 // previewerFunc is a customer.Client stand-in for llm.NewCustomerTools.
 type previewerFunc func(ctx context.Context, f *compile.Filter) (*customer.Preview, error)
 

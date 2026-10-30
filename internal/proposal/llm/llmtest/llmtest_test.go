@@ -445,7 +445,7 @@ func TestPlanQueue(t *testing.T) {
 	// One record per attempt, for the real prompt package.
 	recs := col.Records()
 	if len(recs) != 2 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[0].Error == "" || recs[1].Outcome != llm.OutcomeAccepted ||
-		recs[0].Purpose != llm.PurposeChannelPlan || recs[1].Attempt != 2 || recs[0].Prompt != (llm.PromptRef{Name: "channel_plan", Version: "1.0.0", SHA256: prompts.ChannelPlan().SHA256}) {
+		recs[0].Purpose != llm.PurposeChannelPlan || recs[1].Attempt != 2 || recs[0].Prompt != (llm.PromptRef{Name: "channel_plan", Version: "2.0.0", SHA256: prompts.ChannelPlan().SHA256}) {
 		t.Errorf("records = %+v", recs)
 	}
 

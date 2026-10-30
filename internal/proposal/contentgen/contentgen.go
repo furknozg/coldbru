@@ -68,15 +68,16 @@ func slotOf(req flow.ContentRequest) (slot, error) {
 // turn; onDelta (may be nil) gets the text fragments of every attempt as they arrive, with the
 // 1-based attempt number, so after a repair the preview restarts. Every attempt starts with a call
 // with an empty text, which tells the flow about the attempt before its first fragment (D-072).
-// It returns the stored content of the first valid answer, or:
+// It returns the stored content of the first valid answer with the model's summary (D-088; a
+// missing or rule-breaking summary is dropped, not repaired: the summary is not the message), or:
 //
 //   - *llm.RefusalError or *llm.APIError as the adapter returned them (no repair);
 //   - *llm.RepairExhaustedError (Purpose content, Problems = the messages of the last attempt) when
 //     MaxAttempts answers broke the rules or were unusable.
-func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (json.RawMessage, error) {
+func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDelta func(attempt int, text string)) (flow.Generated, error) {
 	sl, err := slotOf(req)
 	if err != nil {
-		return nil, err
+		return flow.Generated{}, err
 	}
 	var (
 		previous json.RawMessage
@@ -85,10 +86,11 @@ func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDel
 	for attempt := 1; attempt <= MaxAttempts; attempt++ {
 		user, err := g.userMessage(req, sl, attempt, previous, problems)
 		if err != nil {
-			return nil, err
+			return flow.Generated{}, err
 		}
 		var (
 			built   json.RawMessage
+			summary string
 			failure []content.Problem
 		)
 		acall := &llm.Collector{}
@@ -98,12 +100,12 @@ func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDel
 			delta = func(text string) { onDelta(attempt, text) }
 		}
 		raw, _, err := g.llm.StreamStructured(llm.WithRecorder(ctx, acall), g.pkg, user, delta, func(raw json.RawMessage) error {
-			stored, ps := g.fromModel(raw, sl)
+			stored, md, ps := g.fromModel(raw, sl)
 			if len(ps) > 0 {
 				failure = ps
 				return content.AsError(ps)
 			}
-			built = stored
+			built, summary = stored, md
 			return nil
 		})
 		for _, rec := range acall.Records() {
@@ -111,7 +113,7 @@ func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDel
 			llm.Report(ctx, rec)
 		}
 		if err == nil {
-			return built, nil
+			return flow.Generated{Content: built, Summary: summary}, nil
 		}
 		var (
 			invalid  *llm.ContentInvalidError
@@ -128,10 +130,10 @@ func (g *Generator) Generate(ctx context.Context, req flow.ContentRequest, onDel
 				previous = recs[len(recs)-1].Response
 			}
 		default:
-			return nil, err // a refusal or an API failure: no repair
+			return flow.Generated{}, err // a refusal or an API failure: no repair
 		}
 	}
-	return nil, &llm.RepairExhaustedError{
+	return flow.Generated{}, &llm.RepairExhaustedError{
 		Purpose: llm.PurposeContent, Attempts: MaxAttempts, Problems: content.Messages(problems),
 		Reason: "the answers broke the content rules",
 	}
@@ -155,15 +157,17 @@ func (g *Generator) Validate(req flow.ContentRequest, edited json.RawMessage) (j
 }
 
 // fromModel checks the document the model returned: exactly the requested channel is filled and the
-// other is null (the schema asks for it, the server enforces it), then the blocks are validated.
-func (g *Generator) fromModel(raw json.RawMessage, sl slot) (json.RawMessage, []content.Problem) {
+// other is null (the schema asks for it, the server enforces it), then the blocks are validated. The
+// summary (content@2, D-088) is returned next to the content when it passes llm.CheckSummary and
+// dropped otherwise; it is never a reason to repair.
+func (g *Generator) fromModel(raw json.RawMessage, sl slot) (json.RawMessage, string, []content.Problem) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, []content.Problem{{Field: "$", Rule: ruleInvalidJSON, Got: err.Error()}}
+		return nil, "", []content.Problem{{Field: "$", Rule: ruleInvalidJSON, Got: err.Error()}}
 	}
 	var problems []content.Problem
 	for key := range doc {
-		if key != "sms" && key != "email" {
+		if key != "sms" && key != "email" && key != "summary" {
 			problems = append(problems, content.Problem{Field: key, Rule: ruleUnknownField})
 		}
 	}
@@ -173,7 +177,7 @@ func (g *Generator) fromModel(raw json.RawMessage, sl slot) (json.RawMessage, []
 		}
 	}
 	if len(problems) > 0 {
-		return nil, problems
+		return nil, "", problems
 	}
 	want, other := sl.channel, llm.Channel(sl.channel).Other()
 	if isNull(doc[want]) {
@@ -183,9 +187,26 @@ func (g *Generator) fromModel(raw json.RawMessage, sl slot) (json.RawMessage, []
 		problems = append(problems, content.Problem{Field: string(other), Rule: ruleWrongChannel, Got: "an object", Limit: "null: " + string(other) + " is not the requested channel"})
 	}
 	if len(problems) > 0 {
-		return nil, problems
+		return nil, "", problems
 	}
-	return g.build(doc[want], sl, false)
+	stored, problems := g.build(doc[want], sl, false)
+	if len(problems) > 0 {
+		return nil, "", problems
+	}
+	return stored, summaryOf(doc["summary"]), nil
+}
+
+// summaryOf reads the summary of a document: a string that passes llm.CheckSummary, else "".
+func summaryOf(raw json.RawMessage) string {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return ""
+	}
+	md, problems := llm.CheckSummary(s)
+	if len(problems) > 0 {
+		return ""
+	}
+	return md
 }
 
 // Rules that only the document check of contentgen reports; the others live in package content.

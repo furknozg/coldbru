@@ -46,6 +46,10 @@ type EventCatalog struct {
 	ContentDelta      flow.ContentDelta      `json:"content_delta" validate:"required"`
 	ContentReset      flow.ContentReset      `json:"content_reset" validate:"required"`
 	ContextAdded      flow.ContextAdded      `json:"context_added" validate:"required"`
+	CampaignTitled    flow.CampaignTitled    `json:"campaign_titled" validate:"required"`
+	QuestionAsked     flow.QuestionAsked     `json:"question_asked" validate:"required"`
+	AnswerGiven       flow.AnswerGiven       `json:"answer_given" validate:"required"`
+	SummaryPosted     flow.SummaryPosted     `json:"summary_posted" validate:"required"`
 	Ping              PingEvent              `json:"ping" validate:"required"`
 }
 
@@ -57,6 +61,8 @@ type EventCatalog struct {
 //	@Description	The server subscribes before it takes the snapshot, so no event between the two is missed; an event that happened just before the snapshot may arrive again after it, so apply events idempotently (by variant id, step id and note id). There is no replay: a client that reconnects gets a new snapshot. When the server notices that it could not keep up with the events of a slow client it sends a fresh `snapshot` and carries on; always replace your state with a snapshot.
 //	@Description
 //	@Description	Events of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.
+//	@Description
+//	@Description	Chat events (D-088): `campaign_titled` (the pre-screen named the campaign), `question_asked` (the agent asked a clarifying question instead of proposing; the step waits for POST /messages/{message_id}/answer and shows it as `pending_question`), `answer_given` (the marketer answered; the step is generated again) and `summary_posted` (the agent summarised a generated step in markdown; `slot` names the content slot, and is empty for the other steps).
 //	@Description
 //	@Description	Lifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).
 //	@Description

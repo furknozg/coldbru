@@ -28,7 +28,37 @@ func tsPtr(t pgtype.Timestamptz) *time.Time {
 }
 
 func campaignInfo(c store.Campaign) CampaignInfo {
-	return CampaignInfo{ID: c.ID, Brief: c.Brief, Status: c.Status, CreatedAt: ts(c.CreatedAt), UpdatedAt: ts(c.UpdatedAt)}
+	return CampaignInfo{ID: c.ID, Brief: c.Brief, Title: c.Title.String, Status: c.Status, CreatedAt: ts(c.CreatedAt), UpdatedAt: ts(c.UpdatedAt)}
+}
+
+// messageView converts a chat_message row. Options that do not decode (never, the table checks the
+// shape) are left out.
+func messageView(m store.ChatMessage) ChatMessageView {
+	out := ChatMessageView{
+		ID: m.ID, CampaignID: m.CampaignID, StepID: m.StepID, Kind: m.Kind, Body: m.Body, ReplyTo: m.ReplyTo, CreatedAt: ts(m.CreatedAt),
+	}
+	if len(m.Options) > 0 {
+		_ = json.Unmarshal(m.Options, &out.Options)
+	}
+	return out
+}
+
+// pendingQuestions returns, per step, the latest question that has no answer (D-088).
+func pendingQuestions(msgs []ChatMessageView) map[uuid.UUID]*ChatMessageView {
+	answered := map[uuid.UUID]bool{}
+	for _, m := range msgs {
+		if m.Kind == MessageKindAnswer && m.ReplyTo != nil {
+			answered[*m.ReplyTo] = true
+		}
+	}
+	out := map[uuid.UUID]*ChatMessageView{}
+	for i := range msgs {
+		m := &msgs[i]
+		if m.Kind == MessageKindQuestion && m.StepID != nil && !answered[m.ID] {
+			out[*m.StepID] = m // messages are oldest first, so the last one wins
+		}
+	}
+	return out
 }
 
 func stepInfo(st store.ProposalStep) StepInfo {
@@ -120,7 +150,7 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 	if err != nil {
 		return nil, notFound(err)
 	}
-	out := &CampaignView{CampaignInfo: campaignInfo(camp), Steps: []StepView{}, Notes: []NoteView{}}
+	out := &CampaignView{CampaignInfo: campaignInfo(camp), Steps: []StepView{}, Notes: []NoteView{}, Messages: []ChatMessageView{}}
 	notes, err := q.ListContextNotes(ctx, campaignID)
 	if err != nil {
 		return nil, err
@@ -128,6 +158,14 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 	for _, n := range notes {
 		out.Notes = append(out.Notes, noteView(n))
 	}
+	msgs, err := q.ListChatMessages(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range msgs {
+		out.Messages = append(out.Messages, messageView(m))
+	}
+	pending := pendingQuestions(out.Messages)
 	steps, err := q.ListLiveSteps(ctx, campaignID)
 	if err != nil {
 		return nil, err
@@ -186,6 +224,10 @@ func (s *Service) Get(ctx context.Context, campaignID uuid.UUID) (*CampaignView,
 			sv.Missing = missingFrom(expected, have)
 		}
 		sv.Generating = s.isGenerating(sv.ID)
+		if pq := pending[sv.ID]; pq != nil {
+			cp := *pq
+			sv.PendingQuestion = &cp
+		}
 		if reason := s.failureOf(sv.ID); reason != "" {
 			sv.Failed, sv.Reason = true, reason
 		} else if !sv.Generating {

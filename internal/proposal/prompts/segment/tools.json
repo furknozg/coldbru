@@ -1,7 +1,7 @@
 [
   {
     "name": "propose_segment",
-    "description": "Submit the final audience filter. Call this exactly once, as your answer, with the complete DSL expression. The server checks it against the catalog and the customer service; if it is rejected you receive an error result listing every problem, and you may call this tool again (3 attempts in total). Do not call it with a draft you doubt; use count_audience for drafts.",
+    "description": "Submit the final audience filter. Call this exactly once, as your answer, with the complete DSL expression. The server checks it against the catalog and the customer service; if it is rejected you receive an error result listing every problem, and you may call this tool again (3 attempts in total). Do not call it with a draft you doubt; use count_audience for drafts. When the result reports the filter accepted, call send_summary.",
     "strict": true,
     "input_schema": {
       "type": "object",
@@ -28,6 +28,49 @@
         }
       },
       "required": ["dsl"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ask_user",
+    "description": "Ask the marketer one clarifying question about the audience and stop: the step waits for the answer, and you are called again with the question and the answer. Ask only when the brief is genuinely ambiguous about who the audience is and no reasonable default exists; never ask about things the catalog cannot express, about consent, or about anything that is not the audience. The user message says how many questions you may still ask (questions_left); when it is 0 the call is rejected and you must decide.",
+    "strict": true,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The question, in the language of the brief: one or two short sentences, plain text."
+        },
+        "options": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Two to four short suggested answers, in the language of the brief, when the choice is between a few clear readings."
+            },
+            {"type": "null"}
+          ],
+          "description": "Suggested answers, or null for a free answer."
+        }
+      },
+      "required": ["question", "options"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "send_summary",
+    "description": "Tell the marketer, after propose_segment was accepted, which audience you chose and why: two to four sentences in the language of the brief, in markdown. Lists and bold are allowed; no links, no HTML, no headings. Call it once, in the same turn as the accepted propose_segment or right after its result; do not call it before the filter is accepted.",
+    "strict": true,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "markdown": {
+          "type": "string",
+          "description": "The summary in markdown, two to four sentences."
+        }
+      },
+      "required": ["markdown"],
       "additionalProperties": false
     }
   }

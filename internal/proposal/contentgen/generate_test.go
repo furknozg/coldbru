@@ -31,7 +31,7 @@ func TestGenerateSMSStoresMeasurements(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.SMSContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	rendered := []rune(strings.ReplaceAll(text, "{{first_name}}", rep("x", 9)))
 	want := content.SMSContent{
 		Text: text, Encoding: content.UCS2, Segments: 2, RenderedLength: len(rendered), EstimatedCostUSD: "2.6400", // 2 x 33 x 0.04
@@ -44,7 +44,7 @@ func TestGenerateSMSStoresMeasurements(t *testing.T) {
 	}
 	// Only the stored fields are present.
 	var keys map[string]json.RawMessage
-	decode(t, raw, &keys)
+	decode(t, raw.Content, &keys)
 	if len(keys) != 5 {
 		t.Errorf("keys = %v", keys)
 	}
@@ -58,7 +58,7 @@ func TestGenerateEmailStoresBlocksAndCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.EmailContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	if got.Subject != "Sepetin seni bekliyor, {{first_name}}" || len(got.Paragraphs) != 2 || got.CTALabel != "Sepete dön" {
 		t.Errorf("blocks = %+v", got)
 	}
@@ -66,8 +66,8 @@ func TestGenerateEmailStoresBlocksAndCost(t *testing.T) {
 		t.Errorf("measurements = %+v / %s", got.MaxRenderedLengths, got.EstimatedCostUSD)
 	}
 	// The % of "%30" and the umlauts are stored as written, not escaped.
-	if !strings.Contains(string(raw), `"%30 indirim fırsatını kaçırma."`) {
-		t.Errorf("content = %s", raw)
+	if !strings.Contains(string(raw.Content), `"%30 indirim fırsatını kaçırma."`) {
+		t.Errorf("content = %s", raw.Content)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestGenerateRepairsAnOverLongAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.SMSContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	if got.Text != "Merhaba {{first_name}}, sepetin seni bekliyor!" || got.Encoding != content.GSM7 || got.Segments != 1 || got.EstimatedCostUSD != "0.4000" {
 		t.Errorf("content = %+v", got)
 	}
@@ -247,7 +247,7 @@ func TestGenerateWrongChannelIsRepaired(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.EmailContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	if got.EstimatedCostUSD != "0.0050" {
 		t.Errorf("content = %+v", got)
 	}
@@ -407,7 +407,7 @@ func TestGenerateRecordsOneCallPerAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.SMSContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	if got.Text != "Hello {{first_name}}!" {
 		t.Errorf("content = %+v", got)
 	}
@@ -566,7 +566,7 @@ func TestGenerateRepairsACutOffAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got content.SMSContent
-	decode(t, raw, &got)
+	decode(t, raw.Content, &got)
 	if got.Text != "Hello {{first_name}}" {
 		t.Errorf("content = %+v", got)
 	}
@@ -659,5 +659,54 @@ func TestGenerateCutOffAndNonJSONRecordsPerAttempt(t *testing.T) {
 		if r.Attempt != i+2 || r.Previous != wantPrev || len(r.Problems) != 1 || r.Problems[0]["rule"] != "invalid_output" {
 			t.Errorf("request %d repair = %+v, want attempt %d with previous %q", i+1, r, i+2, wantPrev)
 		}
+	}
+}
+
+// content@2 (D-088): the summary of the answer is returned next to the content and never stored
+// in it; a summary that breaks the rules, or a missing one, is dropped without a repair; an
+// unknown key is still a problem.
+func TestGenerateReturnsTheSummary(t *testing.T) {
+	t.Parallel()
+	withSummary := func(summary any) string {
+		b, _ := json.Marshal(map[string]any{"sms": map[string]any{"text": "Merhaba {{first_name}}, %30 indirim seni bekliyor."}, "email": nil, "summary": summary})
+		return string(b)
+	}
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"summary", withSummary("  **Samimi** ton, %30 indirim. "), "**Samimi** ton, %30 indirim."},
+		{"missing summary", smsDoc("Merhaba {{first_name}}, %30 indirim seni bekliyor."), ""},
+		{"null summary", withSummary(nil), ""},
+		{"summary with a link", withSummary("see https://x.y"), ""},
+		{"summary with a heading", withSummary("# Ton"), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := llmtest.NewScripted().StreamJSON(tt.doc)
+			gen, err := newGenerator(s).Generate(t.Context(), request("tr", "sms", 33), nil)
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			if gen.Summary != tt.want {
+				t.Errorf("summary = %q, want %q", gen.Summary, tt.want)
+			}
+			if strings.Contains(string(gen.Content), "summary") {
+				t.Errorf("the stored content carries the summary: %s", gen.Content)
+			}
+			if n := len(s.StreamCalls()); n != 1 {
+				t.Errorf("%d calls: a summary problem is never repaired", n)
+			}
+		})
+	}
+	// The request carries no clarifications key: the content step asks no questions.
+	s := llmtest.NewScripted().StreamJSON(withSummary("ok"))
+	if _, err := newGenerator(s).Generate(t.Context(), request("tr", "sms", 33), nil); err != nil {
+		t.Fatal(err)
+	}
+	if u := userOf(t, s.StreamCalls()[0].UserJSON); u["clarifications"] != nil || u["questions_left"] != nil {
+		t.Errorf("user message = %v", u)
 	}
 }

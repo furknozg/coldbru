@@ -9,10 +9,11 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createCampaign = `-- name: CreateCampaign :one
-INSERT INTO campaign (brief) VALUES ($1) RETURNING id, brief, status, created_at, updated_at
+INSERT INTO campaign (brief) VALUES ($1) RETURNING id, brief, status, created_at, updated_at, title
 `
 
 func (q *Queries) CreateCampaign(ctx context.Context, brief string) (Campaign, error) {
@@ -24,12 +25,13 @@ func (q *Queries) CreateCampaign(ctx context.Context, brief string) (Campaign, e
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const getCampaign = `-- name: GetCampaign :one
-SELECT id, brief, status, created_at, updated_at FROM campaign WHERE id = $1
+SELECT id, brief, status, created_at, updated_at, title FROM campaign WHERE id = $1
 `
 
 func (q *Queries) GetCampaign(ctx context.Context, id uuid.UUID) (Campaign, error) {
@@ -41,12 +43,13 @@ func (q *Queries) GetCampaign(ctx context.Context, id uuid.UUID) (Campaign, erro
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const getCampaignForUpdate = `-- name: GetCampaignForUpdate :one
-SELECT id, brief, status, created_at, updated_at FROM campaign WHERE id = $1 FOR UPDATE
+SELECT id, brief, status, created_at, updated_at, title FROM campaign WHERE id = $1 FOR UPDATE
 `
 
 // Row lock that serializes every state change of one campaign (D-070).
@@ -59,12 +62,13 @@ func (q *Queries) GetCampaignForUpdate(ctx context.Context, id uuid.UUID) (Campa
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }
 
 const listCampaigns = `-- name: ListCampaigns :many
-SELECT id, brief, status, created_at, updated_at FROM campaign ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2
+SELECT id, brief, status, created_at, updated_at, title FROM campaign ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2
 `
 
 type ListCampaignsParams struct {
@@ -89,6 +93,7 @@ func (q *Queries) ListCampaigns(ctx context.Context, arg ListCampaignsParams) ([
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Title,
 		); err != nil {
 			return nil, err
 		}
@@ -101,7 +106,7 @@ func (q *Queries) ListCampaigns(ctx context.Context, arg ListCampaignsParams) ([
 }
 
 const setCampaignStatus = `-- name: SetCampaignStatus :one
-UPDATE campaign SET status = $2, updated_at = now() WHERE id = $1 RETURNING id, brief, status, created_at, updated_at
+UPDATE campaign SET status = $2, updated_at = now() WHERE id = $1 RETURNING id, brief, status, created_at, updated_at, title
 `
 
 type SetCampaignStatusParams struct {
@@ -118,6 +123,30 @@ func (q *Queries) SetCampaignStatus(ctx context.Context, arg SetCampaignStatusPa
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Title,
+	)
+	return i, err
+}
+
+const setCampaignTitle = `-- name: SetCampaignTitle :one
+UPDATE campaign SET title = $2, updated_at = now() WHERE id = $1 RETURNING id, brief, status, created_at, updated_at, title
+`
+
+type SetCampaignTitleParams struct {
+	ID    uuid.UUID
+	Title pgtype.Text
+}
+
+func (q *Queries) SetCampaignTitle(ctx context.Context, arg SetCampaignTitleParams) (Campaign, error) {
+	row := q.db.QueryRow(ctx, setCampaignTitle, arg.ID, arg.Title)
+	var i Campaign
+	err := row.Scan(
+		&i.ID,
+		&i.Brief,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Title,
 	)
 	return i, err
 }

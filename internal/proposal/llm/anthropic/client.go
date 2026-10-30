@@ -3,10 +3,13 @@
 //
 //   - Screen: Haiku 5.5, thinking disabled, native structured output, fail-closed (D-069).
 //   - ProposeSegment: Sonnet 5.5, adaptive thinking, a non-streaming strict tool loop with
-//     tool_choice auto in which invalid filters come back as is_error tool results (D-027, D-069).
+//     tool_choice auto in which invalid filters come back as is_error tool results (D-027, D-069);
+//     ask_user ends the loop with a question for the marketer and send_summary carries the
+//     summary of an accepted filter (D-088).
 //   - StreamStructured: Sonnet 5.5, thinking between_tools, streamed structured output.
 //   - ProposeChannelPlan and ProposeSchedule: Haiku 5.5, thinking disabled, native structured
-//     output, a non-streaming repair loop of at most three attempts in one conversation (D-070).
+//     output, a non-streaming repair loop of at most three attempts in one conversation (D-070);
+//     the output is either a question or the result with its summary (D-088).
 //
 // The system text, tool definitions and output schema come from the embedded prompt packages
 // (D-059) and are sent unchanged, with a cache breakpoint on the system block, so the prefix is

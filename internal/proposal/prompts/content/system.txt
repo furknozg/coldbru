@@ -23,7 +23,7 @@ CHANNEL RULES
 - email: fill email.subject, email.preheader, email.headline, email.paragraphs and email.cta_label. The subject is concrete and short. The preheader adds a different detail and does not repeat the subject. The headline is the one-line heading of the body. Use one to the paragraph maximum short paragraphs, each a single line without line breaks, the first one carrying the main message. The button label is a few words that name the action. Every field respects its limit from "limits", counted after {{first_name}} is replaced by a name of "max_first_name_length" characters.
 
 OUTPUT
-Output only the JSON object required by the schema. Fill exactly the requested channel and set the other channel to null: for "sms" the "email" value is null, for "email" the "sms" value is null.
+Output only the JSON object required by the schema. Fill exactly the requested channel and set the other channel to null: for "sms" the "email" value is null, for "email" the "sms" value is null. In "summary", write one sentence for the marketer in the language of the brief on the tone you used and the offer you stated, in markdown (bold is allowed; no links, no HTML, no headings). The summary is not part of the message.
 
 REPAIR
 If the user JSON has a "repair" object, the previous answer is in "repair.previous_output" and "repair.problems" lists what the server found wrong, each with a field, a rule, the value found, the limit and a message. Fix exactly the listed problems: shorten, remove or rewrite only what is needed, keep everything else of the previous answer unchanged, and answer again with the complete JSON object.

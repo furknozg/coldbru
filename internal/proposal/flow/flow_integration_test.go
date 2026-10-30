@@ -18,6 +18,7 @@ import (
 	"github.com/furknozg/coldbru/internal/proposal/customer"
 	"github.com/furknozg/coldbru/internal/proposal/flow"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
+	"github.com/furknozg/coldbru/internal/proposal/llm/llmtest"
 	"github.com/furknozg/coldbru/internal/proposal/store"
 )
 
@@ -281,11 +282,54 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 		t.Errorf("subscriber dropped %d events", sub.Dropped())
 	}
 	types := typesOf(evs)
-	if len(types) == 0 || types[0] != flow.TypeScreenResult {
-		t.Fatalf("events = %v, want screen_result first", types)
+	if len(types) < 2 || types[0] != flow.TypeCampaignTitled || types[1] != flow.TypeScreenResult {
+		t.Fatalf("events = %v, want campaign_titled then screen_result first (D-088)", types)
 	}
-	if sr := evs[0].(flow.ScreenResult); sr.Verdict != "allow" {
+	if ct := evs[0].(flow.CampaignTitled); ct.Title != llmtest.DefaultTitle || final.Title != llmtest.DefaultTitle {
+		t.Errorf("title event = %+v, view title %q", ct, final.Title)
+	}
+	if sr := evs[1].(flow.ScreenResult); sr.Verdict != "allow" {
 		t.Errorf("screen result = %+v", sr)
+	}
+	// The title is in the list too, and every step posted its summary (D-088): one for the
+	// audience, one for the plan, one per content slot and one for the whole schedule.
+	if list, err := h.svc.ListCampaigns(t.Context(), 10, 0); err != nil || len(list) != 1 || list[0].Title != llmtest.DefaultTitle {
+		t.Errorf("ListCampaigns = %+v, %v", list, err)
+	}
+	summaries := map[string]int{}
+	for _, m := range final.Messages {
+		if m.Kind != flow.MessageKindSummary || m.StepID == nil {
+			t.Errorf("unexpected message %+v", m)
+			continue
+		}
+		for _, st := range final.Steps {
+			if st.ID == *m.StepID {
+				summaries[st.Kind]++
+			}
+		}
+	}
+	if summaries[flow.KindAudience] != 1 || summaries[flow.KindChannelPlan] != 1 || summaries[flow.KindContent] != len(want) || summaries[flow.KindSchedule] != 1 {
+		t.Errorf("summaries per step = %v, want 1/1/%d/1", summaries, len(want))
+	}
+	posted := 0
+	for _, e := range evs {
+		sp, ok := e.(flow.SummaryPosted)
+		if !ok {
+			continue
+		}
+		posted++
+		isContent := sp.StepID == cs.ID
+		if (sp.Slot != flow.Slot{}) != isContent || sp.Markdown == "" || sp.MessageID == uuid.Nil {
+			t.Errorf("summary_posted = %+v: only content summaries carry a slot", sp)
+		}
+	}
+	if posted != 3+len(want) {
+		t.Errorf("%d summary_posted events, want %d", posted, 3+len(want))
+	}
+	for _, m := range final.Messages {
+		if m.Kind == flow.MessageKindSummary && m.StepID != nil && *m.StepID == cs.ID && !strings.HasPrefix(m.Body, "[fake] summary ") {
+			t.Errorf("content summary = %q", m.Body)
+		}
 	}
 	var opened []string
 	for _, e := range evs {
@@ -342,13 +386,17 @@ func TestScreenBlockCancelsTheCampaign(t *testing.T) {
 		t.Errorf("ProposeSegment ran %d times for a blocked brief", n)
 	}
 	evs := events(sub)
-	if strings.Join(typesOf(evs), ",") != "screen_result,campaign_cancelled" {
+	if strings.Join(typesOf(evs), ",") != "campaign_titled,screen_result,campaign_cancelled" {
 		t.Fatalf("events = %v", typesOf(evs))
 	}
-	if sr := evs[0].(flow.ScreenResult); sr.Verdict != "block" || !strings.Contains(sr.Reason, "rule 2") {
+	// A blocked brief keeps its title: the list shows what it asked for (D-088).
+	if v.Title != llmtest.DefaultTitle {
+		t.Errorf("title of the blocked campaign = %q", v.Title)
+	}
+	if sr := evs[1].(flow.ScreenResult); sr.Verdict != "block" || !strings.Contains(sr.Reason, "rule 2") {
 		t.Errorf("screen result = %+v", sr)
 	}
-	if cc := evs[1].(flow.CampaignCancelled); !strings.Contains(cc.Reason, "ignore opt-outs") {
+	if cc := evs[2].(flow.CampaignCancelled); !strings.Contains(cc.Reason, "ignore opt-outs") {
 		t.Errorf("cancelled = %+v", cc)
 	}
 	if n := countRows(t, h, `SELECT count(*) FROM proposal_step WHERE campaign_id = $1`, camp.ID); n != 0 {
@@ -1338,7 +1386,7 @@ func TestRegenerateCampaignRestartsTheStart(t *testing.T) {
 	if got := h.llm.ScreenBriefs(); len(got) != 1 || got[0] != sampleBrief {
 		t.Errorf("screened %q", got)
 	}
-	if types := typesOf(events(sub)); len(types) == 0 || types[0] != flow.TypeScreenResult {
+	if types := typesOf(events(sub)); len(types) < 2 || types[0] != flow.TypeCampaignTitled || types[1] != flow.TypeScreenResult {
 		t.Errorf("events = %v", types)
 	}
 

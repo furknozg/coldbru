@@ -1,6 +1,6 @@
-# Prompt package content (D-059, D-069, D-071): the SMS or email text of one language of a campaign.
+# Prompt package content (D-059, D-069, D-071, D-088): the SMS or email text of one language of a campaign.
 name: content
-version: 1.0.0
+version: 2.0.0
 model: claude-sonnet-5-5
 effort: low
 system:

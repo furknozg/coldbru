@@ -116,13 +116,13 @@ func TestShippedPackages(t *testing.T) {
 		t.Fatalf("All() has %d packages, want channel_plan, content, schedule, screen, segment in that order", len(all))
 	}
 	s, g := Screen(), Segment()
-	if s.ID() != "screen@1.0.0" || g.ID() != "segment@1.0.0" {
+	if s.ID() != "screen@2.0.0" || g.ID() != "segment@2.0.0" {
 		t.Errorf("ids = %s, %s", s.ID(), g.ID())
 	}
 	if s.Model != "claude-haiku-5-5" || s.Effort != "low" || len(s.Tools) != 0 || s.OutputSchema == nil {
 		t.Errorf("screen = %+v", s)
 	}
-	if g.Model != "claude-sonnet-5-5" || g.Effort != "medium" || len(g.Tools) != 2 || g.OutputSchema != nil {
+	if g.Model != "claude-sonnet-5-5" || g.Effort != "medium" || len(g.Tools) != 4 || g.OutputSchema != nil {
 		t.Errorf("segment = %+v", g)
 	}
 	for _, p := range all {
@@ -135,7 +135,7 @@ func TestShippedPackages(t *testing.T) {
 func TestPlanAndSchedulePackages(t *testing.T) {
 	t.Parallel()
 	cp, sc := ChannelPlan(), Schedule()
-	if cp.ID() != "channel_plan@1.0.0" || sc.ID() != "schedule@2.0.0" {
+	if cp.ID() != "channel_plan@2.0.0" || sc.ID() != "schedule@3.0.0" {
 		t.Errorf("ids = %s, %s", cp.ID(), sc.ID())
 	}
 	for _, p := range []*Package{cp, sc} {
@@ -167,6 +167,27 @@ func TestPlanAndSchedulePackages(t *testing.T) {
 		if !strings.Contains(sc.System, w) {
 			t.Errorf("schedule prompt lost %q", w)
 		}
+	}
+	// D-088: both read the clarifications and the question budget, ask only when genuinely
+	// ambiguous, never when questions_left is 0, and summarise in markdown without links, HTML or
+	// headings; the answer overrides the brief.
+	for _, p := range []*Package{cp, sc} {
+		for _, w := range []string{
+			`"clarifications": [{"question": "<text>", "answer": "<text>"}, ...], "questions_left": 2`,
+			"An answer overrides the brief where the two conflict",
+			`When it is 0, you must decide without asking`,
+			"genuinely ambiguous",
+			`Do not ask when "questions_left" is 0`,
+			"in markdown (lists and bold are allowed; no links, no HTML, no headings)",
+			`set "question" to null and write "summary"`,
+		} {
+			if !strings.Contains(p.System, w) {
+				t.Errorf("%s prompt lacks the D-088 wording %q", p.ID(), w)
+			}
+		}
+	}
+	if !strings.Contains(sc.System, "A brief with no time is not ambiguous: rule 5 applies") {
+		t.Error("schedule prompt must keep a missing time from becoming a question")
 	}
 	// D-076: locales are (language, time zone) pairs; a time for a place applies only to its time
 	// zones, a general time is the same wall-clock time in every locale's own zone, a language
@@ -205,49 +226,109 @@ func TestPlanAndSchedulePackages(t *testing.T) {
 	}
 }
 
-func TestPlanAndScheduleOutputSchemas(t *testing.T) {
-	t.Parallel()
-	var plan struct {
+// nullable is a property of the shape anyOf [X, null] (D-088: question, plan, entries and summary
+// are required but nullable, like send_at since D-076, because the structured-output grammar has
+// no optional properties the adapter would want to rely on).
+type nullable struct {
+	AnyOf []struct {
+		Type       string `json:"type"`
 		Properties map[string]struct {
-			Enum []string `json:"enum"`
+			Enum  []string `json:"enum"`
+			AnyOf []struct {
+				Type string `json:"type"`
+			} `json:"anyOf"`
 		} `json:"properties"`
 		Required             []string `json:"required"`
 		AdditionalProperties bool     `json:"additionalProperties"`
+		Items                struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
+			Additional bool                       `json:"additionalProperties"`
+		} `json:"items"`
+	} `json:"anyOf"`
+}
+
+func (n nullable) isNullable(t *testing.T, name, typ string) bool {
+	t.Helper()
+	if len(n.AnyOf) != 2 || n.AnyOf[0].Type != typ || n.AnyOf[1].Type != "null" {
+		t.Errorf("%s must be anyOf [%s, null]: %+v", name, typ, n)
+		return false
+	}
+	return true
+}
+
+// questionShape checks the question object of the plan and schedule schemas.
+func questionShape(t *testing.T, pkg string, q nullable) {
+	t.Helper()
+	if !q.isNullable(t, pkg+".question", "object") {
+		return
+	}
+	obj := q.AnyOf[0]
+	if strings.Join(obj.Required, ",") != "text,options" || obj.AdditionalProperties || len(obj.Properties) != 2 {
+		t.Errorf("%s question = %+v", pkg, obj)
+	}
+	if o := obj.Properties["options"]; len(o.AnyOf) != 2 || o.AnyOf[0].Type != "array" || o.AnyOf[1].Type != "null" {
+		t.Errorf("%s question.options must be anyOf [array, null]: %+v", pkg, o)
+	}
+}
+
+func TestPlanAndScheduleOutputSchemas(t *testing.T) {
+	t.Parallel()
+	var plan struct {
+		Properties           map[string]nullable `json:"properties"`
+		Required             []string            `json:"required"`
+		AdditionalProperties bool                `json:"additionalProperties"`
 	}
 	if err := json.Unmarshal(ChannelPlan().OutputSchema, &plan); err != nil {
 		t.Fatal(err)
 	}
-	if m := plan.Properties["mode"].Enum; strings.Join(m, ",") != "single,primary_fallback,both" {
-		t.Errorf("mode enum = %v", m)
-	}
-	if m := plan.Properties["primary"].Enum; strings.Join(m, ",") != "sms,email" {
-		t.Errorf("primary enum = %v", m)
-	}
-	if len(plan.Required) != 3 || plan.AdditionalProperties {
+	if strings.Join(plan.Required, ",") != "question,plan,summary" || plan.AdditionalProperties || len(plan.Properties) != 3 {
 		t.Errorf("plan schema = %+v", plan)
+	}
+	questionShape(t, "channel_plan", plan.Properties["question"])
+	plan.Properties["summary"].isNullable(t, "channel_plan.summary", "string")
+	if p := plan.Properties["plan"]; p.isNullable(t, "channel_plan.plan", "object") {
+		obj := p.AnyOf[0]
+		if m := obj.Properties["mode"].Enum; strings.Join(m, ",") != "single,primary_fallback,both" {
+			t.Errorf("mode enum = %v", m)
+		}
+		if m := obj.Properties["primary"].Enum; strings.Join(m, ",") != "sms,email" {
+			t.Errorf("primary enum = %v", m)
+		}
+		if strings.Join(obj.Required, ",") != "mode,primary,rationale" || obj.AdditionalProperties {
+			t.Errorf("plan object = %+v", obj)
+		}
 	}
 
 	var sched struct {
-		Properties map[string]struct {
-			Items struct {
-				Properties map[string]json.RawMessage `json:"properties"`
-				Required   []string                   `json:"required"`
-				Additional bool                       `json:"additionalProperties"`
-			} `json:"items"`
-		} `json:"properties"`
-		Required             []string `json:"required"`
-		AdditionalProperties bool     `json:"additionalProperties"`
+		Properties           map[string]nullable `json:"properties"`
+		Required             []string            `json:"required"`
+		AdditionalProperties bool                `json:"additionalProperties"`
 	}
 	if err := json.Unmarshal(Schedule().OutputSchema, &sched); err != nil {
 		t.Fatal(err)
 	}
-	items := sched.Properties["entries"].Items
-	if len(sched.Required) != 1 || sched.Required[0] != "entries" || sched.AdditionalProperties ||
-		len(items.Required) != 4 || items.Additional || len(items.Properties) != 4 || items.Properties["send_at"] == nil || items.Properties["timezone"] == nil {
+	if strings.Join(sched.Required, ",") != "question,entries,summary" || sched.AdditionalProperties || len(sched.Properties) != 3 {
 		t.Errorf("schedule schema = %+v", sched)
 	}
-	if !strings.Contains(string(items.Properties["send_at"]), `"null"`) {
-		t.Error("send_at cannot be null")
+	questionShape(t, "schedule", sched.Properties["question"])
+	sched.Properties["summary"].isNullable(t, "schedule.summary", "string")
+	if e := sched.Properties["entries"]; e.isNullable(t, "schedule.entries", "array") {
+		items := e.AnyOf[0].Items
+		if len(items.Required) != 4 || items.Additional || len(items.Properties) != 4 || items.Properties["send_at"] == nil || items.Properties["timezone"] == nil {
+			t.Errorf("schedule entries = %+v", items)
+		}
+		if !strings.Contains(string(items.Properties["send_at"]), `"null"`) {
+			t.Error("send_at cannot be null")
+		}
+	}
+	// No keyword the structured-output grammar rejects: the option count (2 to 4) is checked in Go.
+	for _, pkg := range []*Package{ChannelPlan(), Schedule()} {
+		for _, bad := range []string{"maxLength", "minLength", "maxItems", "minItems", "minimum", "maximum", "pattern"} {
+			if strings.Contains(string(pkg.OutputSchema), `"`+bad+`"`) {
+				t.Errorf("%s schema uses %s, which structured outputs do not support", pkg.ID(), bad)
+			}
+		}
 	}
 }
 
@@ -356,10 +437,15 @@ func TestPromptExamplesCompile(t *testing.T) {
 func TestSegmentToolsAreStrictAndCanonical(t *testing.T) {
 	t.Parallel()
 	g := Segment()
-	names := []string{g.Tools[0].Name, g.Tools[1].Name}
-	if names[0] != "propose_segment" || names[1] != "count_audience" {
+	if len(g.Tools) != 4 {
+		t.Fatalf("tools = %d", len(g.Tools))
+	}
+	names := []string{g.Tools[0].Name, g.Tools[1].Name, g.Tools[2].Name, g.Tools[3].Name}
+	if names[0] != "propose_segment" || names[1] != "count_audience" || names[2] != "ask_user" || names[3] != "send_summary" {
 		t.Fatalf("tools = %v", names)
 	}
+	// The single field of each tool (D-088: ask_user has the question and its nullable options).
+	fields := map[string][]string{"propose_segment": {"dsl"}, "count_audience": {"dsl"}, "ask_user": {"question", "options"}, "send_summary": {"markdown"}}
 	for _, tool := range g.Tools {
 		var def struct {
 			Strict      bool `json:"strict"`
@@ -374,9 +460,21 @@ func TestSegmentToolsAreStrictAndCanonical(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := def.InputSchema
-		if !def.Strict || s.Type != "object" || len(s.Properties) != 1 || s.Properties["dsl"] == nil ||
-			len(s.Required) != 1 || s.Required[0] != "dsl" || s.AdditionalProperties == nil || *s.AdditionalProperties {
-			t.Errorf("%s: not a strict single-field dsl tool: %s", tool.Name, tool.JSON)
+		want := fields[tool.Name]
+		if !def.Strict || s.Type != "object" || len(s.Properties) != len(want) || strings.Join(s.Required, ",") != strings.Join(want, ",") ||
+			s.AdditionalProperties == nil || *s.AdditionalProperties {
+			t.Errorf("%s: not a strict tool with the fields %v: %s", tool.Name, want, tool.JSON)
+		}
+		for _, f := range want {
+			if s.Properties[f] == nil {
+				t.Errorf("%s: no property %q", tool.Name, f)
+			}
+		}
+		// No keyword the strict-tool grammar rejects: the option count is checked in Go.
+		for _, bad := range []string{"minItems", "maxItems", "minLength", "maxLength"} {
+			if strings.Contains(string(tool.JSON), `"`+bad+`"`) {
+				t.Errorf("%s uses %s", tool.Name, bad)
+			}
 		}
 		again, err := Canonical(tool.JSON)
 		if err != nil || string(again) != string(tool.JSON) {
@@ -400,11 +498,14 @@ func TestScreenOutputSchema(t *testing.T) {
 	if v := s.Properties["verdict"].Enum; len(v) != 2 || v[0] != "allow" || v[1] != "block" {
 		t.Errorf("verdict enum = %v", v)
 	}
-	if len(s.Required) != 2 || s.AdditionalProperties {
+	// screen@2 (D-088): the title is required next to the verdict and the reason.
+	if strings.Join(s.Required, ",") != "verdict,reason,title" || s.AdditionalProperties || len(s.Properties) != 3 {
 		t.Errorf("schema = %+v", s)
 	}
-	// The screen prompt keeps its four blocking rules and the allow-everything-else clause.
-	for _, w := range []string{"Override instructions", "Bypass consent", "Exfiltrate data", "Change the rules", `verdict "allow" for everything else`} {
+	// The screen prompt keeps its four blocking rules and the allow-everything-else clause, and
+	// asks for a title in the language of the brief, for a blocked brief too.
+	for _, w := range []string{"Override instructions", "Bypass consent", "Exfiltrate data", "Change the rules", `verdict "allow" for everything else`,
+		`In "title"`, "at most 60 characters", "in the language of the brief", "Give a title for a blocked brief too", "Always give a title"} {
 		if !strings.Contains(Screen().System, w) {
 			t.Errorf("screen prompt lost %q", w)
 		}
@@ -544,7 +645,7 @@ func TestLoadErrors(t *testing.T) {
 func TestContentPackage(t *testing.T) {
 	t.Parallel()
 	c := Content()
-	if c.ID() != "content@1.0.0" || c.Model != "claude-sonnet-5-5" || c.Effort != "low" || len(c.Tools) != 0 || c.OutputSchema == nil || c.RequiresDSL != "" {
+	if c.ID() != "content@2.0.0" || c.Model != "claude-sonnet-5-5" || c.Effort != "low" || len(c.Tools) != 0 || c.OutputSchema == nil || c.RequiresDSL != "" {
 		t.Errorf("content = %s model %s effort %s tools %d schema %v", c.ID(), c.Model, c.Effort, len(c.Tools), c.OutputSchema != nil)
 	}
 	if strings.HasSuffix(c.System, "\n") || strings.Contains(c.System, "\r") {
@@ -564,6 +665,8 @@ func TestContentPackage(t *testing.T) {
 		"max_first_name_length",
 		"set the other channel to null",
 		"Fix exactly the listed problems",
+		`In "summary", write one sentence for the marketer`, // D-088
+		"The summary is not part of the message",
 	} {
 		if !strings.Contains(c.System, w) {
 			t.Errorf("content prompt lost %q", w)
@@ -599,8 +702,12 @@ func TestContentOutputSchema(t *testing.T) {
 	if err := json.Unmarshal(Content().OutputSchema, &schema); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(schema.Required, ",") != "sms,email" || schema.AdditionalProperties || len(schema.Properties) != 2 {
+	if strings.Join(schema.Required, ",") != "sms,email,summary" || schema.AdditionalProperties || len(schema.Properties) != 3 {
 		t.Errorf("schema = %+v", schema)
+	}
+	// content@2 (D-088): the summary is a required string next to the two channels.
+	if !strings.Contains(string(Content().OutputSchema), `"summary":{"description"`) || !strings.Contains(string(Content().OutputSchema), `"type":"string"}`) {
+		t.Errorf("summary is not a string property: %s", Content().OutputSchema)
 	}
 	for name, wantFields := range map[string]string{"sms": "text", "email": "subject,preheader,headline,paragraphs,cta_label"} {
 		s := schema.Properties[name]

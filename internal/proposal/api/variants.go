@@ -146,3 +146,42 @@ func (h *Handler) regenerateStep(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeView(w, r, http.StatusAccepted, camp)
 }
+
+// answer godoc
+//
+//	@Summary		Answer a question of the agent
+//	@Description	Records the marketer's answer to a clarifying question the agent asked (a chat message of kind `question`), and generates the step again with the question and the answer as context (202). Returns the updated campaign. A question takes one answer; the options of the question are suggestions, free text is accepted.
+//	@Tags			messages
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Message id of the question"	format(uuid)
+//	@Param			request	body		api.AnswerRequest	true	"The answer"
+//	@Success		202		{object}	flow.CampaignView
+//	@Failure		400		{object}	api.Problem	"id is not a UUID, or malformed JSON"
+//	@Failure		404		{object}	api.Problem	"No such message"
+//	@Failure		409		{object}	api.Problem	"message_not_question; question_already_answered; step_not_open: the step of the question is no longer open; campaign_not_drafting"
+//	@Failure		413		{object}	api.Problem
+//	@Failure		415		{object}	api.Problem
+//	@Failure		422		{object}	api.Problem	"Missing or too long answer"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/messages/{id}/answer [post]
+func (h *Handler) answer(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req AnswerRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	answer, ok := checkText(w, r, "answer", req.Answer, MaxAnswerChars)
+	if !ok {
+		return
+	}
+	msg, err := h.flow.Answer(r.Context(), id, answer)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	h.writeView(w, r, http.StatusAccepted, msg.CampaignID)
+}

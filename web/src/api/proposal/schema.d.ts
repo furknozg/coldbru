@@ -532,6 +532,8 @@ export interface paths {
          *
          *     Events of the content step: `content_delta` carries a fragment of the text being written and its `attempt`; `content_reset` announces that attempt 2 or 3 starts because the previous answer broke a rule, and the preview of that slot must be cleared. The variant is final only with `variant_created`.
          *
+         *     Chat events (D-088): `campaign_titled` (the pre-screen named the campaign), `question_asked` (the agent asked a clarifying question instead of proposing; the step waits for POST /messages/{message_id}/answer and shows it as `pending_question`), `answer_given` (the marketer answered; the step is generated again) and `summary_posted` (the agent summarised a generated step in markdown; `slot` names the content slot, and is empty for the other steps).
+         *
          *     Lifecycle events: `campaign_confirmed` (the schedule was confirmed and the campaign is `scheduled`; carries the recipient counts per channel and the number of recipient batches), `campaign_cancelled` (the campaign was cancelled by a screening block or by the marketer) and `campaign_status` (Notification reported progress: the campaign is now `sending`, when the first send time arrived, or `completed`, when every message is final; D-080).
          *
          *     The response is not JSON; the schema below only documents the data of each event.
@@ -815,6 +817,116 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/messages/{id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a question of the agent
+         * @description Records the marketer's answer to a clarifying question the agent asked (a chat message of kind `question`), and generates the step again with the question and the answer as context (202). Returns the updated campaign. A question takes one answer; the options of the question are suggestions, free text is accepted.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Message id of the question */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            /** @description The answer */
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["api.AnswerRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["flow.CampaignView"];
+                    };
+                };
+                /** @description id is not a UUID, or malformed JSON */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description No such message */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description message_not_question; question_already_answered; step_not_open: the step of the question is no longer open; campaign_not_drafting */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Request Entity Too Large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Unsupported Media Type */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Missing or too long answer */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1258,6 +1370,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        "api.AnswerRequest": {
+            /**
+             * @description Answer is the marketer's answer to the agent's question: one of its options or free text. At most 1000 characters.
+             * @example Yalnızca son 30 günde alışveriş yapanlar
+             */
+            answer: string;
+        };
         "api.CampaignList": {
             items: components["schemas"]["flow.CampaignInfo"][];
             /**
@@ -1299,20 +1418,24 @@ export interface components {
             content: Record<string, never>;
         };
         "api.EventCatalog": {
+            answer_given: components["schemas"]["flow.AnswerGiven"];
             campaign_cancelled: components["schemas"]["flow.CampaignCancelled"];
             campaign_confirmed: components["schemas"]["flow.CampaignConfirmed"];
             campaign_status: components["schemas"]["flow.CampaignStatus"];
+            campaign_titled: components["schemas"]["flow.CampaignTitled"];
             content_delta: components["schemas"]["flow.ContentDelta"];
             content_reset: components["schemas"]["flow.ContentReset"];
             context_added: components["schemas"]["flow.ContextAdded"];
             generation_failed: components["schemas"]["flow.GenerationFailed"];
             generation_started: components["schemas"]["flow.GenerationStarted"];
             ping: components["schemas"]["api.PingEvent"];
+            question_asked: components["schemas"]["flow.QuestionAsked"];
             screen_result: components["schemas"]["flow.ScreenResult"];
             snapshot: components["schemas"]["flow.CampaignView"];
             step_approved: components["schemas"]["flow.StepApproved"];
             step_opened: components["schemas"]["flow.StepOpened"];
             step_superseded: components["schemas"]["flow.StepSuperseded"];
+            summary_posted: components["schemas"]["flow.SummaryPosted"];
             variant_approved: components["schemas"]["flow.VariantApproved"];
             variant_created: components["schemas"]["flow.VariantCreated"];
             variant_rejected: components["schemas"]["flow.VariantRejected"];
@@ -1374,6 +1497,19 @@ export interface components {
              */
             kind: "audience" | "channel_plan" | "content" | "schedule";
         };
+        "flow.AnswerGiven": {
+            answer: string;
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            campaign_id: string;
+            /** Format: uuid */
+            message_id: string;
+            /** Format: uuid */
+            question_id: string;
+            /** Format: uuid */
+            step_id: string;
+        };
         "flow.CampaignCancelled": {
             /** Format: date-time */
             at: string;
@@ -1397,6 +1533,11 @@ export interface components {
             id: string;
             /** @enum {string} */
             status: "drafting" | "scheduled" | "sending" | "completed" | "cancelled";
+            /**
+             * @description Title is the short name the pre-screen gave the campaign (D-088); empty until the screen
+             *     answered, or when it gave none that passed the checks.
+             */
+            title?: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -1408,6 +1549,13 @@ export interface components {
             /** @enum {string} */
             status: "sending" | "completed";
         };
+        "flow.CampaignTitled": {
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            campaign_id: string;
+            title: string;
+        };
         "flow.CampaignView": {
             brief: string;
             /** @description Cost is the estimated cost of the live content variants (D-071). */
@@ -1416,14 +1564,45 @@ export interface components {
             created_at: string;
             /** Format: uuid */
             id: string;
+            /** @description Messages are all chat messages of the campaign, oldest first (D-088). */
+            messages: components["schemas"]["flow.ChatMessageView"][];
             /** @description Notes are all context notes, oldest first. */
             notes: components["schemas"]["flow.NoteView"][];
             /** @enum {string} */
             status: "drafting" | "scheduled" | "sending" | "completed" | "cancelled";
             /** @description Steps are the current steps, in step order: everything that is not superseded. */
             steps: components["schemas"]["flow.StepView"][];
+            /**
+             * @description Title is the short name the pre-screen gave the campaign (D-088); empty until the screen
+             *     answered, or when it gave none that passed the checks.
+             */
+            title?: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        "flow.ChatMessageView": {
+            /** @description Body is the text: the question, the answer, or the summary in markdown. */
+            body: string;
+            /** Format: uuid */
+            campaign_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "question" | "answer" | "summary";
+            /** @description Options are the suggested answers of a question (2 to 4), when it has any. */
+            options?: string[];
+            /**
+             * Format: uuid
+             * @description ReplyTo is the question an answer belongs to.
+             */
+            reply_to?: string;
+            /**
+             * Format: uuid
+             * @description StepID is the step the message belongs to.
+             */
+            step_id?: string;
         };
         "flow.ContentDelta": {
             /** Format: date-time */
@@ -1493,6 +1672,18 @@ export interface components {
             id: string;
             /** Format: uuid */
             step_id?: string;
+        };
+        "flow.QuestionAsked": {
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            campaign_id: string;
+            /** Format: uuid */
+            message_id: string;
+            options?: string[];
+            question: string;
+            /** Format: uuid */
+            step_id: string;
         };
         "flow.Recipients": {
             email?: number;
@@ -1587,11 +1778,28 @@ export interface components {
             kind: "audience" | "channel_plan" | "content" | "schedule";
             /** @description Missing are the slots of an open step that have no draft or approved variant yet. */
             missing?: components["schemas"]["flow.Slot"][];
+            /**
+             * @description PendingQuestion is the latest question of the agent in this step that has no answer yet
+             *     (D-088): the step waits for POST /messages/{id}/answer. Nil when there is none.
+             */
+            pending_question?: components["schemas"]["flow.ChatMessageView"];
             /** @enum {string} */
             status: "open" | "approved" | "superseded";
             /** @description Variants are the draft, approved and rejected variants, oldest first. */
             variants: components["schemas"]["flow.VariantView"][];
             version: number;
+        };
+        "flow.SummaryPosted": {
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            campaign_id: string;
+            markdown: string;
+            /** Format: uuid */
+            message_id: string;
+            slot: components["schemas"]["flow.Slot"];
+            /** Format: uuid */
+            step_id: string;
         };
         "flow.VariantApproved": {
             /** Format: date-time */

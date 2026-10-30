@@ -46,6 +46,7 @@ type segmentStep struct {
 	res     llm.SegmentResult
 	err     error
 	dsls    []string
+	summary string
 	records []llm.CallRecord
 }
 
@@ -59,15 +60,25 @@ type structuredStep struct {
 
 type planStep struct {
 	proposals []llm.ChannelPlan
+	question  *llm.Question
+	summary   string
 	err       error
 	records   []llm.CallRecord
 }
 
 type scheduleStep struct {
 	proposals [][]llm.ScheduleEntry
+	question  *llm.Question
+	summary   string
 	err       error
 	records   []llm.CallRecord
 }
+
+// Default titles and summaries of the fake (D-088); WithSummary and AllowScreenTitled replace them.
+const (
+	DefaultTitle   = "[scripted] campaign"
+	DefaultSummary = "[scripted] summary"
+)
 
 // StreamCall is one recorded StreamStructured call.
 type StreamCall struct {
@@ -78,15 +89,20 @@ type StreamCall struct {
 // NewScripted returns an empty fake.
 func NewScripted() *Scripted { return &Scripted{} }
 
-// AllowScreen queues an allow verdict.
-func (s *Scripted) AllowScreen() *Scripted {
-	return s.pushScreen(screenStep{res: llm.ScreenResult{Verdict: llm.VerdictAllow, Reason: "ordinary marketing request"}})
+// AllowScreen queues an allow verdict with DefaultTitle.
+func (s *Scripted) AllowScreen() *Scripted { return s.AllowScreenTitled(DefaultTitle) }
+
+// AllowScreenTitled queues an allow verdict with the given title (D-088); an empty title is what a
+// model that gave none looks like.
+func (s *Scripted) AllowScreenTitled(title string) *Scripted {
+	return s.pushScreen(screenStep{res: llm.ScreenResult{Verdict: llm.VerdictAllow, Reason: "ordinary marketing request", Title: title}})
 }
 
-// BlockScreen queues a block verdict with reason; Screen returns it with *llm.ScreenBlockedError.
+// BlockScreen queues a block verdict with reason and DefaultTitle; Screen returns it with
+// *llm.ScreenBlockedError.
 func (s *Scripted) BlockScreen(reason string) *Scripted {
 	return s.pushScreen(screenStep{
-		res: llm.ScreenResult{Verdict: llm.VerdictBlock, Reason: reason},
+		res: llm.ScreenResult{Verdict: llm.VerdictBlock, Reason: reason, Title: DefaultTitle},
 		err: &llm.ScreenBlockedError{Reason: reason},
 	})
 }
@@ -110,11 +126,34 @@ func (s *Scripted) ReplySegment(res llm.SegmentResult) *Scripted {
 func (s *Scripted) FailSegment(err error) *Scripted { return s.pushSegment(segmentStep{err: err}) }
 
 // ProposeDSLs queues a loop that plays the model: it proposes the DSL texts in order through the
-// SegmentTools it is given, as propose_segment calls, and returns the first one Validate accepts.
-// After llm.MaxProposeAttempts rejections it returns *llm.RepairExhaustedError with the last
-// errors, as the real loop does. "Invalid then valid" is ProposeDSLs(bad, good).
+// SegmentTools it is given, as propose_segment calls, and returns the first one Validate accepts,
+// with DefaultSummary (see WithSummary). After llm.MaxProposeAttempts rejections it returns
+// *llm.RepairExhaustedError with the last errors, as the real loop does. "Invalid then valid" is
+// ProposeDSLs(bad, good).
 func (s *Scripted) ProposeDSLs(dsls ...string) *Scripted {
-	return s.pushSegment(segmentStep{dsls: dsls})
+	return s.pushSegment(segmentStep{dsls: dsls, summary: DefaultSummary})
+}
+
+// AskSegment queues a loop that ends with ask_user: ProposeSegment returns q as the result's
+// Question and proposes nothing (D-088).
+func (s *Scripted) AskSegment(q llm.Question) *Scripted {
+	return s.pushSegment(segmentStep{res: llm.SegmentResult{Question: &q, Turns: 1}})
+}
+
+// WithSummary replaces the summary of the step queued last of the given purpose (segment, plan or
+// schedule); "" means the model sent none.
+func (s *Scripted) WithSummary(p llm.Purpose, markdown string) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch p {
+	case llm.PurposeSegment:
+		s.segments[len(s.segments)-1].summary = markdown
+	case llm.PurposeChannelPlan:
+		s.plans[len(s.plans)-1].summary = markdown
+	case llm.PurposeSchedule:
+		s.schedules[len(s.schedules)-1].summary = markdown
+	}
+	return s
 }
 
 func (s *Scripted) pushSegment(st segmentStep) *Scripted {
@@ -175,7 +214,23 @@ func (s *Scripted) WithRecords(p llm.Purpose, recs ...llm.CallRecord) *Scripted 
 func (s *Scripted) ProposePlans(plans ...llm.ChannelPlan) *Scripted {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.plans = append(s.plans, planStep{proposals: plans})
+	s.plans = append(s.plans, planStep{proposals: plans, summary: DefaultSummary})
+	return s
+}
+
+// AskChannelPlan queues a plan call that asks q instead of planning (D-088).
+func (s *Scripted) AskChannelPlan(q llm.Question) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.plans = append(s.plans, planStep{question: &q})
+	return s
+}
+
+// AskSchedule queues a schedule call that asks q instead of scheduling (D-088).
+func (s *Scripted) AskSchedule(q llm.Question) *Scripted {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schedules = append(s.schedules, scheduleStep{question: &q})
 	return s
 }
 
@@ -191,7 +246,7 @@ func (s *Scripted) FailChannelPlan(err error) *Scripted {
 func (s *Scripted) ProposeSchedules(attempts ...[]llm.ScheduleEntry) *Scripted {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.schedules = append(s.schedules, scheduleStep{proposals: attempts})
+	s.schedules = append(s.schedules, scheduleStep{proposals: attempts, summary: DefaultSummary})
 	return s
 }
 
@@ -268,7 +323,7 @@ func (s *Scripted) ProposeSegment(ctx context.Context, in llm.SegmentInput, tool
 			return llm.SegmentResult{}, &llm.ToolsError{Err: err}
 		}
 		if len(errs) == 0 {
-			return llm.SegmentResult{DSL: src, Filter: f, Preview: p, Turn: attempts, Turns: attempts, ProposeAttempts: attempts}, nil
+			return llm.SegmentResult{DSL: src, Filter: f, Preview: p, Summary: st.summary, Turn: attempts, Turns: attempts, ProposeAttempts: attempts}, nil
 		}
 		lastErrs = errs
 	}
@@ -318,6 +373,12 @@ func (s *Scripted) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInp
 		report(ctx, st.records)
 		return llm.ChannelPlanResult{}, st.err
 	}
+	if st.question != nil {
+		q := *st.question
+		recs := []llm.CallRecord{attemptRecord(llm.PurposeChannelPlan, prompts.ChannelPlan(), 1, nil, map[string]any{"question": map[string]any{"text": q.Text, "options": q.Options}})}
+		s.reportOr(ctx, st.records, recs)
+		return llm.ChannelPlanResult{Question: &q, Attempts: 1}, nil
+	}
 	var (
 		recs  []llm.CallRecord
 		last  []string
@@ -337,7 +398,7 @@ func (s *Scripted) ProposeChannelPlan(ctx context.Context, in llm.ChannelPlanInp
 		}))
 		if len(problems) == 0 {
 			s.reportOr(ctx, st.records, recs)
-			return llm.ChannelPlanResult{Plan: plan, Attempts: tried}, nil
+			return llm.ChannelPlanResult{Plan: plan, Summary: st.summary, Attempts: tried}, nil
 		}
 		last = problems
 	}
@@ -360,6 +421,12 @@ func (s *Scripted) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, va
 		report(ctx, st.records)
 		return llm.ScheduleResult{}, st.err
 	}
+	if st.question != nil {
+		q := *st.question
+		recs := []llm.CallRecord{attemptRecord(llm.PurposeSchedule, prompts.Schedule(), 1, nil, map[string]any{"question": map[string]any{"text": q.Text, "options": q.Options}})}
+		s.reportOr(ctx, st.records, recs)
+		return llm.ScheduleResult{Question: &q, Attempts: 1}, nil
+	}
 	var (
 		recs  []llm.CallRecord
 		last  []string
@@ -377,7 +444,7 @@ func (s *Scripted) ProposeSchedule(ctx context.Context, in llm.ScheduleInput, va
 		recs = append(recs, attemptRecord(llm.PurposeSchedule, prompts.Schedule(), tried, problems, map[string]any{"entries": entries}))
 		if len(problems) == 0 {
 			s.reportOr(ctx, st.records, recs)
-			return llm.ScheduleResult{Entries: entries, Attempts: tried}, nil
+			return llm.ScheduleResult{Entries: entries, Summary: st.summary, Attempts: tried}, nil
 		}
 		last = problems
 	}

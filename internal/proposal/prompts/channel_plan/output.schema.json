@@ -1,21 +1,62 @@
 {
   "type": "object",
   "properties": {
-    "mode": {
-      "type": "string",
-      "enum": ["single", "primary_fallback", "both"],
-      "description": "single: one channel only. primary_fallback: one message per person, on the primary channel or else on the other. both: a message on every channel a person can be reached on."
+    "question": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "One clarifying question about the channels, in the language of the brief. Asking ends this call: the step waits for the answer."
+            },
+            "options": {
+              "anyOf": [
+                {"type": "array", "items": {"type": "string"}},
+                {"type": "null"}
+              ],
+              "description": "Two to four short suggested answers, or null for a free answer."
+            }
+          },
+          "required": ["text", "options"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ],
+      "description": "Set only when the brief is genuinely ambiguous about the channels and questions_left is above 0; then plan and summary are null."
     },
-    "primary": {
-      "type": "string",
-      "enum": ["sms", "email"],
-      "description": "The channel of mode single and the primary channel of mode primary_fallback. For mode both, the channel that reaches more people (email on a tie)."
+    "plan": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["single", "primary_fallback", "both"],
+              "description": "single: one channel only. primary_fallback: one message per person, on the primary channel or else on the other. both: a message on every channel a person can be reached on."
+            },
+            "primary": {
+              "type": "string",
+              "enum": ["sms", "email"],
+              "description": "The channel of mode single and the primary channel of mode primary_fallback. For mode both, the channel that reaches more people (email on a tie)."
+            },
+            "rationale": {
+              "type": "string",
+              "description": "One or two short sentences, in the language of the brief, naming the numbers or the request that decided the plan."
+            }
+          },
+          "required": ["mode", "primary", "rationale"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ],
+      "description": "The plan; null only when question is set."
     },
-    "rationale": {
-      "type": "string",
-      "description": "One or two short sentences, in the language of the brief, naming the numbers or the request that decided the plan."
+    "summary": {
+      "anyOf": [{"type": "string"}, {"type": "null"}],
+      "description": "With a plan: two to four sentences for the marketer, in the language of the brief, in markdown (lists and bold allowed; no links, no HTML, no headings), saying how the audience is reached and why. Null only when question is set."
     }
   },
-  "required": ["mode", "primary", "rationale"],
+  "required": ["question", "plan", "summary"],
   "additionalProperties": false
 }

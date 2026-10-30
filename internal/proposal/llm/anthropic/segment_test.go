@@ -23,18 +23,19 @@ func TestSegmentValidFirstTry(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t, llmtest.JSON(llmtest.Message{
 		Blocks: []llmtest.Block{llmtest.Thinking("", "sig-1"), proposeBlock("toolu_1", sampleDSL)},
 		Usage:  llmtest.Usage{Input: 900, Output: 60, CacheRead: 800, CacheCreation: 10},
-	}))
+	}), summaryTurn())
 	tools := llm.NewCustomerTools(previewOf(46))
 	ctx, col := withRecorder(t)
-	in := llm.SegmentInput{Brief: brief.Brief, ContextNotes: []string{"previous proposal was too wide"}}
+	in := llm.SegmentInput{Brief: brief.Brief, ContextNotes: []string{"previous proposal was too wide"}, QuestionsLeft: 2}
 	res, err := newClient(t, srv).ProposeSegment(ctx, in, tools)
 	if err != nil {
 		t.Fatalf("ProposeSegment: %v", err)
 	}
-	if res.DSL != sampleDSL || res.Filter == nil || res.Preview == nil || res.Preview.Count != 46 {
+	if res.DSL != sampleDSL || res.Filter == nil || res.Preview == nil || res.Preview.Count != 46 || res.Summary != scriptedSummary || res.Question != nil {
 		t.Errorf("result = %+v", res)
 	}
-	if res.Turn != 1 || res.Turns != 1 || res.ProposeAttempts != 1 ||
+	// The summary turn (D-088) is a turn, not an attempt.
+	if res.Turn != 1 || res.Turns != 2 || res.ProposeAttempts != 1 ||
 		res.Usage != (llm.Usage{InputTokens: 900, OutputTokens: 60, CacheReadTokens: 800, CacheCreationTokens: 10}) {
 		t.Errorf("accounting = turn %d, turns %d, attempts %d, usage %+v", res.Turn, res.Turns, res.ProposeAttempts, res.Usage)
 	}
@@ -42,25 +43,31 @@ func TestSegmentValidFirstTry(t *testing.T) {
 		t.Error("the filter is not the compiled DSL")
 	}
 
-	// The user message is a JSON block with the brief and the notes; nothing else is in it.
-	var user struct {
-		Brief        string   `json:"brief"`
-		ContextNotes []string `json:"context_notes"`
-	}
+	// The user message is a JSON block with the brief, the notes and the question budget; nothing
+	// else is in it (no clarifications key without clarifications).
+	var user map[string]any
 	text, _ := field(t, srv.Requests()[0].JSON(), "messages", 0, "content", 0, "text").(string)
 	decode(t, text, &user)
-	if user.Brief != in.Brief || !reflect.DeepEqual(user.ContextNotes, in.ContextNotes) {
+	if user["brief"] != in.Brief || !reflect.DeepEqual(user["context_notes"], []any{"previous proposal was too wide"}) || user["questions_left"] != float64(2) || len(user) != 3 {
 		t.Errorf("user message = %+v", user)
+	}
+	// The accepted propose_segment gets a result that says so and asks for the summary.
+	id, result, isErr := lastToolResult(t, srv.Requests()[1])
+	if id != "toolu_1" || isErr || !strings.Contains(result, `"accepted":true`) || !strings.Contains(result, `"count":46`) || !strings.Contains(result, "send_summary") {
+		t.Errorf("accepted result = %q (is_error %v)", result, isErr)
 	}
 
 	recs := col.Records()
-	if len(recs) != 1 {
-		t.Fatalf("records = %d, want 1", len(recs))
+	if len(recs) != 2 {
+		t.Fatalf("records = %d, want 2 (the proposal and the summary turn)", len(recs))
 	}
 	r := recs[0]
 	if r.Purpose != llm.PurposeSegment || r.Attempt != 1 || r.Outcome != llm.OutcomeAccepted || r.Model != "claude-sonnet-5-5" ||
-		r.StopReason != "tool_use" || r.Prompt.Name != "segment" || r.Prompt.Version != "1.0.0" {
+		r.StopReason != "tool_use" || r.Prompt.Name != "segment" || r.Prompt.Version != "2.0.0" {
 		t.Errorf("record = %+v", r)
+	}
+	if recs[1].Attempt != 2 || recs[1].Outcome != llm.OutcomeAccepted || !strings.Contains(string(recs[1].Response), "send_summary") {
+		t.Errorf("summary record = %+v", recs[1])
 	}
 	var calls []struct {
 		Name  string `json:"name"`
@@ -89,6 +96,7 @@ func TestSegmentRepairsInTheSameConversation(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(llmtest.Message{Blocks: []llmtest.Block{llmtest.Thinking("", "sig-A"), llmtest.Text("Drafting.", "Draft", "ing."), proposeBlock("toolu_bad", bad)}}),
 		llmtest.JSON(llmtest.Message{Blocks: []llmtest.Block{llmtest.Thinking("", "sig-B"), proposeBlock("toolu_good", sampleDSL)}}),
+		summaryTurn(),
 	)
 	ctx, col := withRecorder(t)
 	res, err := newClient(t, srv).ProposeSegment(ctx, brief, llm.NewCustomerTools(previewOf(46)))
@@ -99,8 +107,8 @@ func TestSegmentRepairsInTheSameConversation(t *testing.T) {
 		t.Errorf("result = turn %d attempts %d dsl %q", res.Turn, res.ProposeAttempts, res.DSL)
 	}
 	reqs := srv.Requests()
-	if len(reqs) != 2 {
-		t.Fatalf("requests = %d, want 2", len(reqs))
+	if len(reqs) != 3 {
+		t.Fatalf("requests = %d, want 3 (two proposals and the summary turn)", len(reqs))
 	}
 
 	// The second request is the first plus the assistant turn, unchanged, plus the tool result.
@@ -146,7 +154,7 @@ func TestSegmentRepairsInTheSameConversation(t *testing.T) {
 	}
 
 	recs := col.Records()
-	if len(recs) != 2 || recs[0].Attempt != 1 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Attempt != 2 || recs[1].Outcome != llm.OutcomeAccepted {
+	if len(recs) != 3 || recs[0].Attempt != 1 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Attempt != 2 || recs[1].Outcome != llm.OutcomeAccepted {
 		t.Fatalf("records = %+v", recs)
 	}
 	if !strings.Contains(recs[0].Error, "rejected") {
@@ -168,6 +176,7 @@ func TestSegmentCountAudienceRoundTrip(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(countBlock("toolu_c", `city === "Ankara"`))),
 		llmtest.JSON(msg(proposeBlock("toolu_p", `city === "Ankara"`))),
+		summaryTurn(),
 	)
 	tools := &llmtest.Tools{CountFunc: func(context.Context, string) (*customer.Preview, error) {
 		return &customer.Preview{Count: 7, Coverage: customer.Coverage{Both: 3, EmailOnly: 2, SmsOnly: 2, Unreachable: 1}}, nil
@@ -177,8 +186,8 @@ func TestSegmentCountAudienceRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProposeSegment: %v", err)
 	}
-	if res.Turn != 2 || res.ProposeAttempts != 1 || res.Turns != 2 {
-		t.Errorf("turn %d turns %d attempts %d; a probe is a turn but not an attempt", res.Turn, res.Turns, res.ProposeAttempts)
+	if res.Turn != 2 || res.ProposeAttempts != 1 || res.Turns != 3 {
+		t.Errorf("turn %d turns %d attempts %d; a probe and the summary turn are turns but not attempts", res.Turn, res.Turns, res.ProposeAttempts)
 	}
 	if got := tools.Counted(); len(got) != 1 || got[0] != `city === "Ankara"` {
 		t.Errorf("counted = %q", got)
@@ -193,7 +202,7 @@ func TestSegmentCountAudienceRoundTrip(t *testing.T) {
 		t.Errorf("preview in the tool_result = %+v", p)
 	}
 	recs := col.Records()
-	if len(recs) != 2 || recs[0].Outcome != llm.OutcomeAccepted || recs[1].Outcome != llm.OutcomeAccepted || recs[0].Attempt != 1 || recs[1].Attempt != 2 {
+	if len(recs) != 3 || recs[0].Outcome != llm.OutcomeAccepted || recs[1].Outcome != llm.OutcomeAccepted || recs[0].Attempt != 1 || recs[1].Attempt != 2 {
 		t.Errorf("records = %+v", recs)
 	}
 }
@@ -203,6 +212,7 @@ func TestSegmentCountAudienceRejectedDSLComesBackAsError(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(countBlock("toolu_c", "city =="))),
 		llmtest.JSON(msg(proposeBlock("toolu_p", sampleDSL))),
+		summaryTurn(),
 	)
 	ctx, col := withRecorder(t)
 	if _, err := newClient(t, srv).ProposeSegment(ctx, brief, llm.NewCustomerTools(previewOf(5))); err != nil {
@@ -252,6 +262,7 @@ func TestSegmentEndTurnWithoutToolCountsAsAnAttempt(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(llmtest.Thinking("", "sig-1"), llmtest.Text("The filter is city === \"Ankara\"."))),
 		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))),
+		summaryTurn(),
 	)
 	ctx, col := withRecorder(t)
 	res, err := newClient(t, srv).ProposeSegment(ctx, brief, &llmtest.Tools{})
@@ -337,6 +348,7 @@ func TestSegmentMaxTokensIsAFailedAttempt(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(llmtest.Message{StopReason: "max_tokens", Blocks: []llmtest.Block{llmtest.Thinking("", "sig"), proposeBlock("t_cut", `city === "An`)}}),
 		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))),
+		summaryTurn(),
 	)
 	ctx, col := withRecorder(t)
 	res, err := newClient(t, srv).ProposeSegment(ctx, brief, &llmtest.Tools{})
@@ -382,6 +394,7 @@ func TestSegmentMaxTokensWithOnlyAToolUseSendsNoAssistantTurn(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(llmtest.Message{StopReason: "max_tokens", Blocks: []llmtest.Block{proposeBlock("t_cut", `city === "An`)}}),
 		llmtest.JSON(msg(proposeBlock("t", `city === "Ankara"`))),
+		summaryTurn(),
 	)
 	if _, err := newClient(t, srv).ProposeSegment(t.Context(), brief, &llmtest.Tools{}); err != nil {
 		t.Fatal(err)
@@ -406,6 +419,10 @@ func TestSegmentToolInputProblems(t *testing.T) {
 		{"extra field", llmtest.ToolUse("t", "propose_segment", map[string]any{"dsl": "x", "extra": 1}), true, `{"dsl"`},
 		{"count with bad input", llmtest.ToolUse("t", "count_audience", map[string]any{}), false, "non-empty"},
 		{"unknown tool", llmtest.ToolUse("t", "delete_everything", map[string]any{"dsl": "x"}), false, "unknown tool"},
+		{"ask without question", llmtest.ToolUse("t", "ask_user", map[string]any{"options": []string{"a", "b"}}), true, `"question"`},
+		{"ask with one option", askBlock("t", "Which city?", []string{"Ankara"}), true, "options"},
+		{"ask with a link", askBlock("t", "See https://example.com ?", nil), true, "links"},
+		{"summary before acceptance with HTML", summaryBlock("t", "<b>bold</b>"), false, "HTML"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -413,6 +430,7 @@ func TestSegmentToolInputProblems(t *testing.T) {
 			srv := llmtest.NewMessagesServer(t,
 				llmtest.JSON(msg(tt.block)),
 				llmtest.JSON(msg(proposeBlock("t2", `city === "Ankara"`))),
+				summaryTurn(),
 			)
 			tools := &llmtest.Tools{}
 			res, err := newClient(t, srv).ProposeSegment(t.Context(), brief, tools)
@@ -442,6 +460,7 @@ func TestSegmentParallelToolCalls(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(countBlock("c1", `city === "Ankara"`), proposeBlock("p1", `nonsense ===`), countBlock("c2", `retired === true`))),
 		llmtest.JSON(msg(proposeBlock("p2", `city === "Ankara"`))),
+		summaryTurn(),
 	)
 	ctx, col := withRecorder(t)
 	res, err := newClient(t, srv).ProposeSegment(ctx, brief, llm.NewCustomerTools(previewOf(3)))
@@ -469,9 +488,12 @@ func TestSegmentParallelToolCalls(t *testing.T) {
 
 func TestSegmentFirstValidProposeWinsInATurn(t *testing.T) {
 	t.Parallel()
-	srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(proposeBlock("p1", `nonsense ===`), proposeBlock("p2", `city === "Ankara"`))))
+	srv := llmtest.NewMessagesServer(t,
+		llmtest.JSON(msg(proposeBlock("p1", `nonsense ===`), proposeBlock("p2", `city === "Ankara"`))),
+		llmtest.JSON(msg(llmtest.Text("Done."))), // the model ends the summary turn without send_summary
+	)
 	res, err := newClient(t, srv).ProposeSegment(t.Context(), brief, llm.NewCustomerTools(previewOf(3)))
-	if err != nil || res.DSL != `city === "Ankara"` || res.ProposeAttempts != 2 || res.Turn != 1 {
+	if err != nil || res.DSL != `city === "Ankara"` || res.ProposeAttempts != 2 || res.Turn != 1 || res.Summary != "" {
 		t.Errorf("res = %+v, err = %v", res, err)
 	}
 }
@@ -481,6 +503,7 @@ func TestSegmentEmptyAudienceIsAValidationError(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(proposeBlock("t1", `loyaltyTier === "Gold" && totalOrders > 100`))),
 		llmtest.JSON(msg(proposeBlock("t2", `loyaltyTier === "Gold"`))),
+		summaryTurn(),
 	)
 	n := 0
 	prev := previewerFunc(func(context.Context, *compile.Filter) (*customer.Preview, error) {
@@ -514,6 +537,7 @@ func TestSegmentCustomerFilterErrorIsRepaired(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(proposeBlock("t1", `city === "Istnbul"`))),
 		llmtest.JSON(msg(proposeBlock("t2", `city === "İstanbul"`))),
+		summaryTurn(),
 	)
 	res, err := newClient(t, srv).ProposeSegment(t.Context(), brief, llm.NewCustomerTools(prev))
 	if err != nil || res.Preview.Count != 46 {
@@ -574,5 +598,171 @@ func TestSegmentAPIErrorMidLoop(t *testing.T) {
 	recs := col.Records()
 	if len(recs) != 2 || recs[1].Outcome != llm.OutcomeAPIError || recs[1].Attempt != 2 || recs[1].Error == "" {
 		t.Errorf("records = %+v", recs)
+	}
+}
+
+// ---- D-088: questions and summaries ----
+
+func TestSegmentAskUserEndsTheLoopWithAQuestion(t *testing.T) {
+	t.Parallel()
+	srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(
+		llmtest.Thinking("", "sig"), countBlock("c", `city === "Ankara"`),
+		askBlock("q", " Hangi şehirdeki müşteriler? ", []string{" Ankara ", "İzmir", "Her ikisi"}),
+	)))
+	tools := &llmtest.Tools{}
+	ctx, col := withRecorder(t)
+	in := brief
+	in.QuestionsLeft = 2
+	res, err := newClient(t, srv).ProposeSegment(ctx, in, tools)
+	if err != nil {
+		t.Fatalf("ProposeSegment: %v", err)
+	}
+	if res.Question == nil || res.Question.Text != "Hangi şehirdeki müşteriler?" || !reflect.DeepEqual(res.Question.Options, []string{"Ankara", "İzmir", "Her ikisi"}) {
+		t.Fatalf("question = %+v", res.Question)
+	}
+	if res.DSL != "" || res.Filter != nil || res.Summary != "" || res.ProposeAttempts != 0 || res.Turns != 1 {
+		t.Errorf("result = %+v: a question proposes nothing and costs no attempt", res)
+	}
+	if n := len(srv.Requests()); n != 1 {
+		t.Errorf("requests = %d: ask_user ends the loop", n)
+	}
+	if got := tools.Counted(); len(got) != 1 {
+		t.Errorf("the probe of the same turn still ran: counted %v", got)
+	}
+	recs := col.Records()
+	if len(recs) != 1 || recs[0].Outcome != llm.OutcomeAccepted || !strings.Contains(string(recs[0].Response), `"ask_user"`) {
+		t.Errorf("records = %+v", recs)
+	}
+}
+
+func TestSegmentQuestionBeyondTheLimitIsAnErrorResultAndAnAttempt(t *testing.T) {
+	t.Parallel()
+	srv := llmtest.NewMessagesServer(t,
+		llmtest.JSON(msg(askBlock("q", "Hangi şehir?", nil))),
+		llmtest.JSON(msg(proposeBlock("p", `city === "Ankara"`))),
+		summaryTurn(),
+	)
+	in := brief
+	in.QuestionsLeft = 0
+	in.Clarifications = []llm.Clarification{{Question: "Hangi şehir?", Answer: "Ankara"}, {Question: "Hangi dönem?", Answer: "Son 30 gün"}}
+	ctx, col := withRecorder(t)
+	res, err := newClient(t, srv).ProposeSegment(ctx, in, &llmtest.Tools{})
+	if err != nil || res.Question != nil || res.DSL != `city === "Ankara"` {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if res.ProposeAttempts != 2 {
+		t.Errorf("attempts = %d, want 2: the refused question costs an attempt (D-069)", res.ProposeAttempts)
+	}
+	id, text, isErr := lastToolResult(t, srv.Requests()[1])
+	if id != "q" || !isErr || !strings.Contains(text, "question limit reached") {
+		t.Errorf("tool_result id %q is_error %v text %q", id, isErr, text)
+	}
+	// The clarifications travel in the user message, in order.
+	var user struct {
+		Clarifications []struct{ Question, Answer string } `json:"clarifications"`
+		QuestionsLeft  int                                 `json:"questions_left"`
+	}
+	utext, _ := field(t, srv.Requests()[0].JSON(), "messages", 0, "content", 0, "text").(string)
+	decode(t, utext, &user)
+	if user.QuestionsLeft != 0 || len(user.Clarifications) != 2 || user.Clarifications[1].Answer != "Son 30 gün" {
+		t.Errorf("user message = %+v", user)
+	}
+	if recs := col.Records(); recs[0].Outcome != llm.OutcomeValidationFailed || !strings.Contains(recs[0].Error, "question limit") {
+		t.Errorf("first record = %+v", recs[0])
+	}
+}
+
+func TestSegmentThreeRefusedQuestionsExhaust(t *testing.T) {
+	t.Parallel()
+	ask := llmtest.JSON(msg(askBlock("q", "Hangi şehir?", nil)))
+	srv := llmtest.NewMessagesServer(t, ask, ask, ask)
+	in := brief
+	in.QuestionsLeft = 0
+	_, err := newClient(t, srv).ProposeSegment(t.Context(), in, &llmtest.Tools{})
+	var ex *llm.RepairExhaustedError
+	if !errors.As(err, &ex) || ex.Attempts != 3 || !strings.Contains(ex.Reason, "question limit") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSegmentSummaryInTheSameTurnAsTheProposal(t *testing.T) {
+	t.Parallel()
+	srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(proposeBlock("p", `city === "Ankara"`), summaryBlock("s", " **Kitle**: Ankara. "))))
+	ctx, col := withRecorder(t)
+	res, err := newClient(t, srv).ProposeSegment(ctx, brief, &llmtest.Tools{})
+	if err != nil || res.Summary != "**Kitle**: Ankara." || res.Turns != 1 || res.ProposeAttempts != 1 {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if n := len(srv.Requests()); n != 1 {
+		t.Errorf("requests = %d: no summary turn when the summary came with the proposal", n)
+	}
+	if recs := col.Records(); len(recs) != 1 || recs[0].Outcome != llm.OutcomeAccepted {
+		t.Errorf("records = %+v", recs)
+	}
+}
+
+func TestSegmentProposalWinsOverAQuestionInTheSameTurn(t *testing.T) {
+	t.Parallel()
+	srv := llmtest.NewMessagesServer(t,
+		llmtest.JSON(msg(askBlock("q", "Emin misin?", nil), proposeBlock("p", `city === "Ankara"`))),
+		summaryTurn(),
+	)
+	in := brief
+	in.QuestionsLeft = 2
+	res, err := newClient(t, srv).ProposeSegment(t.Context(), in, &llmtest.Tools{})
+	if err != nil || res.Question != nil || res.DSL != `city === "Ankara"` || res.Summary != scriptedSummary {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestSegmentSummaryTurnFailuresKeepTheProposal(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		turn llmtest.Response
+	}{
+		{"api error", llmtest.HTTPError(529, "overloaded_error", "busy")},
+		{"refusal", llmtest.JSON(llmtest.Message{Refusal: &llmtest.Refusal{Category: "general_harms"}})},
+		{"rejected summary", llmtest.JSON(msg(summaryBlock("s", "see https://example.com")))},
+		{"another propose", llmtest.JSON(msg(proposeBlock("p2", `nonsense ===`)))},
+		{"cut off", llmtest.JSON(llmtest.Message{StopReason: "max_tokens", Blocks: []llmtest.Block{llmtest.Text("The")}})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			srv := llmtest.NewMessagesServer(t, llmtest.JSON(msg(proposeBlock("p", `city === "Ankara"`))), tt.turn)
+			tools := &llmtest.Tools{}
+			ctx, col := withRecorder(t)
+			res, err := newClient(t, srv).ProposeSegment(ctx, brief, tools)
+			if err != nil || res.DSL != `city === "Ankara"` || res.Summary != "" || res.ProposeAttempts != 1 {
+				t.Fatalf("res = %+v, err = %v: the accepted proposal stands without a summary", res, err)
+			}
+			if n := len(tools.Validated()); n != 1 {
+				t.Errorf("validated %d filters; a proposal in the summary turn is not run", n)
+			}
+			if n := len(srv.Requests()); n != 2 {
+				t.Errorf("requests = %d, want 2", n)
+			}
+			if recs := col.Records(); len(recs) != 2 || recs[0].Outcome != llm.OutcomeAccepted {
+				t.Errorf("records = %+v", recs)
+			}
+		})
+	}
+}
+
+func TestSegmentSummaryTurnHitsTheTurnLimit(t *testing.T) {
+	t.Parallel()
+	var script []llmtest.Response
+	for range llm.MaxSegmentTurns - 1 {
+		script = append(script, llmtest.JSON(msg(countBlock("c", `city === "Ankara"`))))
+	}
+	script = append(script, llmtest.JSON(msg(proposeBlock("p", `city === "Ankara"`))))
+	srv := llmtest.NewMessagesServer(t, script...)
+	res, err := newClient(t, srv).ProposeSegment(t.Context(), brief, &llmtest.Tools{})
+	if err != nil || res.DSL != `city === "Ankara"` || res.Summary != "" || res.Turns != llm.MaxSegmentTurns {
+		t.Fatalf("res = %+v, err = %v: a proposal accepted in the last turn gets no summary turn", res, err)
+	}
+	if n := len(srv.Requests()); n != llm.MaxSegmentTurns {
+		t.Errorf("requests = %d", n)
 	}
 }

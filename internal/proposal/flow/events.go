@@ -153,6 +153,39 @@ type (
 		NoteID uuid.UUID `json:"note_id" validate:"required" format:"uuid"`
 		Body   string    `json:"body" validate:"required"`
 	}
+	// CampaignTitled: the pre-screen named the campaign (D-088).
+	CampaignTitled struct {
+		Meta
+		Title string `json:"title" validate:"required"`
+	}
+	// QuestionAsked: the agent asked the marketer a clarifying question instead of proposing; the
+	// step waits for POST /messages/{message_id}/answer (D-088). Options are the suggested
+	// answers, when the agent gave any.
+	QuestionAsked struct {
+		Meta
+		StepID    uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		MessageID uuid.UUID `json:"message_id" validate:"required" format:"uuid"`
+		Question  string    `json:"question" validate:"required"`
+		Options   []string  `json:"options,omitempty"`
+	}
+	// AnswerGiven: the marketer answered a question; the step is generated again with the answer
+	// (D-088). MessageID is the answer, QuestionID the question it belongs to.
+	AnswerGiven struct {
+		Meta
+		StepID     uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		MessageID  uuid.UUID `json:"message_id" validate:"required" format:"uuid"`
+		QuestionID uuid.UUID `json:"question_id" validate:"required" format:"uuid"`
+		Answer     string    `json:"answer" validate:"required"`
+	}
+	// SummaryPosted: the agent summarised what it proposed for a step, in markdown (D-088). Slot
+	// names the content slot the summary belongs to; it is empty for the other steps.
+	SummaryPosted struct {
+		Meta
+		StepID    uuid.UUID `json:"step_id" validate:"required" format:"uuid"`
+		MessageID uuid.UUID `json:"message_id" validate:"required" format:"uuid"`
+		Slot      Slot      `json:"slot" validate:"required"`
+		Markdown  string    `json:"markdown" validate:"required"`
+	}
 )
 
 // Type names.
@@ -173,6 +206,10 @@ const (
 	TypeContentDelta      = "content_delta"
 	TypeContentReset      = "content_reset"
 	TypeContextAdded      = "context_added"
+	TypeCampaignTitled    = "campaign_titled"
+	TypeQuestionAsked     = "question_asked"
+	TypeAnswerGiven       = "answer_given"
+	TypeSummaryPosted     = "summary_posted"
 )
 
 // Type implementations.
@@ -192,6 +229,10 @@ func (VariantSuperseded) Type() string { return TypeVariantSuperseded }
 func (ContentDelta) Type() string      { return TypeContentDelta }
 func (ContentReset) Type() string      { return TypeContentReset }
 func (ContextAdded) Type() string      { return TypeContextAdded }
+func (CampaignTitled) Type() string    { return TypeCampaignTitled }
+func (QuestionAsked) Type() string     { return TypeQuestionAsked }
+func (AnswerGiven) Type() string       { return TypeAnswerGiven }
+func (SummaryPosted) Type() string     { return TypeSummaryPosted }
 
 // DefaultHubBuffer is the buffer of a subscription made with NewHub(0).
 const DefaultHubBuffer = 256

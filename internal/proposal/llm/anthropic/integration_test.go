@@ -97,6 +97,7 @@ func TestSampleBriefRepairedAgainstTheRealCustomerService(t *testing.T) {
 	srv := llmtest.NewMessagesServer(t,
 		llmtest.JSON(msg(llmtest.Thinking("", "sig"), proposeBlock("toolu_1", misspelt))),
 		llmtest.JSON(msg(proposeBlock("toolu_2", corrected))),
+		summaryTurn(),
 	)
 	tools := llm.NewCustomerTools(customerClient(t))
 	ctx, col := withRecorder(t)
@@ -118,8 +119,11 @@ func TestSampleBriefRepairedAgainstTheRealCustomerService(t *testing.T) {
 			t.Errorf("tool_result lacks %s (is_error %v):\n%s", want, isErr, text)
 		}
 	}
+	if res.Summary != scriptedSummary {
+		t.Errorf("summary = %q", res.Summary)
+	}
 	recs := col.Records()
-	if len(recs) != 2 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Outcome != llm.OutcomeAccepted {
+	if len(recs) != 3 || recs[0].Outcome != llm.OutcomeValidationFailed || recs[1].Outcome != llm.OutcomeAccepted || recs[2].Outcome != llm.OutcomeAccepted {
 		t.Errorf("records = %+v", recs)
 	}
 }

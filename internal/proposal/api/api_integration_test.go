@@ -700,6 +700,13 @@ func TestEveryMockFilterHasAnAudienceInTheSeed(t *testing.T) {
 		}
 		t.Logf("%-18s %4d reachable  %s", c.Name, res.Preview.Count, c.DSL)
 	}
+	// The filter of the mock's answered question (D-088) too.
+	res, err := m.ProposeSegment(t.Context(), llm.SegmentInput{Brief: "Kim?", QuestionsLeft: 1,
+		Clarifications: []llm.Clarification{{Question: mock.Question.Text, Answer: mock.Question.Options[1]}}}, tools)
+	if err != nil || res.DSL != mock.QuestionDSL || res.Preview.Count == 0 {
+		t.Errorf("question filter: %+v, %v", res, err)
+	}
+	t.Logf("%-18s %4d reachable  %s", "question", res.Preview.Count, mock.QuestionDSL)
 }
 
 // replacement waits until the open step of kind holds a draft in slot that is not old, and returns it.

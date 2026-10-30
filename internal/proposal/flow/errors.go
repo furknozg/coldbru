@@ -34,6 +34,10 @@ var (
 	ErrNotCancellable = errors.New("flow: campaign is completed or already cancelled")
 	// ErrNoContentGenerator: the content step needs a ContentGenerator and the service has none.
 	ErrNoContentGenerator = errors.New("flow: no content generator configured")
+	// ErrNotQuestion: Answer was asked for a message that is not a question (D-088).
+	ErrNotQuestion = errors.New("flow: message is not a question")
+	// ErrAlreadyAnswered: the question has an answer already (D-088).
+	ErrAlreadyAnswered = errors.New("flow: question is already answered")
 )
 
 // InvalidContentError is the error of an edit that did not pass the validators. Problems are

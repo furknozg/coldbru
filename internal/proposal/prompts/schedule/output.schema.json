@@ -1,34 +1,68 @@
 {
   "type": "object",
   "properties": {
+    "question": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "One clarifying question about the send time, in the language of the brief. Asking ends this call: the step waits for the answer."
+            },
+            "options": {
+              "anyOf": [
+                {"type": "array", "items": {"type": "string"}},
+                {"type": "null"}
+              ],
+              "description": "Two to four short suggested answers, or null for a free answer."
+            }
+          },
+          "required": ["text", "options"],
+          "additionalProperties": false
+        },
+        {"type": "null"}
+      ],
+      "description": "Set only when the brief is genuinely ambiguous about the send time and questions_left is above 0; then entries and summary are null."
+    },
     "entries": {
-      "type": "array",
-      "description": "Exactly one entry for each locale (language and timezone pair) of the input, in the order of the input.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "language": {
-            "type": "string",
-            "description": "A language code copied unchanged from the input locale."
-          },
-          "timezone": {
-            "type": "string",
-            "description": "The IANA time zone copied unchanged from the same input locale, for example Europe/Istanbul."
-          },
-          "send_at": {
-            "anyOf": [{"type": "string"}, {"type": "null"}],
-            "description": "RFC 3339 date and time with an explicit offset, for example 2026-11-02T10:00:00+03:00, in the time zone of the locale; null to send immediately."
-          },
-          "rationale": {
-            "type": "string",
-            "description": "One short sentence, in the language of the brief, saying where the time comes from."
+      "anyOf": [
+        {
+          "type": "array",
+          "description": "Exactly one entry for each locale (language and timezone pair) of the input, in the order of the input.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "language": {
+                "type": "string",
+                "description": "A language code copied unchanged from the input locale."
+              },
+              "timezone": {
+                "type": "string",
+                "description": "The IANA time zone copied unchanged from the same input locale, for example Europe/Istanbul."
+              },
+              "send_at": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "description": "RFC 3339 date and time with an explicit offset, for example 2026-11-02T10:00:00+03:00, in the time zone of the locale; null to send immediately."
+              },
+              "rationale": {
+                "type": "string",
+                "description": "One short sentence, in the language of the brief, saying where the time comes from."
+              }
+            },
+            "required": ["language", "timezone", "send_at", "rationale"],
+            "additionalProperties": false
           }
         },
-        "required": ["language", "timezone", "send_at", "rationale"],
-        "additionalProperties": false
-      }
+        {"type": "null"}
+      ],
+      "description": "The schedule; null only when question is set."
+    },
+    "summary": {
+      "anyOf": [{"type": "string"}, {"type": "null"}],
+      "description": "With entries: two to four sentences for the marketer, in the language of the brief, in markdown (lists and bold allowed; no links, no HTML, no headings), saying when each locale is sent and why. Null only when question is set."
     }
   },
-  "required": ["entries"],
+  "required": ["question", "entries", "summary"],
   "additionalProperties": false
 }
