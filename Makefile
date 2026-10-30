@@ -11,9 +11,13 @@ endif
 # Every suite: Go unit + integration (needs Docker) and web (D-051).
 test: test-go test-web
 
+# At most GO_TEST_P packages run at once: each integration package starts its own Postgres/NATS
+# containers, and at the default (one per CPU) the seeded starts and timing tests starve (D-098).
+GO_TEST_P ?= 2
+
 # Go unit and integration tests; integration files carry the "integration" build tag (D-051).
 test-go:
-	go test -race -count=1 -tags=integration ./...
+	go test -race -count=1 -p $(GO_TEST_P) -tags=integration ./...
 
 # Unit tests only, no Docker needed (D-051).
 test-unit:
