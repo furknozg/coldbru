@@ -2,17 +2,29 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { planContent } from '../content'
+import { LazyDistributionPie } from '@/components/LazyDistributionPie'
+
+import { CHANNELS, planContent } from '../content'
+import { CHANNEL_COLORS } from '../distribution'
 import { useLabels } from '../labels'
 import type { VariantView } from '../types'
 
 /** The channel plan: how the audience is spread over the channels and how many messages that is. */
 const props = defineProps<{ variant: VariantView }>()
 
-const { t, n } = useI18n()
+const { t } = useI18n()
 const labels = useLabels()
 
 const plan = computed(() => planContent(props.variant))
+
+const recipients = computed(() =>
+  CHANNELS.map((channel) => ({
+    key: channel,
+    label: labels.channel(channel),
+    value: plan.value.recipients[channel],
+    color: CHANNEL_COLORS[channel],
+  })),
+)
 </script>
 
 <template>
@@ -27,35 +39,6 @@ const plan = computed(() => planContent(props.variant))
     </dl>
     <p v-if="plan.rationale" class="break-words whitespace-pre-wrap">{{ plan.rationale }}</p>
 
-    <table class="w-full text-left text-xs">
-      <caption class="text-muted-foreground pb-1 text-left font-medium">
-        {{
-          t('plan.recipients')
-        }}
-      </caption>
-      <thead>
-        <tr class="text-muted-foreground">
-          <th scope="col" class="py-1 pr-2 font-medium">{{ t('audience.language') }}</th>
-          <th scope="col" class="py-1 text-right font-medium">{{ t('channel.email') }}</th>
-          <th scope="col" class="py-1 pl-2 text-right font-medium">{{ t('channel.sms') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in plan.byLanguage" :key="row.language" class="border-t">
-          <th scope="row" class="py-1 pr-2 font-normal">{{ labels.language(row.language) }}</th>
-          <td class="py-1 text-right tabular-nums">{{ n(row.email, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">{{ n(row.sms, 'int') }}</td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr class="border-t font-medium">
-          <th scope="row" class="py-1 pr-2 text-left">
-            {{ t('plan.total', { total: n(plan.recipients.total, 'int') }) }}
-          </th>
-          <td class="py-1 text-right tabular-nums">{{ n(plan.recipients.email, 'int') }}</td>
-          <td class="py-1 pl-2 text-right tabular-nums">{{ n(plan.recipients.sms, 'int') }}</td>
-        </tr>
-      </tfoot>
-    </table>
+    <LazyDistributionPie :title="t('plan.recipients')" :slices="recipients" />
   </div>
 </template>
