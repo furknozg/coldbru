@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea'
 import type { Problem } from '../problem'
 
 /**
- * The box under the timeline: a brief on the home page, a context note on a drafting campaign.
- * The parent owns the text and clears it when the send worked.
+ * The chat bar under the timeline: a brief on the home page, a context note on a drafting campaign.
+ * The parent owns the text and clears it when the send worked. The `actions` slot puts more buttons
+ * next to the send button (the cancel button of a campaign, D-091).
  */
 const props = defineProps<{
   label: string
@@ -72,9 +73,12 @@ function submit() {
           {{ n(length, 'int') }}/{{ n(maxLength, 'int') }}
         </span>
       </p>
-      <Button type="submit" :disabled="!canSubmit">
-        <SendIcon />{{ busy ? t('common.sending') : submitLabel }}
-      </Button>
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <slot name="actions" />
+        <Button type="submit" :disabled="!canSubmit">
+          <SendIcon />{{ busy ? t('common.sending') : submitLabel }}
+        </Button>
+      </div>
     </div>
   </form>
 </template>

@@ -12,6 +12,8 @@ export const LOCALE = 'tr'
 const datetimeFormats = {
   [LOCALE]: {
     short: { dateStyle: 'medium', timeStyle: 'short' },
+    // The date alone, for a row of the campaign list (D-091).
+    date: { dateStyle: 'medium' },
     time: { hour: '2-digit', minute: '2-digit' },
     // Intl rejects timeZoneName together with dateStyle/timeStyle, so the fields are spelled out.
     zoned: {

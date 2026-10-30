@@ -94,6 +94,12 @@ describe('campaign list', () => {
       created_at: '2026-10-29T09:00:00Z',
     }),
     infoOf({
+      id: 'b2',
+      brief: 'Bursa kış kampanyası',
+      status: 'drafting',
+      created_at: '2026-10-27T09:00:00Z',
+    }),
+    infoOf({
       id: 'c',
       brief: 'İzmir hafta sonu kampanyası',
       status: 'cancelled',
@@ -101,21 +107,121 @@ describe('campaign list', () => {
     }),
   ]
 
-  it('lists the campaigns as returned, newest first, with status, brief and time', async () => {
+  const groups = (wrapper: Awaited<ReturnType<typeof open>>['wrapper']) =>
+    wrapper.findAll('aside [data-group]')
+  const groupTrigger = (wrapper: Awaited<ReturnType<typeof open>>['wrapper'], status: string) =>
+    wrapper.get(`aside [data-group="${status}"] button`)
+
+  it('wraps the groups in a "Kampanyalar" accordion that folds and unfolds', async () => {
     vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
     const { wrapper } = await open()
 
-    const rows = wrapper.findAll('aside li')
-    expect(rows.map((r) => r.text())).toEqual([
-      expect.stringContaining('İstanbul sepet hatırlatması'),
-      expect.stringContaining('Ankara yaz indirimi'),
-      expect.stringContaining('İzmir hafta sonu kampanyası'),
+    const root = wrapper.get(
+      'aside section > [data-slot="accordion"] > [data-slot="accordion-item"] > h3 button',
+    )
+    expect(root.text()).toBe('Kampanyalar')
+    expect(root.attributes('aria-expanded')).toBe('true')
+    expect(groups(wrapper)).toHaveLength(3)
+
+    await root.trigger('click')
+    expect(root.attributes('aria-expanded')).toBe('false')
+    expect(groups(wrapper)).toHaveLength(0)
+
+    await root.trigger('click')
+    expect(groups(wrapper)).toHaveLength(3)
+  })
+
+  it('groups the campaigns by status in a fixed order and hides the empty groups', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+    const { wrapper } = await open()
+
+    // Scheduled and sending have no campaign: no group.
+    expect(groups(wrapper).map((g) => g.attributes('data-group'))).toEqual([
+      'drafting',
+      'completed',
+      'cancelled',
     ])
-    expect(rows[0]!.text()).toContain('Tamamlandı')
-    expect(rows[1]!.text()).toContain('Taslak')
-    expect(rows[2]!.text()).toContain('İptal edildi')
-    expect(rows[0]!.text()).toMatch(/30 Eki 2026/)
+    expect(groups(wrapper).map((g) => g.get('button').text())).toEqual([
+      'Taslak 2',
+      'Tamamlandı 1',
+      'İptal 1',
+    ])
     expect(proposal.listCampaigns).toHaveBeenCalledWith(0)
+  })
+
+  it('names all five groups', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(
+      (['cancelled', 'sending', 'completed', 'scheduled', 'drafting'] as const).map((status) =>
+        infoOf({ id: status, status }),
+      ),
+    )
+    const { wrapper } = await open()
+
+    expect(
+      groups(wrapper).map((g) =>
+        g
+          .get('button')
+          .text()
+          .replace(/\s*\d+$/, ''),
+      ),
+    ).toEqual(['Taslak', 'Zamanlanmış', 'Gönderiliyor', 'Tamamlandı', 'İptal'])
+  })
+
+  it('opens the drafts and keeps the other groups folded when no campaign is open', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+    const { wrapper } = await open()
+
+    expect(groupTrigger(wrapper, 'drafting').attributes('aria-expanded')).toBe('true')
+    expect(groupTrigger(wrapper, 'completed').attributes('aria-expanded')).toBe('false')
+    expect(groupTrigger(wrapper, 'cancelled').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.findAll('aside li').map((r) => r.text())).toEqual([
+      expect.stringContaining('Ankara yaz indirimi'),
+      expect.stringContaining('Bursa kış kampanyası'),
+    ])
+
+    await groupTrigger(wrapper, 'completed').trigger('click')
+    expect(wrapper.findAll('aside li')).toHaveLength(3)
+    expect(wrapper.get('aside [data-group="completed"] li').text()).toContain(
+      'İstanbul sepet hatırlatması',
+    )
+  })
+
+  it('also opens the group of the campaign that is open', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+    vi.mocked(proposal.getCampaign).mockResolvedValue(
+      viewOf({ id: 'c', status: 'cancelled', brief: 'İzmir hafta sonu kampanyası' }),
+    )
+    const { wrapper } = await open('/campaigns/c')
+
+    expect(groupTrigger(wrapper, 'drafting').attributes('aria-expanded')).toBe('true')
+    expect(groupTrigger(wrapper, 'cancelled').attributes('aria-expanded')).toBe('true')
+    expect(groupTrigger(wrapper, 'completed').attributes('aria-expanded')).toBe('false')
+    const selected = wrapper.get('aside a[aria-current="page"]')
+    expect(selected.text()).toContain('İzmir hafta sonu kampanyası')
+  })
+
+  it('shows only the title and the short date in a row, with no badge or card', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+    const { wrapper } = await open()
+
+    const row = wrapper.get('aside [data-group="drafting"] li')
+    expect(row.findAll('a > *').map((el) => el.text())).toEqual([
+      'Ankara yaz indirimi',
+      '29 Eki 2026',
+    ])
+    expect(row.find('time').attributes('datetime')).toBe('2026-10-29T09:00:00Z')
+    expect(wrapper.find('aside li [data-slot="badge"]').exists()).toBe(false)
+    expect(wrapper.find('aside li [data-status]').exists()).toBe(false)
+    expect(
+      wrapper.findAll('aside li').every((li) => !li.text().match(/Taslak|Tamamlandı|İptal/)),
+    ).toBe(true)
+    // The title and the date share one line: both are children of the same link.
+    const link = row.get('a')
+    expect(link.classes()).toContain('flex')
+    expect(link.classes()).not.toContain('border')
+    // The accordion content underlines links; the row must win against it.
+    expect(link.classes()).toContain('no-underline!')
+    expect(link.findAll('span, time')).toHaveLength(2)
   })
 
   it('shows the title of a campaign that has one, the brief otherwise', async () => {
@@ -131,7 +237,7 @@ describe('campaign list', () => {
     expect(rows[1]!.text()).toContain('Başlıksız brief')
   })
 
-  it('loads the next page from the offset of what the server already handed out', async () => {
+  it('loads the next page from the offset of what the server already handed out, after the groups', async () => {
     const page = Array.from({ length: 20 }, (_, i) =>
       infoOf({ id: `p1-${i}`, brief: `Brief ${i}` }),
     )
@@ -140,6 +246,11 @@ describe('campaign list', () => {
     const { wrapper } = await open()
 
     const more = wrapper.findAll('button').find((b) => b.text() === 'Daha fazla yükle')!
+    // The button follows the last group.
+    expect(
+      wrapper.get('aside [data-group="drafting"]').element.compareDocumentPosition(more.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     await more.trigger('click')
     await flushPromises()
 
@@ -153,7 +264,7 @@ describe('campaign list', () => {
   it('shows why the list is empty when it fails and lets the user retry', async () => {
     vi.mocked(proposal.listCampaigns).mockRejectedValueOnce(new TypeError('offline'))
     const { wrapper } = await open()
-    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+    expect(wrapper.find('aside [role="alert"]').exists()).toBe(true)
 
     vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
     await wrapper
@@ -162,7 +273,7 @@ describe('campaign list', () => {
       .trigger('click')
     await flushPromises()
 
-    expect(wrapper.findAll('aside li')).toHaveLength(3)
+    expect(groups(wrapper)).toHaveLength(3)
   })
 })
 

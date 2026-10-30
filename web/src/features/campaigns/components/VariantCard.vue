@@ -20,9 +20,11 @@ import RejectDialog from './RejectDialog.vue'
 import ScheduleBody from './ScheduleBody.vue'
 
 /**
- * One proposal of a step: what the model (or the marketer's edit) produced, its state and, while it
- * is a draft in the open step, the actions: approve, reject with a reason, and edit where the step
- * allows it (audience, channel plan and email text; SMS and schedule editing arrive with T-036).
+ * One proposal of a step, and the only card of the chat (D-091): what the model (or the marketer's
+ * edit) produced, its state and, while it is a draft in the open step, the actions: approve, reject
+ * with a reason, and edit where the step allows it (audience, channel plan and email text; SMS and
+ * schedule editing arrive with T-036). Nothing inside it is a box of its own. A rejected variant is
+ * not a card; its step lists it in the accordion.
  */
 const props = defineProps<{
   variant: VariantView
@@ -101,7 +103,7 @@ function openReject() {
 <template>
   <article
     class="flex flex-col gap-3 rounded-xl border p-3"
-    :class="variant.status === 'rejected' ? 'opacity-70' : ''"
+    data-slot="card"
     :aria-label="title"
     :data-variant-status="variant.status"
   >
@@ -142,11 +144,6 @@ function openReject() {
       <ContentBody v-else-if="kind === 'content'" :variant="variant" />
       <ScheduleBody v-else :variant="variant" />
     </template>
-
-    <p v-if="variant.status === 'rejected' && variant.rejection_reason" class="text-sm">
-      <span class="text-muted-foreground">{{ t('variant.rejectionReason') }}: </span>
-      <span class="break-words whitespace-pre-wrap">{{ variant.rejection_reason }}</span>
-    </p>
 
     <footer v-if="actionable && !editing" class="flex flex-wrap gap-2">
       <Button size="sm" :disabled="actions.busy.value" @click="approve">

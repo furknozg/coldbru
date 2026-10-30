@@ -31,7 +31,7 @@ const coverageRows = computed(() => [
 <template>
   <div class="flex flex-col gap-3 text-sm">
     <pre
-      class="bg-muted max-h-40 overflow-auto rounded-lg p-2 font-mono text-xs break-all whitespace-pre-wrap"
+      class="border-caramel/40 max-h-40 overflow-auto border-l-2 pl-2 font-mono text-xs break-all whitespace-pre-wrap"
       :aria-label="t('audience.dsl')"
       >{{ audience.dsl }}</pre>
     <p>

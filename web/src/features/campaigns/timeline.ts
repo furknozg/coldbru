@@ -5,7 +5,7 @@ import type { CampaignView, ChatMessageView, Slot, StepKind } from './types'
 import { slotKey } from './types'
 
 /**
- * Events that become chat cards. The rest (ping, snapshot, content stream, campaign_titled, which
+ * Events that become chat items. The rest (ping, snapshot, content stream, campaign_titled, which
  * only changes the title) never do.
  */
 export const TIMELINE_EVENTS = [
@@ -54,30 +54,30 @@ export type TimelineKind =
   | 'campaignCancelled'
 
 export interface TimelineItem {
-  /** Same fact, same key: a live event and the view that now contains it are one card. */
+  /** Same fact, same key: a live event and the view that now contains it are one item. */
   key: string
   at: string
   kind: TimelineKind
-  /** `user` cards are what the marketer wrote; they are the only ones drawn as messages. */
+  /** `user` items are what the marketer wrote. */
   author: 'user' | 'system'
   tone: 'neutral' | 'success' | 'warning' | 'danger'
   title: string
   /**
-   * The text of the card. Plain text with its line breaks, except when `markdown` is set: then it is
+   * The text of the item. Plain text with its line breaks, except when `markdown` is set: then it is
    * the agent's markdown (a question, a summary, D-088), rendered through `renderMarkdown`.
    */
   body?: string
   markdown?: boolean
   /** A question of the agent: its message id, for the answer, and its suggested answers. */
   question?: { id: string; options: readonly string[] }
-  /** The step the card is about; a click brings its block into view. */
+  /** The step the item is about; the chat files the step's events under that step (D-091). */
   stepId?: string
 }
 
 /**
- * Tie-break for cards of one step with the same instant: the order things happen in. Cards of
+ * Tie-break for items of one step with the same instant: the order things happen in. Items of
  * different steps at the same instant (an approval that opens the next step in one transaction)
- * are ordered by their step first; see `sequence`.
+ * are ordered by their step first; see `sequenceOf`.
  */
 const RANK: Record<TimelineKind, number> = {
   brief: 0,
@@ -99,17 +99,29 @@ const RANK: Record<TimelineKind, number> = {
   campaignCancelled: 16,
 }
 
-const instant = (at: string) => {
+export const rankOf = (kind: TimelineKind) => RANK[kind]
+
+export const instantOf = (at: string) => {
   const ms = Date.parse(at)
   return Number.isNaN(ms) ? 0 : ms
 }
 
 /**
- * The cards of the chat (D-087, D-089): the marketer's messages, the agent's questions and
- * summaries, and system cards, oldest first. History comes from the view, so a campaign opened later
- * still tells its story; what only an event knows (screening, generation start and failure,
- * supersession, sending) comes from `live`. The steps themselves are not cards: the chat draws an
- * approved step as an accordion on its `stepApproved` card and the open step after the last card.
+ * Where an item belongs among items of the same instant: campaign-level items that start the
+ * story first, then the steps in flow order (a step the view does not know yet last among them),
+ * then the campaign-level items that end it.
+ */
+export function sequenceOf(item: TimelineItem, stepIndexOf: ReadonlyMap<string, number>): number {
+  if (item.stepId) return stepIndexOf.get(item.stepId) ?? Number.MAX_SAFE_INTEGER - 1
+  return RANK[item.kind] <= RANK.screen ? -1 : Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * The items of the chat (D-087, D-091): the marketer's messages, the agent's questions and
+ * summaries, and system events, oldest first. History comes from the view, so a campaign opened
+ * later still tells its story; what only an event knows (screening, generation start and failure,
+ * supersession, sending) comes from `live`. The steps themselves are not items: `buildChat` draws
+ * each step as one accordion that holds the step's events.
  */
 export function buildTimeline(
   view: CampaignView | null,
@@ -143,7 +155,7 @@ export function buildTimeline(
     return slotLabel ? `${labels.stepKind(kind)} · ${slotLabel}` : labels.stepKind(kind)
   }
 
-  /** A chat message of the agent or the marketer (D-088) as a card; `slot` names a content slot. */
+  /** A chat message of the agent or the marketer (D-088); `slot` names a content slot. */
   const message = (m: ChatMessageView, slot?: Slot): TimelineItem | null => {
     const kind = m.step_id ? stepKindOf.get(m.step_id) : undefined
     const stepLabel = kind ? labels.stepKind(kind) : t('timeline.variant')
@@ -238,6 +250,7 @@ export function buildTimeline(
           author: 'system',
           tone: 'warning',
           title: t('timeline.stepSuperseded', { step: step(d.kind, d.version) }),
+          stepId: d.step_id,
         })
         break
       }
@@ -503,15 +516,10 @@ export function buildTimeline(
     }
   }
 
-  // Where a card belongs among cards of the same instant: campaign-level cards that start the
-  // story first, then the steps in flow order (a step the view does not know yet last among them),
-  // then the campaign-level cards that end it.
-  const sequence = (item: TimelineItem) => {
-    if (item.stepId) return stepIndexOf.get(item.stepId) ?? Number.MAX_SAFE_INTEGER - 1
-    return RANK[item.kind] <= RANK.screen ? -1 : Number.MAX_SAFE_INTEGER
-  }
   return [...items.values()].sort(
     (a, b) =>
-      instant(a.at) - instant(b.at) || sequence(a) - sequence(b) || RANK[a.kind] - RANK[b.kind],
+      instantOf(a.at) - instantOf(b.at) ||
+      sequenceOf(a, stepIndexOf) - sequenceOf(b, stepIndexOf) ||
+      RANK[a.kind] - RANK[b.kind],
   )
 }
