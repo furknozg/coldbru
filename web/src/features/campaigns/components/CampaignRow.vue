@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import type { RouteLocationRaw } from 'vue-router'
 
 import type { CampaignInfo } from '../types'
 
-/** One campaign in the sidebar (D-091): the title (or the brief) and the short date on one line. */
-defineProps<{ campaign: CampaignInfo; selected: boolean }>()
+/**
+ * One campaign in the sidebar (D-091): the title (or the brief) and the short date on one line.
+ * The link opens the chat unless `to` says otherwise (the dashboard links its own sections, D-097).
+ */
+defineProps<{ campaign: CampaignInfo; selected: boolean; to?: RouteLocationRaw }>()
 
 const emit = defineEmits<{ navigate: [] }>()
 
@@ -15,7 +19,7 @@ const { d } = useI18n()
   <li>
     <!-- no-underline! (important): the accordion content underlines every link inside it. -->
     <RouterLink
-      :to="{ name: 'campaign', params: { id: campaign.id } }"
+      :to="to ?? { name: 'campaign', params: { id: campaign.id } }"
       class="hover:bg-accent focus-visible:ring-ring/50 no-underline! flex items-baseline justify-between gap-2 rounded-md px-2 py-1 text-sm outline-none focus-visible:ring-3"
       :class="selected ? 'bg-accent' : ''"
       :aria-current="selected ? 'page' : undefined"

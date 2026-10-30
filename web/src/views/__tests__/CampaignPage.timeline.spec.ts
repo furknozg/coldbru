@@ -468,7 +468,7 @@ describe('event stream', () => {
     expect(FakeEventSource.instances[0]!.closed).toBe(true)
     expect(FakeEventSource.open.map((es) => es.url)).toEqual(['/api/proposal/campaigns/c2/events'])
 
-    await router.push('/')
+    await router.push('/campaigns/new')
     await flushPromises()
     expect(FakeEventSource.open).toHaveLength(0)
   })

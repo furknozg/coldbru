@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { useMediaQuery } from '@vueuse/core'
 import { MenuIcon } from '@lucide/vue'
-import { computed, onMounted, shallowRef } from 'vue'
+import { onMounted, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -13,42 +12,28 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import CampaignSidebar from '@/features/campaigns/components/CampaignSidebar.vue'
 import { provideCampaignList } from '@/features/campaigns/composables/campaignList'
-import { useCampaignAnalytics } from '@/features/analytics/useCampaignAnalytics'
+import AppSidebar from './AppSidebar.vue'
 
 /**
- * Two columns (D-089): campaigns on the left, the routed page (the chat) beside it. Below 1024px
- * the list moves into a drawer opened from the header.
+ * Two columns (D-089, D-099): the one menu on the left, the routed page beside it. The menu is the
+ * same on every route; it shares the campaign list that is loaded once here. Below 1024px the
+ * menu moves into a drawer opened from the top bar, whose logo leads to the dashboard (D-094).
  */
 const { t } = useI18n()
-const route = useRoute()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
 
 const list = provideCampaignList()
 
-const selectedId = computed(() => (route.name === 'campaign' ? String(route.params.id) : null))
-const selectedStatus = computed(
-  () => list.items.value.find((c) => c.id === selectedId.value)?.status ?? null,
-)
-
-// The figures move when the campaign does (sending, completed), so the status triggers a refetch.
-const analytics = useCampaignAnalytics(selectedId, selectedStatus)
-const analyticsState = computed(() => ({
-  report: analytics.report.value,
-  loading: analytics.loading.value,
-  failed: analytics.failed.value,
-}))
-
-const listOpen = shallowRef(false)
+const menuOpen = shallowRef(false)
 
 onMounted(() => void list.load())
 </script>
 
 <template>
   <div class="bg-background text-foreground flex h-dvh">
-    <aside v-if="isDesktop" class="w-72 shrink-0 border-r" :aria-label="t('list.title')">
-      <CampaignSidebar :selected-id="selectedId" :analytics="analyticsState" />
+    <aside v-if="isDesktop" class="w-72 shrink-0 border-r" :aria-label="t('dashboard.menu.label')">
+      <AppSidebar />
     </aside>
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -56,29 +41,27 @@ onMounted(() => void list.load())
         <Button
           variant="ghost"
           size="icon"
-          :aria-label="t('list.open')"
-          @click="listOpen = true"
+          :aria-label="t('dashboard.menu.open')"
+          @click="menuOpen = true"
         >
           <MenuIcon />
         </Button>
-        <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
+        <RouterLink :to="{ name: 'dashboard' }" :aria-label="t('app.home')">
+          <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
+        </RouterLink>
       </header>
       <main class="min-h-0 flex-1">
         <RouterView />
       </main>
     </div>
 
-    <Sheet v-if="!isDesktop" v-model:open="listOpen">
+    <Sheet v-if="!isDesktop" v-model:open="menuOpen">
       <SheetContent side="left" class="p-0">
         <SheetHeader class="sr-only">
-          <SheetTitle>{{ t('list.title') }}</SheetTitle>
-          <SheetDescription>{{ t('list.drawerDescription') }}</SheetDescription>
+          <SheetTitle>{{ t('dashboard.menu.label') }}</SheetTitle>
+          <SheetDescription>{{ t('dashboard.menu.drawerDescription') }}</SheetDescription>
         </SheetHeader>
-        <CampaignSidebar
-          :selected-id="selectedId"
-          :analytics="analyticsState"
-          @navigate="listOpen = false"
-        />
+        <AppSidebar @navigate="menuOpen = false" />
       </SheetContent>
     </Sheet>
   </div>

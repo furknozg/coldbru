@@ -12,6 +12,129 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deliveryOverviewCounts = `-- name: DeliveryOverviewCounts :many
+SELECT c.channel, c.status, sum(c.count)::bigint AS count
+FROM campaign_delivery_count c
+JOIN campaign_summary s ON s.campaign_id = c.campaign_id
+WHERE s.completed_at >= COALESCE($1::timestamptz, '-infinity')
+  AND s.completed_at <  COALESCE($2::timestamptz, 'infinity')
+GROUP BY c.channel, c.status
+ORDER BY c.channel, c.status
+`
+
+type DeliveryOverviewCountsParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type DeliveryOverviewCountsRow struct {
+	Channel string
+	Status  string
+	Count   int64
+}
+
+// Delivery counts per (channel, status) summed over the campaigns completed in the range.
+func (q *Queries) DeliveryOverviewCounts(ctx context.Context, arg DeliveryOverviewCountsParams) ([]DeliveryOverviewCountsRow, error) {
+	rows, err := q.db.Query(ctx, deliveryOverviewCounts, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeliveryOverviewCountsRow
+	for rows.Next() {
+		var i DeliveryOverviewCountsRow
+		if err := rows.Scan(&i.Channel, &i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deliveryOverviewTotals = `-- name: DeliveryOverviewTotals :one
+SELECT count(*)::bigint AS campaigns_completed,
+       COALESCE(sum(sms_segments), 0)::bigint AS sms_segments,
+       COALESCE(sum(delivery_cost_usd), 0)::numeric(20,6)::text AS delivery_cost_usd
+FROM campaign_summary
+WHERE completed_at >= COALESCE($1::timestamptz, '-infinity')
+  AND completed_at <  COALESCE($2::timestamptz, 'infinity')
+`
+
+type DeliveryOverviewTotalsParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type DeliveryOverviewTotalsRow struct {
+	CampaignsCompleted int64
+	SmsSegments        int64
+	DeliveryCostUsd    string
+}
+
+// Campaigns completed in [from_ts, to_ts) of completed_at, with their SMS segments and delivery
+// cost (D-097); a NULL bound is open-ended. COALESCE to +-infinity keeps the predicate usable by
+// campaign_summary_completed_at_idx.
+func (q *Queries) DeliveryOverviewTotals(ctx context.Context, arg DeliveryOverviewTotalsParams) (DeliveryOverviewTotalsRow, error) {
+	row := q.db.QueryRow(ctx, deliveryOverviewTotals, arg.FromTs, arg.ToTs)
+	var i DeliveryOverviewTotalsRow
+	err := row.Scan(&i.CampaignsCompleted, &i.SmsSegments, &i.DeliveryCostUsd)
+	return i, err
+}
+
+const deliverySeries = `-- name: DeliverySeries :many
+SELECT date_trunc($1::text, s.completed_at, 'UTC')::timestamptz AS bucket_start,
+       c.channel, c.status, sum(c.count)::bigint AS count
+FROM campaign_summary s
+JOIN campaign_delivery_count c ON c.campaign_id = s.campaign_id
+WHERE s.completed_at >= $2::timestamptz
+  AND s.completed_at <  $3::timestamptz
+GROUP BY 1, c.channel, c.status
+ORDER BY 1, c.channel, c.status
+`
+
+type DeliverySeriesParams struct {
+	Bucket string
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type DeliverySeriesRow struct {
+	BucketStart pgtype.Timestamptz
+	Channel     string
+	Status      string
+	Count       int64
+}
+
+// Delivery counts per (UTC bucket of completed_at, channel, status) over [from_ts, to_ts). Buckets
+// without a completed campaign have no row (see SeriesBuckets).
+func (q *Queries) DeliverySeries(ctx context.Context, arg DeliverySeriesParams) ([]DeliverySeriesRow, error) {
+	rows, err := q.db.Query(ctx, deliverySeries, arg.Bucket, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeliverySeriesRow
+	for rows.Next() {
+		var i DeliverySeriesRow
+		if err := rows.Scan(
+			&i.BucketStart,
+			&i.Channel,
+			&i.Status,
+			&i.Count,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCampaignSummary = `-- name: GetCampaignSummary :one
 SELECT campaign_id, completed_at, sms_segments, delivery_cost_usd::text AS delivery_cost_usd
 FROM campaign_summary

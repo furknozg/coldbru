@@ -50,6 +50,9 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Get("/campaigns", h.listCampaigns)
 	r.Get("/campaigns/{id}/summary", h.campaignSummary)
 	r.Get("/llm-usage", h.llmUsage)
+	r.Get("/llm-usage/series", h.llmUsageSeries)
+	r.Get("/overview", h.overview)
+	r.Get("/overview/series", h.overviewSeries)
 }
 
 // writeJSON writes v as JSON with the given status.
@@ -135,12 +138,14 @@ func (h *Handler) campaignSummary(w http.ResponseWriter, r *http.Request) {
 // llmUsage godoc
 //
 //	@Summary		LLM usage per prompt version
-//	@Description	One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text).
+//	@Description	One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text). The optional `from` and `to` (RFC 3339) bound the calls by `created_at` as the half-open range [from, to); either may be omitted; without both, every call counts (D-097).
 //	@Tags			llm-usage
 //	@Produce		json
 //	@Param			group	query		string	false	"How to group the calls"	Enums(prompt_version)	default(prompt_version)
+//	@Param			from	query		string	false	"Start of the range, inclusive (RFC 3339)"	format(date-time)
+//	@Param			to		query		string	false	"End of the range, exclusive (RFC 3339)"	format(date-time)
 //	@Success		200		{array}		api.PromptVersionUsage
-//	@Failure		422		{object}	api.Problem	"unsupported group"
+//	@Failure		422		{object}	api.Problem	"unsupported group, malformed from or to, or from not before to"
 //	@Failure		500		{object}	api.Problem
 //	@Router			/llm-usage [get]
 func (h *Handler) llmUsage(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +153,12 @@ func (h *Handler) llmUsage(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, CodeInvalidRequest, "The group is not supported.", "group: only "+GroupPromptVersion+" is supported")
 		return
 	}
-	items, err := h.src.PromptVersions(r.Context())
+	rg, problems := parseRange(r.URL.Query())
+	if len(problems) > 0 {
+		fail(w, r, CodeInvalidRequest, "The query parameters are out of range.", problems...)
+		return
+	}
+	items, err := h.src.PromptVersions(r.Context(), rg)
 	if err != nil {
 		writeError(w, r, h.log, err)
 		return
@@ -157,4 +167,84 @@ func (h *Handler) llmUsage(w http.ResponseWriter, r *http.Request) {
 		items = []PromptVersionUsage{}
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+// llmUsageSeries godoc
+//
+//	@Summary		LLM usage over time
+//	@Description	LLM calls, cost and tokens per UTC time bucket, purpose and model over the half-open range [from, to) of `created_at` (D-097). `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, purpose, model) that has calls, so a bucket without rows has no calls and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial. Cost is the sum of the per-call cost priced at ingest (D-083), a decimal string in US dollars.
+//	@Tags			llm-usage
+//	@Produce		json
+//	@Param			from	query		string	true	"Start of the range, inclusive (RFC 3339)"	format(date-time)
+//	@Param			to		query		string	true	"End of the range, exclusive (RFC 3339)"	format(date-time)
+//	@Param			bucket	query		string	true	"Bucket size"	Enums(hour, day)
+//	@Success		200		{object}	api.LLMSeries
+//	@Failure		422		{object}	api.Problem	"missing or malformed parameter, from not before to, or the range longer than the bucket allows"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/llm-usage/series [get]
+func (h *Handler) llmUsageSeries(w http.ResponseWriter, r *http.Request) {
+	sq, problems := parseSeries(r.URL.Query())
+	if len(problems) > 0 {
+		fail(w, r, CodeInvalidRequest, "The query parameters are out of range.", problems...)
+		return
+	}
+	out, err := h.src.LLMSeries(r.Context(), sq)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// overview godoc
+//
+//	@Summary		Overview of deliveries and LLM usage
+//	@Description	The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), and the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range. `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
+//	@Tags			overview
+//	@Produce		json
+//	@Param			from	query		string	false	"Start of the range, inclusive (RFC 3339)"	format(date-time)
+//	@Param			to		query		string	false	"End of the range, exclusive (RFC 3339)"	format(date-time)
+//	@Success		200		{object}	api.Overview
+//	@Failure		422		{object}	api.Problem	"malformed from or to, or from not before to"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/overview [get]
+func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
+	rg, problems := parseRange(r.URL.Query())
+	if len(problems) > 0 {
+		fail(w, r, CodeInvalidRequest, "The query parameters are out of range.", problems...)
+		return
+	}
+	out, err := h.src.Overview(r.Context(), rg)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// overviewSeries godoc
+//
+//	@Summary		Deliveries over time
+//	@Description	Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial.
+//	@Tags			overview
+//	@Produce		json
+//	@Param			from	query		string	true	"Start of the range, inclusive (RFC 3339)"	format(date-time)
+//	@Param			to		query		string	true	"End of the range, exclusive (RFC 3339)"	format(date-time)
+//	@Param			bucket	query		string	true	"Bucket size"	Enums(hour, day)
+//	@Success		200		{object}	api.OverviewSeries
+//	@Failure		422		{object}	api.Problem	"missing or malformed parameter, from not before to, or the range longer than the bucket allows"
+//	@Failure		500		{object}	api.Problem
+//	@Router			/overview/series [get]
+func (h *Handler) overviewSeries(w http.ResponseWriter, r *http.Request) {
+	sq, problems := parseSeries(r.URL.Query())
+	if len(problems) > 0 {
+		fail(w, r, CodeInvalidRequest, "The query parameters are out of range.", problems...)
+		return
+	}
+	out, err := h.src.OverviewSeries(r.Context(), sq)
+	if err != nil {
+		writeError(w, r, h.log, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

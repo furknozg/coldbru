@@ -20,8 +20,6 @@
   "list": {
     "title": "Kampanyalar",
     "new": "Yeni kampanya",
-    "open": "Kampanya listesini aç",
-    "drawerDescription": "Kampanya listesi ve analiz özeti",
     "empty": "Henüz kampanya yok.",
     "loadMore": "Daha fazla yükle",
     "group": {
@@ -33,10 +31,6 @@
     }
   },
   "analytics": {
-    "title": "Analiz",
-    "llmCalls": "LLM çağrısı",
-    "llmCost": "LLM maliyeti",
-    "noData": "Henüz veri yok",
     "failed": "Analiz verisi alınamadı"
   },
   "home": {
@@ -233,5 +227,119 @@
     "answerLabel": "Ajanın sorusuna cevap",
     "answerPlaceholder": "Cevabınızı yazın; adım cevabınızla yeniden üretilir…",
     "answerSubmit": "Cevapla"
+  },
+  "dashboard": {
+    "menu": {
+      "label": "Menü",
+      "open": "Menüyü aç",
+      "drawerDescription": "Genel bakış, kampanyalar ve analitikler",
+      "overview": "Genel bakış",
+      "analytics": "Analitikler",
+      "campaigns": "Kampanya analitiği",
+      "llm": "LLM analitiği",
+      "live": "Canlı gönderim"
+    },
+    "range": {
+      "label": "Tarih aralığı",
+      "today": "Bugün",
+      "last7": "Son 7 gün",
+      "last30": "Son 30 gün",
+      "last90": "Son 90 gün",
+      "all": "Tümü",
+      "custom": "Özel aralık",
+      "calendar": "Tarih aralığı seçin"
+    },
+    "create": {
+      "title": "Kampanya oluştur",
+      "description": "Ne istediğinizi yazın; kitleyi, kanal planını ve mesajları Claude önersin."
+    },
+    "stat": {
+      "campaigns": "Tamamlanan kampanya",
+      "sent": "Gönderilen",
+      "failed": "Başarısız",
+      "deliveryCost": "Teslimat maliyeti",
+      "segments": "SMS segmenti",
+      "llmCalls": "LLM çağrısı",
+      "llmCost": "LLM maliyeti",
+      "tokens": "Token",
+      "tokenSplit": "giriş {input} · çıkış {output}",
+      "cache": "Önbellek tokenı",
+      "cacheSplit": "okuma {read} · yazma {creation}",
+      "inputTokens": "Giriş tokenı",
+      "outputTokens": "Çıkış tokenı"
+    },
+    "deliveryStatus": {
+      "pending": "Bekleyen",
+      "sending": "Gönderiliyor",
+      "sent": "Gönderildi",
+      "failed": "Başarısız",
+      "skipped_no_consent": "İzin yok",
+      "cancelled": "İptal"
+    },
+    "purpose": {
+      "screen": "Ön eleme",
+      "segment": "Kitle",
+      "channel_plan": "Kanal planı",
+      "content": "Metin",
+      "schedule": "Zamanlama"
+    },
+    "overview": {
+      "byChannel": "Kanala göre teslimat",
+      "byStatus": "Duruma göre teslimat",
+      "series": "Kanal başına gönderilen teslimat",
+      "seriesRecent": "Kanal başına gönderilen teslimat · son 90 gün"
+    },
+    "llm": {
+      "costByPurpose": "Amaca göre maliyet",
+      "costByModel": "Modele göre maliyet",
+      "versions": "Prompt sürümleri",
+      "prompt": "Prompt",
+      "calls": "Çağrı",
+      "accepted": "Kabul",
+      "validationFailed": "Onarım",
+      "refusal": "Ret",
+      "apiError": "API hatası",
+      "repairRate": "Onarım oranı",
+      "latency": "Ort. gecikme",
+      "cost": "Maliyet",
+      "ms": "{value} ms",
+      "noVersions": "Bu aralıkta LLM çağrısı yok.",
+      "measure": "Grafiğin ölçüsü",
+      "versionChart": "Prompt sürümü başına",
+      "overTime": "Zaman içinde",
+      "split": "Maliyet kırılımı",
+      "byPurpose": "Amaca göre",
+      "byModel": "Modele göre",
+      "costOverTime": "LLM maliyeti",
+      "callsOverTime": "LLM çağrıları",
+      "purpose": "Amaç",
+      "tokens": "Token"
+    },
+    "campaign": {
+      "openChat": "Sohbeti aç",
+      "pick": "Menüden bir kampanya seçin.",
+      "noReport": "Analytics bu kampanya için henüz veri toplamadı.",
+      "completedAt": "Tamamlandı:",
+      "notCompleted": "Henüz tamamlanmadı",
+      "llmByPurpose": "Amaca göre LLM kullanımı",
+      "notStarted": "Analitik, kampanyanın gönderimi başladıktan sonra görünür.",
+      "noneStarted": "Gönderimi başlamış veya tamamlanmış kampanya yok."
+    },
+    "live": {
+      "none": "Şu anda gönderimde veya zamanlanmış kampanya yok.",
+      "pick": "Menüden izlemek istediğiniz kampanyayı seçin.",
+      "waiting": "Gönderim durumu bekleniyor…",
+      "connecting": "Canlı akışa bağlanılıyor…",
+      "open": "Canlı akış açık",
+      "error": "Canlı akış bağlantısı koptu",
+      "done": {
+        "completed": "Gönderim tamamlandı",
+        "cancelled": "Kampanya iptal edildi"
+      },
+      "progress": "{finished} / {total} teslimat sonuçlandı",
+      "progressLabel": "Gönderim ilerlemesi",
+      "counts": "Kanal ve duruma göre teslimat sayıları",
+      "channel": "Kanal"
+    }
   }
 }

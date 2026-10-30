@@ -4,6 +4,10 @@ import { createAppI18n, LOCALE } from '@/i18n'
 import tr from '@/locales/tr.json'
 import { CHANNELS, PLAN_MODES } from '@/features/campaigns/content'
 import { CAMPAIGN_STATUSES, STEP_ORDER } from '@/features/campaigns/types'
+import { PRESETS } from '@/features/dashboard/dateRange'
+import { LIVE_STATUSES } from '@/features/dashboard/live'
+import { APP_MENU, MENU_LINKS } from '@/features/dashboard/menu'
+import { PURPOSES } from '@/features/dashboard/series'
 
 /** Every source file of the app, as text; tests and generated schemas are not part of it. */
 const sources = Object.entries(
@@ -34,6 +38,10 @@ const DYNAMIC: Record<string, readonly string[]> = {
   'audience.coverageKind.': ['both', 'email_only', 'sms_only', 'unreachable'],
   'timeline.campaignStatus.': ['sending', 'completed'],
   'timeline.screen.': ['allow', 'block', 'error'],
+  'dashboard.range.': PRESETS,
+  'dashboard.purpose.': PURPOSES,
+  'dashboard.deliveryStatus.': LIVE_STATUSES,
+  'dashboard.live.done.': ['completed', 'cancelled'],
   // Looked up with `te` first, so a language without a name falls back to its code.
   'language.': ['tr', 'en'],
 }
@@ -78,6 +86,12 @@ describe('Turkish strings', () => {
     const missing = Object.entries(DYNAMIC).flatMap(([prefix, values]) =>
       values.map((v) => `${prefix}${v}`).filter((key) => !has(key)),
     )
+    expect(missing).toEqual([])
+  })
+
+  it('has a label for every link and group of the menu', () => {
+    const groups = APP_MENU.flatMap((entry) => (entry.kind === 'group' ? [entry.label] : []))
+    const missing = [...MENU_LINKS.map((item) => item.label), ...groups].filter((key) => !has(key))
     expect(missing).toEqual([])
   })
 

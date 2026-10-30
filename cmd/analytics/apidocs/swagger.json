@@ -136,6 +136,96 @@
                 ],
                 "type": "object"
             },
+            "api.LLMSeries": {
+                "properties": {
+                    "bucket": {
+                        "enum": [
+                            "hour",
+                            "day"
+                        ],
+                        "type": "string"
+                    },
+                    "buckets": {
+                        "description": "Buckets lists the start of every bucket of the range, ascending, empty ones included.",
+                        "items": {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "from": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "points": {
+                        "description": "Points has one row per (bucket, purpose, model) with at least one call, ordered by bucket,\npurpose, model. A bucket without a row has no calls: the client zero-fills it from Buckets.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.LLMSeriesPoint"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "to": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "bucket",
+                    "buckets",
+                    "from",
+                    "points",
+                    "to"
+                ],
+                "type": "object"
+            },
+            "api.LLMSeriesPoint": {
+                "properties": {
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "example": "0.00420000",
+                        "type": "string"
+                    },
+                    "input_tokens": {
+                        "type": "integer"
+                    },
+                    "model": {
+                        "example": "claude-sonnet-5-5",
+                        "type": "string"
+                    },
+                    "output_tokens": {
+                        "type": "integer"
+                    },
+                    "purpose": {
+                        "enum": [
+                            "screen",
+                            "segment",
+                            "content",
+                            "channel_plan",
+                            "schedule"
+                        ],
+                        "type": "string"
+                    },
+                    "start": {
+                        "description": "Start is the start of the bucket (UTC); one of the bucket starts of the response.",
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "calls",
+                    "cost_usd",
+                    "input_tokens",
+                    "model",
+                    "output_tokens",
+                    "purpose",
+                    "start"
+                ],
+                "type": "object"
+            },
             "api.LLMSummary": {
                 "properties": {
                     "by_purpose": {
@@ -162,6 +252,204 @@
                     "calls",
                     "cost_usd",
                     "tokens"
+                ],
+                "type": "object"
+            },
+            "api.ModelUsage": {
+                "properties": {
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "example": "0.00420000",
+                        "type": "string"
+                    },
+                    "input_tokens": {
+                        "type": "integer"
+                    },
+                    "model": {
+                        "example": "claude-sonnet-5-5",
+                        "type": "string"
+                    },
+                    "output_tokens": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "calls",
+                    "cost_usd",
+                    "input_tokens",
+                    "model",
+                    "output_tokens"
+                ],
+                "type": "object"
+            },
+            "api.Overview": {
+                "properties": {
+                    "campaigns_completed": {
+                        "description": "CampaignsCompleted is the number of campaigns completed in the range.",
+                        "type": "integer"
+                    },
+                    "deliveries": {
+                        "description": "Deliveries has one entry per (channel, status) with at least one delivery, ordered by channel and status.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.DeliveryCount"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "delivery_cost_usd": {
+                        "example": "96.000000",
+                        "type": "string"
+                    },
+                    "from": {
+                        "description": "From and To echo the range of the request (RFC 3339, UTC); null when that bound was omitted.",
+                        "format": "date-time",
+                        "type": "string",
+                        "x-nullable": true
+                    },
+                    "llm": {
+                        "$ref": "#/components/schemas/api.OverviewLLM"
+                    },
+                    "sms_segments": {
+                        "example": 2400,
+                        "type": "integer"
+                    },
+                    "to": {
+                        "format": "date-time",
+                        "type": "string",
+                        "x-nullable": true
+                    }
+                },
+                "required": [
+                    "campaigns_completed",
+                    "deliveries",
+                    "delivery_cost_usd",
+                    "from",
+                    "llm",
+                    "sms_segments",
+                    "to"
+                ],
+                "type": "object"
+            },
+            "api.OverviewLLM": {
+                "properties": {
+                    "by_model": {
+                        "description": "ByModel has one entry per model with calls, ordered by model.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.ModelUsage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "by_purpose": {
+                        "description": "ByPurpose has one entry per purpose with calls, ordered by purpose.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.PurposeUsage"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "calls": {
+                        "type": "integer"
+                    },
+                    "cost_usd": {
+                        "description": "CostUSD is the sum of the cost of the calls in US dollars, eight decimals.",
+                        "example": "0.01234500",
+                        "type": "string"
+                    },
+                    "tokens": {
+                        "$ref": "#/components/schemas/api.Tokens"
+                    }
+                },
+                "required": [
+                    "by_model",
+                    "by_purpose",
+                    "calls",
+                    "cost_usd",
+                    "tokens"
+                ],
+                "type": "object"
+            },
+            "api.OverviewSeries": {
+                "properties": {
+                    "bucket": {
+                        "enum": [
+                            "hour",
+                            "day"
+                        ],
+                        "type": "string"
+                    },
+                    "buckets": {
+                        "description": "Buckets lists the start of every bucket of the range, ascending, empty ones included.",
+                        "items": {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "from": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "points": {
+                        "description": "Points has one row per (bucket, channel, status) with at least one delivery, ordered by\nbucket, channel, status. A bucket without a row has no deliveries: the client zero-fills it\nfrom Buckets.",
+                        "items": {
+                            "$ref": "#/components/schemas/api.OverviewSeriesPoint"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "to": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "bucket",
+                    "buckets",
+                    "from",
+                    "points",
+                    "to"
+                ],
+                "type": "object"
+            },
+            "api.OverviewSeriesPoint": {
+                "properties": {
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "count": {
+                        "example": 1200,
+                        "type": "integer"
+                    },
+                    "start": {
+                        "description": "Start is the start of the bucket (UTC); one of the bucket starts of the response.",
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "pending",
+                            "sending",
+                            "sent",
+                            "failed",
+                            "skipped_no_consent",
+                            "cancelled"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "channel",
+                    "count",
+                    "start",
+                    "status"
                 ],
                 "type": "object"
             },
@@ -536,7 +824,7 @@
         },
         "/llm-usage": {
             "get": {
-                "description": "One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text).",
+                "description": "One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text). The optional `from` and `to` (RFC 3339) bound the calls by `created_at` as the half-open range [from, to); either may be omitted; without both, every call counts (D-097).",
                 "parameters": [
                     {
                         "description": "How to group the calls",
@@ -547,6 +835,24 @@
                             "enum": [
                                 "prompt_version"
                             ],
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Start of the range, inclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "from",
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "End of the range, exclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "to",
+                        "schema": {
+                            "format": "date-time",
                             "type": "string"
                         }
                     }
@@ -573,7 +879,7 @@
                                 }
                             }
                         },
-                        "description": "unsupported group"
+                        "description": "unsupported group, malformed from or to, or from not before to"
                     },
                     "500": {
                         "content": {
@@ -589,6 +895,219 @@
                 "summary": "LLM usage per prompt version",
                 "tags": [
                     "llm-usage"
+                ]
+            }
+        },
+        "/llm-usage/series": {
+            "get": {
+                "description": "LLM calls, cost and tokens per UTC time bucket, purpose and model over the half-open range [from, to) of `created_at` (D-097). `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, purpose, model) that has calls, so a bucket without rows has no calls and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial. Cost is the sum of the per-call cost priced at ingest (D-083), a decimal string in US dollars.",
+                "parameters": [
+                    {
+                        "description": "Start of the range, inclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "from",
+                        "required": true,
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "End of the range, exclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "to",
+                        "required": true,
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Bucket size",
+                        "in": "query",
+                        "name": "bucket",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "hour",
+                                "day"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.LLMSeries"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "missing or malformed parameter, from not before to, or the range longer than the bucket allows"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "LLM usage over time",
+                "tags": [
+                    "llm-usage"
+                ]
+            }
+        },
+        "/overview": {
+            "get": {
+                "description": "The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), and the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range. `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.",
+                "parameters": [
+                    {
+                        "description": "Start of the range, inclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "from",
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "End of the range, exclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "to",
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Overview"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "malformed from or to, or from not before to"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Overview of deliveries and LLM usage",
+                "tags": [
+                    "overview"
+                ]
+            }
+        },
+        "/overview/series": {
+            "get": {
+                "description": "Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial.",
+                "parameters": [
+                    {
+                        "description": "Start of the range, inclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "from",
+                        "required": true,
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "End of the range, exclusive (RFC 3339)",
+                        "in": "query",
+                        "name": "to",
+                        "required": true,
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Bucket size",
+                        "in": "query",
+                        "name": "bucket",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "hour",
+                                "day"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.OverviewSeries"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "missing or malformed parameter, from not before to, or the range longer than the bucket allows"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Deliveries over time",
+                "tags": [
+                    "overview"
                 ]
             }
         },

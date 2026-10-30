@@ -61,8 +61,8 @@ watch(
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-1 flex-col" :aria-label="t('list.title')">
-    <Accordion v-model="rootOpen" type="multiple" class="min-h-0 flex-1 overflow-y-auto">
+  <section :aria-label="t('list.title')">
+    <Accordion v-model="rootOpen" type="multiple">
       <AccordionItem :value="ROOT" class="border-b-0">
         <AccordionTrigger class="py-1.5">
           <span class="flex items-center gap-2">

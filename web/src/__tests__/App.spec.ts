@@ -1,7 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { CampaignReport } from '@/api/analytics/service'
 import * as analytics from '@/api/analytics/service'
 import * as proposal from '@/api/proposal/service'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
@@ -11,20 +10,6 @@ import { setViewportWide } from './setup'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
-
-const report = (calls: number, cost: string): CampaignReport => ({
-  campaign_id: 'c1',
-  completed_at: '2026-10-30T10:00:00Z',
-  deliveries: [],
-  delivery_cost_usd: '0',
-  llm: {
-    calls,
-    cost_usd: cost,
-    by_purpose: [],
-    tokens: { input: 0, output: 0, cache_read: 0, cache_creation: 0 },
-  },
-  sms_segments: 0,
-})
 
 let wrapper: Awaited<ReturnType<typeof mountApp>>['wrapper'] | undefined
 
@@ -41,7 +26,7 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-async function open(path = '/') {
+async function open(path = '/campaigns/new') {
   const mounted = await mountApp(path)
   wrapper = mounted.wrapper
   return mounted
@@ -56,7 +41,7 @@ describe('app shell', () => {
     const logo = wrapper.get('aside img[src="/logo.png"]')
     expect(logo.attributes('alt')).toBe('coldbru')
     const plus = wrapper.get('aside a[aria-label="Yeni kampanya"]')
-    expect(plus.attributes('href')).toBe('/')
+    expect(plus.attributes('href')).toBe('/campaigns/new')
     expect(plus.find('svg').exists()).toBe(true)
     expect(plus.text()).toBe('')
     expect(wrapper.find('input[type="search"]').exists()).toBe(false)
@@ -71,14 +56,14 @@ describe('app shell', () => {
 
     expect(wrapper.find('aside').exists()).toBe(false)
     const bar = wrapper.get('header')
-    expect(bar.get('button').attributes('aria-label')).toBe('Kampanya listesini aç')
+    expect(bar.get('button').attributes('aria-label')).toBe('Menüyü aç')
     expect(bar.get('img').attributes('src')).toBe('/logo.png')
     expect(bar.get('img').attributes('alt')).toBe('coldbru')
     expect(wrapper.find('h1').exists()).toBe(false)
   })
 
-  it('shows the empty state with the brief box on /', async () => {
-    const { wrapper } = await open('/')
+  it('shows the empty state with the brief box on /campaigns/new', async () => {
+    const { wrapper } = await open('/campaigns/new')
 
     expect(wrapper.text()).toContain('Henüz kampanya yok.')
     expect(wrapper.find('textarea').exists()).toBe(true)
@@ -135,6 +120,20 @@ describe('campaign list', () => {
 
     await root.trigger('click')
     expect(groups(wrapper)).toHaveLength(3)
+  })
+
+  it('sizes the "Kampanyalar" block to its content, so "Analitikler" sits right below it when folded', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+    const { wrapper } = await open()
+
+    // Not flex-1: a folded accordion must not keep the free height of the sidebar. It may shrink and
+    // scroll (flex: 0 1 auto), so the menu entries around it stay on screen.
+    const section = wrapper.get('aside nav > section[data-menu="campaigns"]')
+    expect(section.classes()).toContain('flex-initial')
+    expect(section.classes()).not.toContain('flex-1')
+    expect(section.classes()).toContain('overflow-y-auto')
+    expect(section.get('[data-slot="accordion"]').classes()).not.toContain('flex-1')
+    expect(section.get('[data-slot="accordion"]').classes()).not.toContain('shrink-0')
   })
 
   it('groups the campaigns by status in a fixed order and hides the empty groups', async () => {
@@ -283,30 +282,12 @@ describe('campaign list', () => {
   })
 })
 
-describe('analytics block', () => {
-  it('shows the LLM call count and cost of the selected campaign', async () => {
-    vi.mocked(proposal.getCampaign).mockResolvedValue(viewOf({ id: 'c1' }))
-    vi.mocked(analytics.getCampaignSummary).mockResolvedValue(report(12, '0.01234500'))
-    const { wrapper } = await open('/campaigns/c1')
-
-    const block = wrapper.get('section[aria-label="Analiz"]')
-    expect(block.text()).toContain('LLM çağrısı')
-    expect(block.text()).toContain('12')
-    expect(block.text()).toContain('LLM maliyeti')
-    expect(block.text()).toContain('$0,012345')
-    expect(analytics.getCampaignSummary).toHaveBeenCalledWith('c1')
-  })
-
-  it('says there is no data yet when Analytics answers 404', async () => {
+describe('single sidebar (D-099)', () => {
+  it('has no analytics summary box, whichever campaign is open', async () => {
     vi.mocked(proposal.getCampaign).mockResolvedValue(viewOf({ id: 'c1' }))
     const { wrapper } = await open('/campaigns/c1')
-
-    expect(wrapper.get('section[aria-label="Analiz"]').text()).toContain('Henüz veri yok')
-  })
-
-  it('is absent while no campaign is selected', async () => {
-    const { wrapper } = await open('/')
 
     expect(wrapper.find('section[aria-label="Analiz"]').exists()).toBe(false)
+    expect(analytics.getCampaignSummary).not.toHaveBeenCalled()
   })
 })
