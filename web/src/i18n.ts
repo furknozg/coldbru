@@ -15,6 +15,9 @@ const datetimeFormats = {
     // The date alone, for a row of the campaign list (D-091).
     date: { dateStyle: 'medium' },
     time: { hour: '2-digit', minute: '2-digit' },
+    // The labels under the axis of a time series chart (D-097): the day of a day bucket, the clock time of an hour bucket.
+    dayLabel: { day: 'numeric', month: 'short' },
+    hourLabel: { hour: '2-digit', minute: '2-digit' },
     // Intl rejects timeZoneName together with dateStyle/timeStyle, so the fields are spelled out.
     zoned: {
       year: 'numeric',
@@ -30,6 +33,8 @@ const datetimeFormats = {
 const numberFormats = {
   [LOCALE]: {
     int: { maximumFractionDigits: 0 },
+    // Ticks of a chart axis: 1,2 B instead of 1.234.
+    compact: { notation: 'compact', maximumFractionDigits: 1 },
     // A share of a whole, as in the legend of a pie chart (D-092): %45,8.
     percent: { style: 'percent', maximumFractionDigits: 1 },
     usd: {
@@ -37,6 +42,13 @@ const numberFormats = {
       currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 6,
+    },
+    // Ticks of a money axis: as few digits as tell the ticks apart.
+    usdTick: {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
     },
     gbp: {
       style: 'currency',

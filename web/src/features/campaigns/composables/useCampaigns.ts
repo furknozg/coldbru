@@ -11,6 +11,8 @@ export function useCampaigns() {
   const loadingMore = shallowRef(false)
   const error = shallowRef<unknown>(null)
   const hasMore = shallowRef(false)
+  /** True once the first load has ended, whether it worked or not. */
+  const loaded = shallowRef(false)
 
   /** How many rows the server has handed out; the next page starts here, not at `items.length`. */
   let fetched = 0
@@ -29,7 +31,10 @@ export function useCampaigns() {
     } catch (cause) {
       if (mine === generation) error.value = cause
     } finally {
-      if (mine === generation) loading.value = false
+      if (mine === generation) {
+        loading.value = false
+        loaded.value = true
+      }
     }
   }
 
@@ -82,6 +87,7 @@ export function useCampaigns() {
     loadingMore: computed(() => loadingMore.value),
     error: computed(() => error.value),
     hasMore: computed(() => hasMore.value),
+    loaded: computed(() => loaded.value),
     load,
     loadMore,
     upsert,

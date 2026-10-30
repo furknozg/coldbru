@@ -92,3 +92,87 @@ type PromptVersionUsage struct {
 	// CostUSD is the cost of the calls in US dollars, eight decimals.
 	CostUSD string `json:"cost_usd" validate:"required" example:"0.01234500"`
 }
+
+// ModelUsage is the LLM usage of one model.
+type ModelUsage struct {
+	Model        string `json:"model" validate:"required" example:"claude-sonnet-5-5"`
+	Calls        int64  `json:"calls" validate:"required"`
+	CostUSD      string `json:"cost_usd" validate:"required" example:"0.00420000"`
+	InputTokens  int64  `json:"input_tokens" validate:"required"`
+	OutputTokens int64  `json:"output_tokens" validate:"required"`
+}
+
+// OverviewLLM is the LLM usage of an Overview: every call whose created_at is in the range,
+// accepted or not.
+type OverviewLLM struct {
+	Calls int64 `json:"calls" validate:"required"`
+	// CostUSD is the sum of the cost of the calls in US dollars, eight decimals.
+	CostUSD string `json:"cost_usd" validate:"required" example:"0.01234500"`
+	Tokens  Tokens `json:"tokens" validate:"required"`
+	// ByPurpose has one entry per purpose with calls, ordered by purpose.
+	ByPurpose []PurposeUsage `json:"by_purpose" validate:"required"`
+	// ByModel has one entry per model with calls, ordered by model.
+	ByModel []ModelUsage `json:"by_model" validate:"required"`
+}
+
+// Overview is the response of GET /overview: the dashboard's headline figures over a time range
+// (D-097). Delivery figures cover the campaigns whose completed_at is in the range, LLM figures
+// the calls whose created_at is in the range. T-044 adds the success metrics as further fields.
+type Overview struct {
+	// From and To echo the range of the request (RFC 3339, UTC); null when that bound was omitted.
+	From *time.Time `json:"from" validate:"required" format:"date-time" extensions:"x-nullable"`
+	To   *time.Time `json:"to" validate:"required" format:"date-time" extensions:"x-nullable"`
+	// CampaignsCompleted is the number of campaigns completed in the range.
+	CampaignsCompleted int64 `json:"campaigns_completed" validate:"required"`
+	// Deliveries has one entry per (channel, status) with at least one delivery, ordered by channel and status.
+	Deliveries      []DeliveryCount `json:"deliveries" validate:"required"`
+	SMSSegments     int64           `json:"sms_segments" validate:"required" example:"2400"`
+	DeliveryCostUSD string          `json:"delivery_cost_usd" validate:"required" example:"96.000000"`
+	LLM             OverviewLLM     `json:"llm" validate:"required"`
+}
+
+// LLMSeriesPoint is the LLM usage of one purpose and model within one bucket.
+type LLMSeriesPoint struct {
+	// Start is the start of the bucket (UTC); one of the bucket starts of the response.
+	Start        time.Time `json:"start" validate:"required" format:"date-time"`
+	Purpose      string    `json:"purpose" validate:"required" enums:"screen,segment,content,channel_plan,schedule"`
+	Model        string    `json:"model" validate:"required" example:"claude-sonnet-5-5"`
+	Calls        int64     `json:"calls" validate:"required"`
+	CostUSD      string    `json:"cost_usd" validate:"required" example:"0.00420000"`
+	InputTokens  int64     `json:"input_tokens" validate:"required"`
+	OutputTokens int64     `json:"output_tokens" validate:"required"`
+}
+
+// LLMSeries is the response of GET /llm-usage/series.
+type LLMSeries struct {
+	From   time.Time `json:"from" validate:"required" format:"date-time"`
+	To     time.Time `json:"to" validate:"required" format:"date-time"`
+	Bucket string    `json:"bucket" validate:"required" enums:"hour,day"`
+	// Buckets lists the start of every bucket of the range, ascending, empty ones included.
+	Buckets []time.Time `json:"buckets" validate:"required" format:"date-time"`
+	// Points has one row per (bucket, purpose, model) with at least one call, ordered by bucket,
+	// purpose, model. A bucket without a row has no calls: the client zero-fills it from Buckets.
+	Points []LLMSeriesPoint `json:"points" validate:"required"`
+}
+
+// OverviewSeriesPoint is the delivery count of one channel and status within one bucket.
+type OverviewSeriesPoint struct {
+	// Start is the start of the bucket (UTC); one of the bucket starts of the response.
+	Start   time.Time `json:"start" validate:"required" format:"date-time"`
+	Channel string    `json:"channel" validate:"required" enums:"sms,email"`
+	Status  string    `json:"status" validate:"required" enums:"pending,sending,sent,failed,skipped_no_consent,cancelled"`
+	Count   int64     `json:"count" validate:"required" example:"1200"`
+}
+
+// OverviewSeries is the response of GET /overview/series.
+type OverviewSeries struct {
+	From   time.Time `json:"from" validate:"required" format:"date-time"`
+	To     time.Time `json:"to" validate:"required" format:"date-time"`
+	Bucket string    `json:"bucket" validate:"required" enums:"hour,day"`
+	// Buckets lists the start of every bucket of the range, ascending, empty ones included.
+	Buckets []time.Time `json:"buckets" validate:"required" format:"date-time"`
+	// Points has one row per (bucket, channel, status) with at least one delivery, ordered by
+	// bucket, channel, status. A bucket without a row has no deliveries: the client zero-fills it
+	// from Buckets.
+	Points []OverviewSeriesPoint `json:"points" validate:"required"`
+}

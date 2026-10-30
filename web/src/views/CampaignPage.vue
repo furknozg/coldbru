@@ -136,7 +136,7 @@ const problem = computed(() => (campaign.error.value ? toProblem(campaign.error.
     >
       <p class="font-medium">{{ t('campaign.notFound') }}</p>
       <Button as-child variant="outline" size="sm">
-        <RouterLink to="/">{{ t('campaign.backHome') }}</RouterLink>
+        <RouterLink :to="{ name: 'new-campaign' }">{{ t('campaign.backHome') }}</RouterLink>
       </Button>
     </div>
 

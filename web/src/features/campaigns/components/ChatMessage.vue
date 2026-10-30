@@ -8,7 +8,9 @@ import { useActions } from '../composables/campaignActions'
 import type { TimelineItem } from '../timeline'
 
 /**
- * A message of the chat (D-091): a role label with the time and the text under it, no box. The
+ * A message of the chat (D-091): a role label with the time and the text under it, no box. What
+ * the marketer wrote is right-aligned as a whole, label row and text (D-101); the agent's stays
+ * on the left. The
  * marketer's text is drawn literally; the agent's (`item.markdown`) as sanitised markdown (D-088).
  * A question that still waits for an answer shows its suggested answers as buttons (D-090).
  */
@@ -29,11 +31,12 @@ async function choose(option: string) {
 <template>
   <li
     class="flex min-w-0 flex-col gap-0.5 text-sm"
+    :class="item.author === 'user' ? 'items-end text-right' : ''"
     :data-kind="item.kind"
     :data-author="item.author"
     :data-pending="pending || undefined"
   >
-    <p class="flex items-baseline gap-2">
+    <p class="flex items-baseline gap-2" :class="item.author === 'user' ? 'justify-end' : ''">
       <span class="font-medium" :class="item.author === 'user' ? 'text-espresso' : 'text-caramel'">
         {{ item.title }}
       </span>
@@ -42,7 +45,13 @@ async function choose(option: string) {
       </time>
     </p>
     <MarkdownBody v-if="item.body && item.markdown" :source="item.body" />
-    <p v-else-if="item.body" class="break-words whitespace-pre-wrap">{{ item.body }}</p>
+    <p
+      v-else-if="item.body"
+      class="break-words whitespace-pre-wrap"
+      :class="item.author === 'user' ? 'max-w-[85%] text-right' : ''"
+    >
+      {{ item.body }}
+    </p>
     <div
       v-if="pending && item.question && item.question.options.length"
       class="mt-1 flex flex-wrap gap-2"

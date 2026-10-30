@@ -986,9 +986,9 @@ describe('narrow screens', () => {
     expect(openStep()!.textContent).toContain('Kitle')
     expect(hasButton('Onayla', openStep()!)).toBe(true)
 
-    await new DOMWrapper(
-      document.body.querySelector('header [aria-label="Kampanya listesini aç"]')!,
-    ).trigger('click')
+    await new DOMWrapper(document.body.querySelector('header [aria-label="Menüyü aç"]')!).trigger(
+      'click',
+    )
     await flushPromises()
     expect(
       document.body.querySelector('[role="dialog"] [aria-label="Yeni kampanya"]'),
@@ -1080,6 +1080,17 @@ describe('plain chat (D-091)', () => {
       // A role label and a time; the text is under them.
       expect(message.querySelector('p > span.font-medium')).not.toBeNull()
       expect(message.querySelector('time')).not.toBeNull()
+    }
+    // What the user wrote is right-aligned as a whole, label row and text; the agent's is not (D-101).
+    for (const message of messages) {
+      const user = message.getAttribute('data-author') === 'user'
+      const header = message.querySelector('p')!
+      expect(message.classList.contains('items-end')).toBe(user)
+      expect(message.classList.contains('text-right')).toBe(user)
+      expect(header.classList.contains('justify-end')).toBe(user)
+      const body = message.querySelector('p.whitespace-pre-wrap')
+      expect(body?.classList.contains('text-right') ?? user).toBe(user)
+      expect(body?.classList.contains('max-w-[85%]') ?? user).toBe(user)
     }
     // The question keeps its options as buttons under the plain line.
     const asked = chat().querySelector('li[data-kind="question"]')!

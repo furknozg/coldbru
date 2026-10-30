@@ -94,12 +94,16 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
 | D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; liste görünümü ve sohbet kart/akordiyon yerleşimi yerini aldı → D-091 |
 | D-090 | E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri | Takip ve altyapı | Kabul edildi |
-| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi; LLM rozeti yerini aldı → D-094 |
+| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi; LLM rozeti yerini aldı → D-094; mesaj hizası → D-101 |
 | D-092 | Kitle ve plan dağılımları shadcn-vue chart pasta grafikleriyle; sayılar lejantta, tablolar kalkar | Takip ve altyapı | Kabul edildi |
 | D-093 | Metin varyantları tek yatay kaydırıcıda (shadcn-vue carousel); onaydan sonra sıradaki bekleyen slayt, köşede kalan yuva sayısı | Takip ve altyapı | Kabul edildi; tek kaydırıcı yerini aldı → D-095 |
 | D-094 | Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo | Takip ve altyapı | Kabul edildi |
 | D-095 | Metin adımında kanal başına ayrı kaydırıcı (önce e-posta, sonra SMS); zamanlama adımı da kaydırıcıda | Takip ve altyapı | Kabul edildi |
 | D-096 | Kitle adımında kural (DSL) ve kitle düzenleme arayüzden kalkar; API değişmez | Takip ve altyapı | Kabul edildi |
+| D-097 | Analitik dashboard'u uygulamanın girişi: sol akordiyon menü, tarih aralığı filtresi, Analytics'te `/overview` ve seri uçları, zaman indeksleri | Takip ve altyapı | Kabul edildi; ayrı dashboard kenar çubuğu yerini aldı → D-099 |
+| D-099 | Uygulamada tek kenar çubuğu: Genel bakış, Kampanyalar, Analitikler (Kampanya analitiği, LLM analitiği, Canlı gönderim) | Takip ve altyapı | Kabul edildi; içerik alanı seçicisi yerini aldı → D-100 |
+| D-100 | Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon | Takip ve altyapı | Kabul edildi |
+| D-101 | Sohbette kullanıcının gönderdiği mesajlar sağa hizalı | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1639,7 +1643,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-091: Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda
 
-- **Durum:** Kabul edildi · 2026-10-30; LLM modu rozeti yerini aldı → D-094 · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; LLM modu rozeti yerini aldı → D-094 · 2026-10-30; mesajların sola hizalı olması yerini aldı → D-101 · 2026-10-30
 - **Alan:** Takip ve altyapı
 - **Bağlam:** T-045'i gören kullanıcı arayüzün daha da sadeleşmesini istedi: kenar çubuğundaki kampanyalar akordiyonla açılıp kapanmalı ve duruma göre alt akordiyonlarda ayrılmalı, satırlarda yalnız başlık ve satır içi tarih olmalı; sohbette mesaj ve varyantlar dışındaki olaylar ve eylemler akordiyonda durmalı, bu bileşenlerde ve ajan cevaplarında kart kullanılmamalı, iç içe kart olmamalı. D-089 adımları onay kartında akordiyon olarak gösteriyordu (T-047).
 - **Karar:**
@@ -1734,6 +1738,77 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kitle `edit` ucunun da kaldırılması — reddedildi: istek arayüzle sınırlı; API ve testleri değişmeden kalır.
 - **Sonuçlar / bedel:** Pazarlamacı uygulanan kuralı göremez ve doğrudan düzeltemez; yalnız sohbetle yönlendirir. Kullanılmayan bir API ucu kalır.
 - **Doğrulama:** `AudienceBody.spec.ts` (DSL ve `pre` yok), `CampaignPage.steps.spec.ts` ("offers no edit for the audience": Onayla ve Reddet var, Düzenle ve form yok); `AudienceEditForm.vue` silindi. Canlı: kitle kartında `pre` yok, üç pasta duruyor.
+
+## D-097: Analitik dashboard'u uygulamanın girişi: sol akordiyon menü, tarih aralığı filtresi, Analytics'te `/overview` ve seri uçları, zaman indeksleri
+
+- **Durum:** Kabul edildi · 2026-10-30; ayrı dashboard kenar çubuğu yerini aldı → D-099 · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** T-037 canlı gönderim durumu ve Analytics kampanya özetleri için bir ekran öngörüyordu (D-036, D-080, D-083). Kullanıcı ayrı bir dashboard ekranı istedi: kampanya ekranına benzeyen akordiyon düzeni; genel analitik, kampanya analitiği, LLM analitiği ve canlı gönderim; uygulamanın girişi bu ekran olmalı, ekranda sohbete götüren bir "Kampanya oluştur" kartı bulunmalı ve başarı metrikleri (T-044) sonra eklenebilmeli.
+- **Karar:**
+  - Rotalar: `/` dashboard'dur (Genel bakış). Bölümler alt rotalardır: kampanya analitiği, LLM analitiği, canlı gönderim. Yeni kampanya sohbeti `/campaigns/new`'a taşınır; `/campaigns/:id` aynı kalır. Logo her yerden dashboard'a döner; kampanya ekranındaki "+" ve dashboard'daki "Kampanya oluştur" kartı `/campaigns/new`'a gider; dashboard menüsünde "Kampanyalar" bağlantısı, kampanya analitiğinde "Sohbeti aç" vardır.
+  - Yerleşim: kampanya ekranı gibi solda akordiyon menü (Genel bakış, Kampanya analitiği, LLM analitiği, Canlı gönderim), sağda seçilen bölüm. Kampanya analitiğinde kampanyalar D-091'deki durum gruplarıyla listelenir (kaynak Proposal listesi); seçilince Analytics `/campaigns/{id}/summary` gösterilir. Canlı gönderim seçilen bir zamanlanmış veya gönderimdeki kampanyayı Notification SSE'siyle (D-080) izler.
+  - Tarih aralığı: genel bakış ve LLM analitiğinde hazır aralıklar (Bugün, 7, 30, 90 gün, Tümü) ve takvimden özel aralık; shadcn-vue range calendar (`@internationalized/date`, tam sürüm).
+  - Analytics API (D-083 genişler): `GET /overview` ve `GET /llm-usage` isteğe bağlı `from`/`to` (RFC 3339) alır; `/overview` kampanya sayısı, kanal ve durum başına teslimat, SMS segmenti, teslimat maliyeti ve LLM özetini (çağrı, maliyet, token; amaç ve model kırılımı) döner. Yeni `GET /llm-usage/series` ve `GET /overview/series` `from`, `to`, `bucket=hour|day` ile UTC kovalarında LLM (amaç ve model kırılımlı çağrı, maliyet, token) ve teslimat (tamamlanan kampanyaların `completed_at` kovasında kanal ve durum sayıları) serilerini döner. Teslimatlar `campaign_summary.completed_at`, LLM `llm_usage.created_at` ile filtrelenir.
+  - İndeksler (kodlama kuralı 7, kullanıcı onayladı): `llm_usage(created_at)` ve `campaign_summary(completed_at)`, goose migration'ıyla.
+  - Grafikler: amaç ve model başına maliyet pastası (D-092 `DistributionPie`), prompt sürümü tablosu ve çubuk grafiği, LLM ve teslimat serileri için çizgi/alan grafikleri (unovis, D-092).
+  - Başarı metrikleri için şimdi görünür bir öğe yoktur; menü, kampanya özeti ve `/overview` yanıtı T-044'te bölüm ve alan eklenebilecek biçimde kurulur.
+- **Alternatifler:**
+  - Tek sayfada akordiyon bölümler — reddedildi: bölümler büyüdükçe sayfa uzardı.
+  - İstemcide toplama — reddedildi: yalnız yüklenen sayfayı toplar, tamamlanmamış kampanyaları görmezdi.
+  - Tüm aktif kampanyalar için canlı pano — reddedildi: Notification'a yeni bir SSE ucu gerekirdi.
+  - Üst çubukta Dashboard / Kampanyalar sekmeleri — reddedildi: D-094'te kaldırılan üst başlık geri gelirdi.
+  - Yalnız Analytics listesi — reddedildi: taslak ve gönderimdeki kampanyalar görünmezdi.
+  - Yerel tarih alanları — reddedildi: görünüm tarayıcıya bağlı, aralık seçimi iki adım. İstanbul saatine göre kovalar — reddedildi: UTC kovalar seçildi.
+  - İndekssiz — reddedildi: aralık sorguları büyüdükçe tam tarama olurdu.
+- **Sonuçlar / bedel:** Analytics'e dört uç değişikliği ve iki indeks; yeni web bağımlılığı `@internationalized/date`. Kovalar UTC olduğu için günlük kova Türkiye saatiyle 03:00'te başlar. Teslimat serisi kampanyanın tamamlanma anına düşer; gönderimin kendisi zamana yayılmaz. Mevcut `/` bağlantıları ve testler değişir.
+- **Uygulama notu (T-037):** Migration `internal/analytics/store/migrations/00002_time_range_indexes.sql` (`llm_usage_created_at_idx`, `campaign_summary_completed_at_idx`). Aralık [from, to) yarı açıktır; hatalar 422 `invalid_request`. Seri uçları `buckets` (tüm kova başlangıçları, SQL `generate_series`) ve seyrek `points` döner; istemci sıfırla doldurur. Sınırlar: `hour` en fazla 7 gün, `day` en fazla 400 gün. `/overview` yedi sorguyu tek RepeatableRead salt okunur işlemde koşar. LLM maliyeti alımda fiyatlanan `llm_usage.cost_usd` toplamıdır.
+- **Doğrulama:** `make test` Go tarafında yük kaynaklı testcontainers zaman aşımlarıyla düştü (customer `consent`, proposal `api`, `confirm`, `customer`, `flow`); bu paketler ve `internal/analytics/...` tek başına sırayla koşunca geçti. Web: `lint`, `type-check`, `build` ve 313 Vitest testi (28 dosya) geçti. `internal/analytics/api/api_test.go` (aralık ve seri parametreleri, sınırlar), `api_integration_test.go` (aralık içi/dışı toplamlar, amaç ve model kırılımı, saatlik ve günlük seriler, sıfır kovalar, UTC hizası), `store_integration_test.go` (00002 indeksleri, up/down). Canlı: nginx üzerinden `/overview`, aralıklı `/overview`, `/llm-usage/series`, `/overview/series` 200; 422 durumları; `/` dashboard, hazır aralıklar ve özel aralık, LLM analitiği, kampanya özeti ve canlı görünüm tarayıcıda görüldü.
+
+## D-099: Uygulamada tek kenar çubuğu: Genel bakış, Kampanyalar, Analitikler (Kampanya analitiği, LLM analitiği, Canlı gönderim)
+
+- **Durum:** Kabul edildi · 2026-10-30; analitik alt öğelerinin düz bağlantı olması ve içerik alanındaki kampanya seçici yerini aldı → D-100 · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-097 dashboard için kampanya ekranındakinden ayrı bir sol akordiyon menü öngördü; ekranlar arasında geçişte kenar çubuğu bağlam değiştiriyordu. Kullanıcı kampanyaların ve analitiğin aynı kenar çubuğunda durmasını, analitiğin akordiyonda ayrı bir grup olmasını istedi (T-037).
+- **Karar:**
+  - Uygulamanın her ekranında aynı kenar çubuğu vardır. Akordiyon sırası: Genel bakış (`/`); Kampanyalar (D-091'deki beş durum grubu ve "+" → `/campaigns/new`, satırlar sohbeti açar); Analitikler (alt öğeleri düz bağlantı: Kampanya analitiği, LLM analitiği, Canlı gönderim).
+  - Analitikler alt öğeleri kenar çubuğunda kampanya listelemez; Kampanya analitiği ve Canlı gönderimde kampanya seçimi içerik alanındaki bir listeden yapılır. Kampanya listesi kenar çubuğunda yalnız Kampanyalar altında bir kez durur.
+  - Kampanya analitiği listesinde yalnız `sending` ve `completed` kampanyalar vardır (Gönderiliyor, Tamamlandı); taslak, zamanlanmış ve iptal edilenler listelenmez. Başka durumdaki bir kampanyanın bağlantısı, analitiğin gönderim başlayınca geleceğini söyleyen bir satır ve "Sohbeti aç" gösterir.
+  - Kenar çubuğunun altındaki kampanya analiz özeti kutusu kalkar; aynı bilgi Kampanya analitiğindedir.
+  - Menü bir yapılandırma listesidir; Başarı metrikleri (T-044) Analitikler altına bir öğe olarak eklenir.
+- **Alternatifler:**
+  - D-097'deki ayrı dashboard kenar çubuğu — reddedildi: ekranlar arasında bağlam değişiyordu.
+  - Zamanlanmış kampanyaların da listelenmesi — reddedildi: kullanıcı yalnız gönderimdeki ve tamamlananları istedi.
+  - Analitik alt öğelerinde de kampanya listesi — reddedildi: aynı kampanyalar kenar çubuğunda birkaç kez görünürdü.
+  - Özet kutusunun kalması — reddedildi: bilgi Kampanya analitiğinde ayrıntılı var.
+- **Sonuçlar / bedel:** Kampanya analitiği ve canlı gönderimde kampanya seçmek bir tık fazladır. Sohbetteyken seçili kampanyanın maliyeti kenar çubuğunda görünmez.
+- **Doğrulama:** `make test` Go tarafında yük kaynaklı testcontainers zaman aşımlarıyla düştü (customer `consent`, proposal `api`, `confirm`, `customer`, `flow`); bu paketler ve `internal/analytics/...` tek başına sırayla koşunca geçti. Web: `lint`, `type-check`, `build` ve 313 Vitest testi (28 dosya) geçti. `views/dashboard/__tests__/routes.spec.ts` (tek kenar çubuğu `/` ve `/campaigns/:id` üzerinde, sıra, Analitikler alt öğeleri, özet kutusu yok), `campaigns.spec.ts` (yalnız gönderimdeki ve tamamlanan, başka durum için bağlantı satırı). Canlı: tek kenar çubuğu dashboard'da ve sohbette görüldü.
+
+## D-100: Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-099 Analitikler alt öğelerini düz bağlantı yaptı ve kampanya seçimini içerik alanına koydu. Kullanıcı açılır listelerin alt öğeler dahil kenar çubuğunda olmasını istedi (T-037).
+- **Karar:**
+  - Analitikler altında "Kampanya analitiği" bir akordiyon öğesidir; Gönderiliyor ve Tamamlandı alt gruplarını açar (yalnız `sending` ve `completed`, boş grup gizli; satırlar başlık ve satır içi tarih, D-091). "Canlı gönderim" Gönderiliyor ve Zamanlanmış alt gruplarını açan bir akordiyon öğesidir (D-097'deki zamanlanmış veya gönderimdeki kampanya kuralı). "LLM analitiği" düz bağlantıdır.
+  - İçerik alanındaki kampanya seçici kalkar; kampanya seçilmemişse içerikte menüden seçmeyi söyleyen düz bir satır görünür. Etkin rotanın grupları kendiliğinden açılır, etkin satır vurgulanır.
+  - Tarih aralığı filtresi içerik alanında kalır. D-099'un geri kalanı (tek kenar çubuğu, sıra, özet kutusunun kalkması, yalnız gönderimdeki ve tamamlanan kampanyalar) geçerlidir.
+- **Alternatifler:**
+  - D-099'daki içerik alanı seçicisi — reddedildi: kullanıcı seçimin kenar çubuğunda olmasını istedi.
+  - Tarih filtresinin de kenar çubuğuna taşınması — reddedildi: yalnız kampanya seçiciler taşındı.
+- **Sonuçlar / bedel:** Gönderimdeki bir kampanya kenar çubuğunda Kampanyalar, Kampanya analitiği ve Canlı gönderim altında üç kez görünebilir; kenar çubuğu uzar.
+- **Uygulama notu (T-037, kullanıcı onayladı):** Kenar çubuğu `layouts/AppSidebar.vue`, menü yapılandırması `features/dashboard/menu.ts` (`APP_MENU`). Rotalar: `/` (Genel bakış), `/analytics/campaigns/:id?`, `/analytics/llm`, `/live/:id?`, `/campaigns/new`, `/campaigns/:id`; dashboard sayfaları geç yüklenen parçalardır. Tarih aralığı URL'de `from`/`to` olarak yerel gün (iki uç dahil) tutulur; sorgu yoksa Tümü; seriler aralık ≤ 2 gün ise saatlik, değilse günlüktür; Tümü ve açık uçlu aralıkta seri son 90 gündür. API'ye RFC 3339 UTC (`Z`) gider. UTC kovalar tarayıcının saat diliminde etiketlenir. Canlı görünüm yalnız SSE anlık görüntüsünü kullanır; ilerleme (gönderilen + başarısız + atlanan + iptal) / toplamdır. Kampanya satırına tıklamak grubu açıp kapatır, gezinmez. Token kutusu girdi + çıktıdır; önbellekten okunan ve yazılan token'lar ayrı bir kutudadır. `CampaignSummary` T-044 için bir `sections` listesi alır. `@internationalized/date` 3.12.4 (tam sürüm); shadcn-vue `popover` ve `range-calendar`. Ana parça 529 kB'tan 369 kB'a indi.
+- **Doğrulama:** `routes.spec.ts` (iç içe kampanya akordiyonları, etkin satır vurgusu), `live.spec.ts` (Gönderiliyor ve Zamanlanmış grupları, boş grup gizli, zamanlanmış kampanyanın akışı), `overview.spec.ts` ve `llm.spec.ts` (önbellek kutusu). Canlı: `/live` altında zamanlanmış grup ve LLM sayfasında önbellek kutusu görüldü; gönderimdeki bir kampanyanın canlı akışı canlıda görülmedi (gönderimde kampanya yoktu), testle doğrulandı.
+
+## D-101: Sohbette kullanıcının gönderdiği mesajlar sağa hizalı
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-091'in uygulamasında kullanıcı ve ajan mesajları sola hizalandı, fark yalnız etiket rengindeydi. Kullanıcı bir cevap mesajında başlık satırının sağa, metnin sola hizalı olduğunu gördü ve kullanıcının gönderdiği mesajların sağa hizalanmasını istedi (T-037 sırasında).
+- **Karar:** Kullanıcının gönderdiği mesajlar (brief, bağlam notu, soruya cevap, red gerekçesi) başlık satırı ve metniyle birlikte sağa hizalanır; uzun metin sağdan sarar. Ajan ve sistem mesajları solda kalır. Kart veya baloncuk kutusu yoktur (D-091).
+- **Alternatifler:**
+  - Hepsinin sola hizalı kalması (D-091 uygulaması) — reddedildi: kullanıcı mesajı ajanınkinden yalnız renkle ayrılıyordu ve başlık ile metin farklı hizalanmıştı.
+- **Sonuçlar / bedel:** Sohbetin iki hizası olur; dar ekranda sağa hizalı uzun metin daha zor okunabilir.
+- **Doğrulama:** `CampaignPage.steps.spec.ts` (kullanıcı mesajının satırı, başlığı ve metni sağa hizalı, ajan mesajı değil). Canlı: brief mesajında `align-items: flex-end` ve metinde `text-align: right` ölçüldü.
 
 ---
 

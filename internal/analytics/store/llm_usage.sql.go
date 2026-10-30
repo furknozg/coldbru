@@ -112,6 +112,212 @@ func (q *Queries) LLMByPurposeOfCampaign(ctx context.Context, campaignID uuid.UU
 	return items, nil
 }
 
+const lLMOverviewByModel = `-- name: LLMOverviewByModel :many
+SELECT model,
+       count(*)::bigint AS calls,
+       COALESCE(sum(cost_usd), 0)::numeric(20,8)::text AS cost_usd,
+       COALESCE(sum(input_tokens), 0)::bigint AS input_tokens,
+       COALESCE(sum(output_tokens), 0)::bigint AS output_tokens
+FROM llm_usage
+WHERE created_at >= COALESCE($1::timestamptz, '-infinity')
+  AND created_at <  COALESCE($2::timestamptz, 'infinity')
+GROUP BY model
+ORDER BY model
+`
+
+type LLMOverviewByModelParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type LLMOverviewByModelRow struct {
+	Model        string
+	Calls        int64
+	CostUsd      string
+	InputTokens  int64
+	OutputTokens int64
+}
+
+func (q *Queries) LLMOverviewByModel(ctx context.Context, arg LLMOverviewByModelParams) ([]LLMOverviewByModelRow, error) {
+	rows, err := q.db.Query(ctx, lLMOverviewByModel, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LLMOverviewByModelRow
+	for rows.Next() {
+		var i LLMOverviewByModelRow
+		if err := rows.Scan(
+			&i.Model,
+			&i.Calls,
+			&i.CostUsd,
+			&i.InputTokens,
+			&i.OutputTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lLMOverviewByPurpose = `-- name: LLMOverviewByPurpose :many
+SELECT purpose,
+       count(*)::bigint AS calls,
+       COALESCE(sum(cost_usd), 0)::numeric(20,8)::text AS cost_usd,
+       COALESCE(sum(input_tokens), 0)::bigint AS input_tokens,
+       COALESCE(sum(output_tokens), 0)::bigint AS output_tokens
+FROM llm_usage
+WHERE created_at >= COALESCE($1::timestamptz, '-infinity')
+  AND created_at <  COALESCE($2::timestamptz, 'infinity')
+GROUP BY purpose
+ORDER BY purpose
+`
+
+type LLMOverviewByPurposeParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type LLMOverviewByPurposeRow struct {
+	Purpose      string
+	Calls        int64
+	CostUsd      string
+	InputTokens  int64
+	OutputTokens int64
+}
+
+func (q *Queries) LLMOverviewByPurpose(ctx context.Context, arg LLMOverviewByPurposeParams) ([]LLMOverviewByPurposeRow, error) {
+	rows, err := q.db.Query(ctx, lLMOverviewByPurpose, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LLMOverviewByPurposeRow
+	for rows.Next() {
+		var i LLMOverviewByPurposeRow
+		if err := rows.Scan(
+			&i.Purpose,
+			&i.Calls,
+			&i.CostUsd,
+			&i.InputTokens,
+			&i.OutputTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lLMOverviewTotals = `-- name: LLMOverviewTotals :one
+SELECT count(*)::bigint AS calls,
+       COALESCE(sum(cost_usd), 0)::numeric(20,8)::text AS cost_usd,
+       COALESCE(sum(input_tokens), 0)::bigint AS input_tokens,
+       COALESCE(sum(output_tokens), 0)::bigint AS output_tokens,
+       COALESCE(sum(cache_read_tokens), 0)::bigint AS cache_read_tokens,
+       COALESCE(sum(cache_creation_tokens), 0)::bigint AS cache_creation_tokens
+FROM llm_usage
+WHERE created_at >= COALESCE($1::timestamptz, '-infinity')
+  AND created_at <  COALESCE($2::timestamptz, 'infinity')
+`
+
+type LLMOverviewTotalsParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type LLMOverviewTotalsRow struct {
+	Calls               int64
+	CostUsd             string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+}
+
+// LLM figures of the dashboard overview over [from_ts, to_ts) of created_at (D-097).
+func (q *Queries) LLMOverviewTotals(ctx context.Context, arg LLMOverviewTotalsParams) (LLMOverviewTotalsRow, error) {
+	row := q.db.QueryRow(ctx, lLMOverviewTotals, arg.FromTs, arg.ToTs)
+	var i LLMOverviewTotalsRow
+	err := row.Scan(
+		&i.Calls,
+		&i.CostUsd,
+		&i.InputTokens,
+		&i.OutputTokens,
+		&i.CacheReadTokens,
+		&i.CacheCreationTokens,
+	)
+	return i, err
+}
+
+const lLMSeries = `-- name: LLMSeries :many
+SELECT date_trunc($1::text, created_at, 'UTC')::timestamptz AS bucket_start,
+       purpose, model,
+       count(*)::bigint AS calls,
+       COALESCE(sum(cost_usd), 0)::numeric(20,8)::text AS cost_usd,
+       COALESCE(sum(input_tokens), 0)::bigint AS input_tokens,
+       COALESCE(sum(output_tokens), 0)::bigint AS output_tokens
+FROM llm_usage
+WHERE created_at >= $2::timestamptz
+  AND created_at <  $3::timestamptz
+GROUP BY 1, purpose, model
+ORDER BY 1, purpose, model
+`
+
+type LLMSeriesParams struct {
+	Bucket string
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
+
+type LLMSeriesRow struct {
+	BucketStart  pgtype.Timestamptz
+	Purpose      string
+	Model        string
+	Calls        int64
+	CostUsd      string
+	InputTokens  int64
+	OutputTokens int64
+}
+
+// One row per (bucket, purpose, model) that has calls in [from_ts, to_ts). The bucket is the UTC
+// date_trunc of created_at; sqlc cannot type the unit argument, hence the explicit cast. Empty
+// buckets have no row: the API lists every bucket start (SeriesBuckets) and the client zero-fills.
+func (q *Queries) LLMSeries(ctx context.Context, arg LLMSeriesParams) ([]LLMSeriesRow, error) {
+	rows, err := q.db.Query(ctx, lLMSeries, arg.Bucket, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LLMSeriesRow
+	for rows.Next() {
+		var i LLMSeriesRow
+		if err := rows.Scan(
+			&i.BucketStart,
+			&i.Purpose,
+			&i.Model,
+			&i.Calls,
+			&i.CostUsd,
+			&i.InputTokens,
+			&i.OutputTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lLMTotalsOfCampaign = `-- name: LLMTotalsOfCampaign :one
 SELECT count(*)::bigint AS calls,
        COALESCE(sum(cost_usd), 0)::numeric(14,8)::text AS cost_usd,
@@ -156,9 +362,16 @@ SELECT prompt_name, prompt_version,
        COALESCE(avg(latency_ms), 0)::float8 AS avg_latency_ms,
        COALESCE(sum(cost_usd), 0)::numeric(14,8)::text AS cost_usd
 FROM llm_usage
+WHERE created_at >= COALESCE($1::timestamptz, '-infinity')
+  AND created_at <  COALESCE($2::timestamptz, 'infinity')
 GROUP BY prompt_name, prompt_version
 ORDER BY prompt_name, prompt_version
 `
+
+type LLMUsageByPromptVersionParams struct {
+	FromTs pgtype.Timestamptz
+	ToTs   pgtype.Timestamptz
+}
 
 type LLMUsageByPromptVersionRow struct {
 	PromptName       string
@@ -172,9 +385,12 @@ type LLMUsageByPromptVersionRow struct {
 	CostUsd          string
 }
 
-// One row per (prompt_name, prompt_version), served by llm_usage_prompt_name_version_idx.
-func (q *Queries) LLMUsageByPromptVersion(ctx context.Context) ([]LLMUsageByPromptVersionRow, error) {
-	rows, err := q.db.Query(ctx, lLMUsageByPromptVersion)
+// One row per (prompt_name, prompt_version). The optional half-open range [from_ts, to_ts) filters
+// llm_usage.created_at (D-097); a NULL bound is open-ended. COALESCE to +-infinity keeps the
+// predicate usable by llm_usage_created_at_idx; with no range the grouping reads all rows, served
+// by llm_usage_prompt_name_version_idx.
+func (q *Queries) LLMUsageByPromptVersion(ctx context.Context, arg LLMUsageByPromptVersionParams) ([]LLMUsageByPromptVersionRow, error) {
+	rows, err := q.db.Query(ctx, lLMUsageByPromptVersion, arg.FromTs, arg.ToTs)
 	if err != nil {
 		return nil, err
 	}

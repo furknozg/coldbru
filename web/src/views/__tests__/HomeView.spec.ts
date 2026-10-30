@@ -26,7 +26,7 @@ afterEach(() => {
 })
 
 async function open() {
-  const mounted = await mountApp('/')
+  const mounted = await mountApp('/campaigns/new')
   wrapper = mounted.wrapper
   return mounted
 }
@@ -34,7 +34,7 @@ async function open() {
 const submitButton = (w: NonNullable<typeof wrapper>) =>
   w.findAll('button').find((b) => b.text() === 'Kampanyayı başlat')!
 
-describe('HomeView', () => {
+describe('HomeView (/campaigns/new)', () => {
   it('posts the brief, adds the campaign to the list and opens it', async () => {
     const created = infoOf({ id: 'new-1', brief: 'Yeni bir brief' })
     vi.mocked(proposal.createCampaign).mockResolvedValue(created)
@@ -88,7 +88,7 @@ describe('HomeView', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('The brief is not valid.')
     expect(wrapper.get('[role="alert"]').text()).toContain('brief: must not be empty')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('x')
-    expect(router.currentRoute.value.fullPath).toBe('/')
+    expect(router.currentRoute.value.fullPath).toBe('/campaigns/new')
   })
 
   it('tells the user to retry when the network fails', async () => {

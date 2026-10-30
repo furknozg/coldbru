@@ -183,13 +183,17 @@ export interface paths {
         };
         /**
          * LLM usage per prompt version
-         * @description One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text).
+         * @description One entry per prompt name and version: the number of calls by outcome, the repair rate (validation_failed divided by calls), the mean latency and the cost in US dollars (D-060, D-083). Only `group=prompt_version` is supported. Ordered by prompt name, then version (as text). The optional `from` and `to` (RFC 3339) bound the calls by `created_at` as the half-open range [from, to); either may be omitted; without both, every call counts (D-097).
          */
         get: {
             parameters: {
                 query?: {
                     /** @description How to group the calls */
                     group?: "prompt_version";
+                    /** @description Start of the range, inclusive (RFC 3339) */
+                    from?: string;
+                    /** @description End of the range, exclusive (RFC 3339) */
+                    to?: string;
                 };
                 header?: never;
                 path?: never;
@@ -206,7 +210,197 @@ export interface paths {
                         "application/json": components["schemas"]["api.PromptVersionUsage"][];
                     };
                 };
-                /** @description unsupported group */
+                /** @description unsupported group, malformed from or to, or from not before to */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm-usage/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * LLM usage over time
+         * @description LLM calls, cost and tokens per UTC time bucket, purpose and model over the half-open range [from, to) of `created_at` (D-097). `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, purpose, model) that has calls, so a bucket without rows has no calls and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial. Cost is the sum of the per-call cost priced at ingest (D-083), a decimal string in US dollars.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Start of the range, inclusive (RFC 3339) */
+                    from: string;
+                    /** @description End of the range, exclusive (RFC 3339) */
+                    to: string;
+                    /** @description Bucket size */
+                    bucket: "hour" | "day";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.LLMSeries"];
+                    };
+                };
+                /** @description missing or malformed parameter, from not before to, or the range longer than the bucket allows */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview of deliveries and LLM usage
+         * @description The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), and the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range. `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Start of the range, inclusive (RFC 3339) */
+                    from?: string;
+                    /** @description End of the range, exclusive (RFC 3339) */
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Overview"];
+                    };
+                };
+                /** @description malformed from or to, or from not before to */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/overview/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Deliveries over time
+         * @description Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Start of the range, inclusive (RFC 3339) */
+                    from: string;
+                    /** @description End of the range, exclusive (RFC 3339) */
+                    to: string;
+                    /** @description Bucket size */
+                    bucket: "hour" | "day";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["api.OverviewSeries"];
+                    };
+                };
+                /** @description missing or malformed parameter, from not before to, or the range longer than the bucket allows */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -341,6 +535,37 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "sending" | "sent" | "failed" | "skipped_no_consent" | "cancelled";
         };
+        "api.LLMSeries": {
+            /** @enum {string} */
+            bucket: "hour" | "day";
+            /** @description Buckets lists the start of every bucket of the range, ascending, empty ones included. */
+            buckets: string[];
+            /** Format: date-time */
+            from: string;
+            /**
+             * @description Points has one row per (bucket, purpose, model) with at least one call, ordered by bucket,
+             *     purpose, model. A bucket without a row has no calls: the client zero-fills it from Buckets.
+             */
+            points: components["schemas"]["api.LLMSeriesPoint"][];
+            /** Format: date-time */
+            to: string;
+        };
+        "api.LLMSeriesPoint": {
+            calls: number;
+            /** @example 0.00420000 */
+            cost_usd: string;
+            input_tokens: number;
+            /** @example claude-sonnet-5-5 */
+            model: string;
+            output_tokens: number;
+            /** @enum {string} */
+            purpose: "screen" | "segment" | "content" | "channel_plan" | "schedule";
+            /**
+             * Format: date-time
+             * @description Start is the start of the bucket (UTC); one of the bucket starts of the response.
+             */
+            start: string;
+        };
         "api.LLMSummary": {
             by_purpose: components["schemas"]["api.PurposeUsage"][];
             calls: number;
@@ -350,6 +575,75 @@ export interface components {
              */
             cost_usd: string;
             tokens: components["schemas"]["api.Tokens"];
+        };
+        "api.ModelUsage": {
+            calls: number;
+            /** @example 0.00420000 */
+            cost_usd: string;
+            input_tokens: number;
+            /** @example claude-sonnet-5-5 */
+            model: string;
+            output_tokens: number;
+        };
+        "api.Overview": {
+            /** @description CampaignsCompleted is the number of campaigns completed in the range. */
+            campaigns_completed: number;
+            /** @description Deliveries has one entry per (channel, status) with at least one delivery, ordered by channel and status. */
+            deliveries: components["schemas"]["api.DeliveryCount"][];
+            /** @example 96.000000 */
+            delivery_cost_usd: string;
+            /**
+             * Format: date-time
+             * @description From and To echo the range of the request (RFC 3339, UTC); null when that bound was omitted.
+             */
+            from: string;
+            llm: components["schemas"]["api.OverviewLLM"];
+            /** @example 2400 */
+            sms_segments: number;
+            /** Format: date-time */
+            to: string;
+        };
+        "api.OverviewLLM": {
+            /** @description ByModel has one entry per model with calls, ordered by model. */
+            by_model: components["schemas"]["api.ModelUsage"][];
+            /** @description ByPurpose has one entry per purpose with calls, ordered by purpose. */
+            by_purpose: components["schemas"]["api.PurposeUsage"][];
+            calls: number;
+            /**
+             * @description CostUSD is the sum of the cost of the calls in US dollars, eight decimals.
+             * @example 0.01234500
+             */
+            cost_usd: string;
+            tokens: components["schemas"]["api.Tokens"];
+        };
+        "api.OverviewSeries": {
+            /** @enum {string} */
+            bucket: "hour" | "day";
+            /** @description Buckets lists the start of every bucket of the range, ascending, empty ones included. */
+            buckets: string[];
+            /** Format: date-time */
+            from: string;
+            /**
+             * @description Points has one row per (bucket, channel, status) with at least one delivery, ordered by
+             *     bucket, channel, status. A bucket without a row has no deliveries: the client zero-fills it
+             *     from Buckets.
+             */
+            points: components["schemas"]["api.OverviewSeriesPoint"][];
+            /** Format: date-time */
+            to: string;
+        };
+        "api.OverviewSeriesPoint": {
+            /** @enum {string} */
+            channel: "sms" | "email";
+            /** @example 1200 */
+            count: number;
+            /**
+             * Format: date-time
+             * @description Start is the start of the bucket (UTC); one of the bucket starts of the response.
+             */
+            start: string;
+            /** @enum {string} */
+            status: "pending" | "sending" | "sent" | "failed" | "skipped_no_consent" | "cancelled";
         };
         "api.Problem": {
             /**

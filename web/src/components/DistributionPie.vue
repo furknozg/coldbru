@@ -12,7 +12,10 @@ import { NEUTRAL_COLOR, SERIES_COLORS, type Slice } from '@/features/campaigns/d
  * Slices with no value stay in the legend but get no arc; with nothing at all there is no chart.
  * No card, border or box of its own: the variant card around it is the only surface (D-091).
  */
-const props = defineProps<{ title: string; slices: Slice[] }>()
+const props = withDefaults(
+  defineProps<{ title: string; slices: Slice[]; format?: 'int' | 'usd' }>(),
+  { format: 'int' },
+)
 
 const { t, n } = useI18n()
 
@@ -37,7 +40,7 @@ const summary = computed(() =>
   t('chart.summary', {
     title: props.title,
     items: entries.value
-      .map((e) => `${e.label}: ${n(e.value, 'int')} (${n(e.percent, 'percent')})`)
+      .map((e) => `${e.label}: ${n(e.value, props.format)} (${n(e.percent, 'percent')})`)
       .join(', '),
   }),
 )
@@ -50,7 +53,7 @@ const triggers = {
   [Donut.selectors.segment]: ({ data }: Arc) =>
     `<div class="bg-popover text-popover-foreground rounded-md border px-2 py-1 text-xs shadow-md">` +
     `${escapeHtml(data.label)}: <span class="font-medium tabular-nums">${escapeHtml(
-      n(data.value, 'int'),
+      n(data.value, props.format),
     )}</span> (${escapeHtml(n(data.percent, 'percent'))})</div>`,
 }
 </script>
@@ -84,7 +87,7 @@ const triggers = {
             <circle cx="5" cy="5" r="5" :style="{ fill: entry.color }" />
           </svg>
           <span class="min-w-0 flex-1 break-words">{{ entry.label }}</span>
-          <span class="font-medium tabular-nums">{{ n(entry.value, 'int') }}</span>
+          <span class="font-medium tabular-nums">{{ n(entry.value, format) }}</span>
           <span class="text-muted-foreground w-12 text-right tabular-nums">{{
             n(entry.percent, 'percent')
           }}</span>

@@ -70,12 +70,16 @@ func TestMigrations_Applied(t *testing.T) {
 		{"tables", "SELECT tablename FROM pg_tables WHERE schemaname = 'analytics' ORDER BY tablename",
 			[]string{"campaign_delivery_count", "campaign_summary", "goose_db_version", "goose_platform_version", "llm_usage", "outbox", "processed_event"}},
 		{"nothing in public", "SELECT tablename FROM pg_tables WHERE schemaname = 'public'", nil},
-		{"service versions", "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id", []string{"1"}},
+		{"service versions", "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id", []string{"1", "2"}},
 		{"llm_usage indexes", "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'llm_usage' ORDER BY indexname",
-			[]string{"llm_usage_campaign_id_idx", "llm_usage_pkey", "llm_usage_prompt_name_version_idx"}},
-		{"index columns", `SELECT indexdef FROM pg_indexes WHERE schemaname = 'analytics' AND indexname IN ('llm_usage_campaign_id_idx', 'llm_usage_prompt_name_version_idx') ORDER BY indexname`,
+			[]string{"llm_usage_campaign_id_idx", "llm_usage_created_at_idx", "llm_usage_pkey", "llm_usage_prompt_name_version_idx"}},
+		{"campaign_summary indexes", "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'campaign_summary' ORDER BY indexname",
+			[]string{"campaign_summary_completed_at_idx", "campaign_summary_pkey"}},
+		{"index columns", `SELECT indexdef FROM pg_indexes WHERE schemaname = 'analytics' AND indexname IN ('llm_usage_campaign_id_idx', 'llm_usage_prompt_name_version_idx', 'llm_usage_created_at_idx', 'campaign_summary_completed_at_idx') ORDER BY indexname`,
 			[]string{
+				"CREATE INDEX campaign_summary_completed_at_idx ON analytics.campaign_summary USING btree (completed_at)",
 				"CREATE INDEX llm_usage_campaign_id_idx ON analytics.llm_usage USING btree (campaign_id)",
+				"CREATE INDEX llm_usage_created_at_idx ON analytics.llm_usage USING btree (created_at)",
 				"CREATE INDEX llm_usage_prompt_name_version_idx ON analytics.llm_usage USING btree (prompt_name, prompt_version)",
 			}},
 		{"no foreign keys", "SELECT conname FROM pg_constraint WHERE connamespace = 'analytics'::regnamespace AND contype = 'f'", nil},
@@ -113,6 +117,16 @@ func TestMigrations_DownThenUp(t *testing.T) {
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Down of 00002 drops only the time indexes (D-097); the tables and the older indexes stay.
+	if _, err := provider.DownTo(t.Context(), 1); err != nil {
+		t.Fatalf("DownTo(1) error = %v", err)
+	}
+	if got := queryStrings(t, pool, "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND indexname IN ('llm_usage_created_at_idx', 'campaign_summary_completed_at_idx')"); len(got) != 0 {
+		t.Errorf("time indexes after Down of 00002 = %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'llm_usage' ORDER BY indexname"); !slices.Equal(got, []string{"llm_usage_campaign_id_idx", "llm_usage_pkey", "llm_usage_prompt_name_version_idx"}) {
+		t.Errorf("llm_usage indexes after Down of 00002 = %v", got)
 	}
 	if _, err := provider.DownTo(t.Context(), 0); err != nil {
 		t.Fatalf("DownTo(0) error = %v", err)
