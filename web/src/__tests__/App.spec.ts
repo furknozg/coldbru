@@ -7,6 +7,7 @@ import * as proposal from '@/api/proposal/service'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
 
 import { FakeEventSource, infoOf, mountApp, viewOf } from './helpers'
+import { setViewportWide } from './setup'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
@@ -29,7 +30,6 @@ let wrapper: Awaited<ReturnType<typeof mountApp>>['wrapper'] | undefined
 
 beforeEach(() => {
   FakeEventSource.install()
-  vi.mocked(proposal.getLlmMode).mockResolvedValue('mock')
   vi.mocked(proposal.listCampaigns).mockResolvedValue([])
   vi.mocked(analytics.getCampaignSummary).mockResolvedValue(null)
 })
@@ -48,27 +48,33 @@ async function open(path = '/') {
 }
 
 describe('app shell', () => {
-  it('draws the logo, a + for a new campaign, the title and the LLM mode, with no profile block, search or filter', async () => {
+  it('draws the logo and a + for a new campaign in the sidebar, with no top header, profile block, search or filter', async () => {
     const { wrapper } = await open()
 
-    expect(wrapper.get('h1').text()).toBe('Smart Campaign Composer')
-    expect(wrapper.get('img[src="/logo.png"]').attributes('alt')).toBe('coldbru')
+    expect(wrapper.find('header').exists()).toBe(false)
+    expect(wrapper.find('h1').exists()).toBe(false)
+    const logo = wrapper.get('aside img[src="/logo.png"]')
+    expect(logo.attributes('alt')).toBe('coldbru')
     const plus = wrapper.get('aside a[aria-label="Yeni kampanya"]')
     expect(plus.attributes('href')).toBe('/')
     expect(plus.find('svg').exists()).toBe(true)
     expect(plus.text()).toBe('')
     expect(wrapper.find('input[type="search"]').exists()).toBe(false)
     expect(wrapper.find('aside select').exists()).toBe(false)
-    expect(wrapper.get('[data-mode]').text()).toBe('LLM: mock')
-    expect(wrapper.get('[data-mode]').classes()).toContain('bg-primary')
+    expect(wrapper.find('[data-mode]').exists()).toBe(false)
     expect(wrapper.text()).not.toMatch(/profil/i)
   })
 
-  it('leaves the badge out when the service cannot be asked', async () => {
-    vi.mocked(proposal.getLlmMode).mockResolvedValue(null)
+  it('on a narrow screen has a top bar with the menu button and the logo, and the list in a drawer', async () => {
+    setViewportWide(false)
     const { wrapper } = await open()
 
-    expect(wrapper.find('[data-mode]').exists()).toBe(false)
+    expect(wrapper.find('aside').exists()).toBe(false)
+    const bar = wrapper.get('header')
+    expect(bar.get('button').attributes('aria-label')).toBe('Kampanya listesini aç')
+    expect(bar.get('img').attributes('src')).toBe('/logo.png')
+    expect(bar.get('img').attributes('alt')).toBe('coldbru')
+    expect(wrapper.find('h1').exists()).toBe(false)
   })
 
   it('shows the empty state with the brief box on /', async () => {

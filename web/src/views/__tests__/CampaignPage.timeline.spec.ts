@@ -22,7 +22,6 @@ let wrapper: Awaited<ReturnType<typeof mountApp>>['wrapper'] | undefined
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   FakeEventSource.install()
-  vi.mocked(proposal.getLlmMode).mockResolvedValue('anthropic')
   vi.mocked(proposal.listCampaigns).mockResolvedValue([])
   vi.mocked(analytics.getCampaignSummary).mockResolvedValue(null)
 })

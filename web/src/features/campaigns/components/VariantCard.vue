@@ -11,7 +11,6 @@ import { useLabels } from '../labels'
 import type { Problem } from '../problem'
 import type { StepKind, VariantView } from '../types'
 import AudienceBody from './AudienceBody.vue'
-import AudienceEditForm from './AudienceEditForm.vue'
 import ContentBody from './ContentBody.vue'
 import EmailEditForm from './EmailEditForm.vue'
 import PlanBody from './PlanBody.vue'
@@ -22,8 +21,8 @@ import ScheduleBody from './ScheduleBody.vue'
 /**
  * One proposal of a step, and the only card of the chat (D-091): what the model (or the marketer's
  * edit) produced, its state and, while it is a draft in the open step, the actions: approve, reject
- * with a reason, and edit where the step allows it (audience, channel plan and email text; SMS and
- * schedule editing arrive with T-036). Nothing inside it is a box of its own. A rejected variant is
+ * with a reason, and edit where the step allows it (channel plan and email text; the audience is
+ * not edited, D-096; SMS and schedule editing arrive with T-036). Nothing inside it is a box of its own. A rejected variant is
  * not a card; its step lists it in the accordion.
  */
 const props = defineProps<{
@@ -43,9 +42,7 @@ const editProblem = shallowRef<Problem | null>(null)
 const rejectProblem = shallowRef<Problem | null>(null)
 
 const isEmail = computed(() => props.kind === 'content' && props.variant.channel === 'email')
-const editable = computed(
-  () => props.kind === 'audience' || props.kind === 'channel_plan' || isEmail.value,
-)
+const editable = computed(() => props.kind === 'channel_plan' || isEmail.value)
 
 const title = computed(() => {
   const slot = labels.slot({
@@ -114,16 +111,8 @@ function openReject() {
       </Badge>
     </header>
 
-    <AudienceEditForm
-      v-if="editing && kind === 'audience'"
-      :variant="variant"
-      :busy="isBusy(`edit:${variant.id}`)"
-      :problem="editProblem"
-      @save="save"
-      @cancel="editing = false"
-    />
     <PlanEditForm
-      v-else-if="editing && kind === 'channel_plan'"
+      v-if="editing && kind === 'channel_plan'"
       :variant="variant"
       :busy="isBusy(`edit:${variant.id}`)"
       :problem="editProblem"

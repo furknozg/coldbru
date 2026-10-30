@@ -25,10 +25,12 @@ function legend(wrapper: Awaited<ReturnType<typeof mountBody>>, title: string) {
 }
 
 describe('AudienceBody', () => {
-  it('shows the rule and the total, and the three pies instead of tables', async () => {
+  it('shows the total and the three pies instead of tables, and not the rule (D-096)', async () => {
     const wrapper = await mountBody(audienceContent)
     expect(wrapper.text()).toContain('48')
-    expect(wrapper.get('pre').text()).toContain('orders.none')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('orders.none')
+    expect(wrapper.text()).not.toContain('city ===')
     expect(wrapper.findAll('figure').map((f) => f.find('figcaption').text())).toEqual([
       'Kanal kapsaması',
       'Dil',

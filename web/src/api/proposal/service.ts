@@ -83,17 +83,3 @@ export const previewVariant = (
       ...(content ? { body: { content: content as Record<string, never> } } : {}),
     }),
   )
-
-/**
- * LLM mode of the proposal service (`checks.llm.detail`, for example `mode=mock`) or `null` when
- * the service cannot be asked. A 503 readiness report still carries the check, so it is read too.
- */
-export async function getLlmMode(): Promise<string | null> {
-  try {
-    const { data, error } = await proposalApi.GET('/readyz')
-    const detail = (data ?? error)?.checks?.llm?.detail
-    return detail?.replace(/^mode=/, '') || null
-  } catch {
-    return null
-  }
-}

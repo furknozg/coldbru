@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Megaphone } from '@lucide/vue'
 import { computed, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -63,7 +64,12 @@ watch(
   <section class="flex min-h-0 flex-1 flex-col" :aria-label="t('list.title')">
     <Accordion v-model="rootOpen" type="multiple" class="min-h-0 flex-1 overflow-y-auto">
       <AccordionItem :value="ROOT" class="border-b-0">
-        <AccordionTrigger class="py-1.5">{{ t('list.title') }}</AccordionTrigger>
+        <AccordionTrigger class="py-1.5">
+          <span class="flex items-center gap-2">
+            <Megaphone class="text-caramel size-4" aria-hidden="true" />
+            {{ t('list.title') }}
+          </span>
+        </AccordionTrigger>
         <AccordionContent>
           <div
             v-if="loading"
@@ -90,7 +96,7 @@ watch(
           </p>
 
           <template v-else>
-            <Accordion v-model="groupsOpen" type="multiple">
+            <Accordion v-model="groupsOpen" type="multiple" class="pl-8">
               <AccordionItem
                 v-for="group in groups"
                 :key="group.status"
@@ -107,7 +113,7 @@ watch(
                   </span>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <ul class="flex flex-col gap-0.5">
+                  <ul class="flex flex-col gap-0.5 pl-1">
                     <CampaignRow
                       v-for="campaign in group.items"
                       :key="campaign.id"

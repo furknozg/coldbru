@@ -24,7 +24,6 @@ let wrapper: Awaited<ReturnType<typeof mountApp>>['wrapper'] | undefined
 
 beforeEach(() => {
   FakeEventSource.install()
-  vi.mocked(proposal.getLlmMode).mockResolvedValue('anthropic')
   vi.mocked(proposal.listCampaigns).mockResolvedValue([])
   vi.mocked(analytics.getCampaignSummary).mockResolvedValue(null)
 })
@@ -172,8 +171,9 @@ describe('steps in the chat', () => {
     expect(words(trigger('step-audience'))).toBe('Kitle Açık')
     // The open step's accordion is unfolded.
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('true')
-    expect(block.querySelector('pre')!.textContent).toBe(audienceContent.dsl)
-    expect(block.querySelector('pre')!.className).toContain('font-mono')
+    // The rule is not shown (D-096): no query text, only the count and the pies.
+    expect(block.querySelector('pre')).toBeNull()
+    expect(block.textContent).not.toContain(audienceContent.dsl)
     expect(block.textContent).toContain('48')
     // Three pies instead of tables (D-092): the numbers sit in their legends.
     expect(block.querySelector('table')).toBeNull()
@@ -232,7 +232,8 @@ describe('steps in the chat', () => {
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
     // Folded, the step is its approved variant; the events are inside the accordion.
     const card = folded.querySelector('article[data-slot="card"]')!
-    expect(card.querySelector('pre')!.textContent).toBe(audienceContent.dsl)
+    expect(card.querySelector('pre')).toBeNull()
+    expect(card.textContent).not.toContain(audienceContent.dsl)
     expect(folded.textContent).not.toContain('Kitle adımı onaylandı')
 
     await expand('step-audience')
@@ -259,17 +260,16 @@ describe('steps in the chat', () => {
     )
     await open(viewOf({ steps: contentSteps() }))
 
-    const cards = [...openStep()!.querySelectorAll('article')]
-    expect(cards[0]!.textContent).toContain(
-      'Merhaba {{first_name}}, %30 indirim <b>seni</b> bekliyor',
-    )
-    expect(cards[0]!.querySelector('b')).toBeNull()
-    expect(cards[0]!.textContent).toContain('UCS-2')
-    expect(words(cards[0]!)).toContain('Segment 2')
-    expect(cards[0]!.textContent).toContain('$1,04')
+    // The carousel puts the email before the SMS.
+    const [email, sms] = openStep()!.querySelectorAll('article')
+    if (!email || !sms) throw new Error('expected an email and an SMS card')
+    expect(sms.textContent).toContain('Merhaba {{first_name}}, %30 indirim <b>seni</b> bekliyor')
+    expect(sms.querySelector('b')).toBeNull()
+    expect(sms.textContent).toContain('UCS-2')
+    expect(words(sms)).toContain('Segment 2')
+    expect(sms.textContent).toContain('$1,04')
 
     expect(proposal.previewVariant).toHaveBeenCalledWith('ve', undefined)
-    const email = cards[1]!
     expect(email.querySelector('[data-preview-subject]')!.textContent).toBe('Your cart Alex')
     const frame = email.querySelector('iframe')!
     expect(frame.getAttribute('sandbox')).toBe('')
@@ -277,8 +277,8 @@ describe('steps in the chat', () => {
     // The email's HTML lives in the frame, never in the page.
     expect(email.querySelector('b')).toBeNull()
     expect(email.textContent).toContain('$0,006')
-    expect(hasButton('Onayla', cards[0]!)).toBe(true)
-    expect(hasButton('Düzenle', cards[0]!)).toBe(false)
+    expect(hasButton('Onayla', sms)).toBe(true)
+    expect(hasButton('Düzenle', sms)).toBe(false)
     expect(hasButton('Düzenle', email)).toBe(true)
   })
 
@@ -286,7 +286,7 @@ describe('steps in the chat', () => {
     vi.mocked(proposal.previewVariant).mockRejectedValueOnce(new NetworkError(new TypeError('x')))
     await open(viewOf({ steps: contentSteps() }))
 
-    const email = openStep()!.querySelectorAll('article')[1]!
+    const email = openStep()!.querySelectorAll('article')[0]!
     expect(email.querySelector('iframe')).toBeNull()
     expect(email.querySelector('[role="alert"]')!.textContent).toContain('Önizleme alınamadı')
     const blocks = email.querySelector('[data-email-blocks]')!
@@ -322,7 +322,8 @@ describe('steps in the chat', () => {
     ]
     await open(viewOf({ steps }))
 
-    const [tr, en] = [...openStep()!.querySelectorAll('article')]
+    // The carousel orders by language: English before Turkish.
+    const [en, tr] = [...openStep()!.querySelectorAll('article')]
     expect(tr!.textContent).toContain('Türkçe · Europe/Istanbul')
     expect(tr!.textContent).toContain('09:30')
     expect(tr!.textContent).toContain('Pazar sabahı')
@@ -498,51 +499,18 @@ describe('approving and rejecting', () => {
 })
 
 describe('editing', () => {
-  it('edits the audience DSL and shows the 422 problems under the field', async () => {
+  it('offers no edit for the audience (D-096): approve and reject only, and no rule text', async () => {
     const steps = flowUpTo('audience')
     steps[0]!.variants = [audienceDraft()]
     await open(viewOf({ steps }))
-    vi.mocked(proposal.editVariant).mockRejectedValueOnce(
-      ApiError.from(422, {
-        code: 'invalid_content',
-        title: 'Invalid content',
-        detail: 'The audience rule is not valid.',
-        problems: ['unknown field "citty"', 'line 1: expected an expression'],
-      }),
-    )
 
-    await button('Düzenle', openStep()!).trigger('click')
-    const area = new DOMWrapper(openStep()!.querySelector('textarea')!)
-    expect((area.element as HTMLTextAreaElement).value).toBe(audienceContent.dsl)
-    await area.setValue('citty === "İstanbul"')
-    await openStep()!
-      .querySelector('form')!
-      .dispatchEvent(new Event('submit', { cancelable: true }))
-    await flushPromises()
-
-    expect(proposal.editVariant).toHaveBeenCalledWith('va', { dsl: 'citty === "İstanbul"' })
-    const alert = openStep()!.querySelector('[role="alert"]')!
-    expect(alert.textContent).toContain('The audience rule is not valid.')
-    expect(alert.textContent).toContain('unknown field "citty"')
-    expect(alert.textContent).toContain('line 1: expected an expression')
-    // A 422 belongs to the form: no toast, and the form stays open with the text.
-    expect(document.body.querySelectorAll('[role="alert"]')).toHaveLength(1)
-    expect((openStep()!.querySelector('textarea') as HTMLTextAreaElement).value).toBe(
-      'citty === "İstanbul"',
-    )
-
-    // Fixed: the edit goes through, the view is fetched again and the form closes.
-    vi.mocked(proposal.editVariant).mockResolvedValueOnce(variantOf())
-    const before = vi.mocked(proposal.getCampaign).mock.calls.length
-    await area.setValue('city === "İzmir"')
-    await openStep()!
-      .querySelector('form')!
-      .dispatchEvent(new Event('submit', { cancelable: true }))
-    await flushPromises()
-
-    expect(proposal.editVariant).toHaveBeenLastCalledWith('va', { dsl: 'city === "İzmir"' })
-    expect(vi.mocked(proposal.getCampaign).mock.calls.length).toBe(before + 1)
-    expect(openStep()!.querySelector('form')).toBeNull()
+    const card = openStep()!.querySelector('article')!
+    expect(hasButton('Onayla', card)).toBe(true)
+    expect(hasButton('Reddet', card)).toBe(true)
+    expect(hasButton('Düzenle', card)).toBe(false)
+    expect(card.querySelector('textarea')).toBeNull()
+    expect(card.textContent).not.toContain('city ===')
+    expect(card.querySelector('[aria-label="Kitle kuralı"]')).toBeNull()
   })
 
   it('edits the channel plan with mode, primary channel and rationale', async () => {
@@ -591,7 +559,7 @@ describe('editing', () => {
       ),
     )
     await open(viewOf({ steps: contentSteps() }))
-    const email = () => openStep()!.querySelectorAll('article')[1]!
+    const email = () => openStep()!.querySelectorAll('article')[0]!
     expect(email().querySelector('iframe')!.getAttribute('srcdoc')).toContain('stored')
     const storedCalls = vi.mocked(proposal.previewVariant).mock.calls.length
 
@@ -673,7 +641,7 @@ describe('editing', () => {
 
   it('shows the 422 of a saved email under the fields and keeps the form open', async () => {
     await open(viewOf({ steps: contentSteps() }))
-    const email = () => openStep()!.querySelectorAll('article')[1]!
+    const email = () => openStep()!.querySelectorAll('article')[0]!
     await button('Düzenle', email()).trigger('click')
     vi.mocked(proposal.editVariant).mockRejectedValueOnce(
       ApiError.from(422, {
@@ -698,8 +666,15 @@ describe('editing', () => {
   })
 
   it('can leave the edit form without sending anything', async () => {
-    const steps = flowUpTo('audience')
-    steps[0]!.variants = [audienceDraft()]
+    const steps = flowUpTo('channel_plan')
+    steps[1]!.variants = [
+      variantOf({
+        id: 'vp',
+        step_id: 'step-channel_plan',
+        kind: 'channel_plan',
+        content: planContent,
+      }),
+    ]
     await open(viewOf({ steps }))
 
     await button('Düzenle', openStep()!).trigger('click')
@@ -1284,7 +1259,7 @@ describe('plain chat (D-091)', () => {
     ]
     await open(viewOf({ steps }))
     // An email under edit, with its form and the preview next to it.
-    const email = openStep()!.querySelectorAll('article')[1]!
+    const email = openStep()!.querySelectorAll('article')[0]!
     await button('Düzenle', email).trigger('click')
     await flushPromises()
     vi.mocked(proposal.editVariant).mockRejectedValueOnce(
