@@ -12,7 +12,7 @@ endif
 test: test-go test-web
 
 # At most GO_TEST_P packages run at once: each integration package starts its own Postgres/NATS
-# containers, and at the default (one per CPU) the seeded starts and timing tests starve (D-097).
+# containers, and at the default (one per CPU) the seeded starts and timing tests starve (D-098).
 GO_TEST_P ?= 2
 
 # Go unit and integration tests; integration files carry the "integration" build tag (D-051).

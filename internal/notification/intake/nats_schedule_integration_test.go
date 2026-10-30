@@ -57,7 +57,7 @@ func TestNATSScheduling(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The server stamps the target message on the clock its scheduler fires by; the host clock
-		// of the Docker VM can drift from it by a few milliseconds (D-097).
+		// of the Docker VM can drift from it by a few milliseconds (D-098).
 		fired := msg.Time
 		if fired.Before(sendAt) {
 			t.Errorf("delivered at %s, before the scheduled %s", fired.Format(time.RFC3339Nano), sendAt.Format(time.RFC3339Nano))

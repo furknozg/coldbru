@@ -100,7 +100,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-094 | Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo | Takip ve altyapı | Kabul edildi |
 | D-095 | Metin adımında kanal başına ayrı kaydırıcı (önce e-posta, sonra SMS); zamanlama adımı da kaydırıcıda | Takip ve altyapı | Kabul edildi |
 | D-096 | Kitle adımında kural (DSL) ve kitle düzenleme arayüzden kalkar; API değişmez | Takip ve altyapı | Kabul edildi |
-| D-097 | `make test-go` paket paralelliğini `-p 2` ile sınırlar (`GO_TEST_P` ile değişir); `TestNATSScheduling` zamanı sunucu saatiyle ölçer | Test ve kapsam | Kabul edildi |
+| D-098 | `make test-go` paket paralelliğini `-p 2` ile sınırlar (`GO_TEST_P` ile değişir); `TestNATSScheduling` zamanı sunucu saatiyle ölçer | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -1736,7 +1736,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Pazarlamacı uygulanan kuralı göremez ve doğrudan düzeltemez; yalnız sohbetle yönlendirir. Kullanılmayan bir API ucu kalır.
 - **Doğrulama:** `AudienceBody.spec.ts` (DSL ve `pre` yok), `CampaignPage.steps.spec.ts` ("offers no edit for the audience": Onayla ve Reddet var, Düzenle ve form yok); `AudienceEditForm.vue` silindi. Canlı: kitle kartında `pre` yok, üç pasta duruyor.
 
-## D-097: `make test-go` paket paralelliğini `-p 2` ile sınırlar; `TestNATSScheduling` sunucu saatiyle ölçer
+## D-098: `make test-go` paket paralelliğini `-p 2` ile sınırlar; `TestNATSScheduling` sunucu saatiyle ölçer
 
 - **Durum:** Kabul edildi · 2026-10-30
 - **Alan:** Test ve kapsam
