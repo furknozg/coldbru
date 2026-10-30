@@ -13,6 +13,7 @@ import type { StepKind, VariantView } from '../types'
 import AudienceBody from './AudienceBody.vue'
 import AudienceEditForm from './AudienceEditForm.vue'
 import ContentBody from './ContentBody.vue'
+import EmailEditForm from './EmailEditForm.vue'
 import PlanBody from './PlanBody.vue'
 import PlanEditForm from './PlanEditForm.vue'
 import RejectDialog from './RejectDialog.vue'
@@ -21,7 +22,7 @@ import ScheduleBody from './ScheduleBody.vue'
 /**
  * One proposal of a step: what the model (or the marketer's edit) produced, its state and, while it
  * is a draft in the open step, the actions: approve, reject with a reason, and edit where the step
- * allows it (audience and channel plan; text and schedule editing arrive with T-036).
+ * allows it (audience, channel plan and email text; SMS and schedule editing arrive with T-036).
  */
 const props = defineProps<{
   variant: VariantView
@@ -39,7 +40,10 @@ const rejecting = shallowRef(false)
 const editProblem = shallowRef<Problem | null>(null)
 const rejectProblem = shallowRef<Problem | null>(null)
 
-const editable = computed(() => props.kind === 'audience' || props.kind === 'channel_plan')
+const isEmail = computed(() => props.kind === 'content' && props.variant.channel === 'email')
+const editable = computed(
+  () => props.kind === 'audience' || props.kind === 'channel_plan' || isEmail.value,
+)
 
 const title = computed(() => {
   const slot = labels.slot({
@@ -118,6 +122,14 @@ function openReject() {
     />
     <PlanEditForm
       v-else-if="editing && kind === 'channel_plan'"
+      :variant="variant"
+      :busy="isBusy(`edit:${variant.id}`)"
+      :problem="editProblem"
+      @save="save"
+      @cancel="editing = false"
+    />
+    <EmailEditForm
+      v-else-if="editing && isEmail"
       :variant="variant"
       :busy="isBusy(`edit:${variant.id}`)"
       :problem="editProblem"

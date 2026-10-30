@@ -93,6 +93,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-087 | Arayüz: Türkçe + vue-i18n, üç kolon (kampanyalar / olay zaman çizelgesi / adım paneli), düz metin, eylemler panelde, istemci araması, profil yok, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; istemci araması, markdown yokluğu ve yan panel yerleşimi yerini aldı → D-088, D-089 |
 | D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
 | D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi |
+| D-090 | E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1607,7 +1608,28 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Alternatifler:**
   - D-087'deki yan panel ve istemci araması — reddedildi: kullanıcı sohbet ağırlıklı ve sade bir arayüz istedi.
 - **Sonuçlar / bedel:** Arama ve filtre yoktur. Uzun kampanyalarda sohbet uzar; akordiyon bunu sınırlar. Proposal API'sine bir önizleme ucu eklenir.
-- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (T-045).
+- **Uygulama notu (T-045):** Sol menüde `+` ikon düğmesi ve kampanya başlığı (yoksa brief). Sağ panel (`StepPanel.vue`) kaldırıldı; sohbet tek kolondur (`ChatStream.vue`). Onaylanan adım kendi onay kartında akordiyonla (shadcn-vue `accordion`, reka-ui) katlanır, açık adım ve eylemleri son kartın ardındadır, iptal ve yeniden dene satırı en alttadır. Başlık (`campaign_titled`) sohbet kartı değildir, üst başlığı ve liste satırını günceller. Ajan soruları ve özetleri `lib/markdown.ts` ile çizilir (`markdown-it` 15.0.3, `html: false`; `dompurify` 3.4.17, http/https/mailto linkleri, `rel="noopener noreferrer"`). Aynı andaki kartlar adım sırasıyla sıralanır. Kullanıcı subagent'ın bu yorumlarını onayladı.
+- **Doğrulama:** `make test` geçti (50 Go paketi; web 13 dosya, 122 test). `web/src/views/__tests__/CampaignPage.steps.spec.ts` (sohbetteki adımlar, eylemler, soru düğmeleri ve cevap kutusu, özet markdown'ı, dar ekran), `CampaignPage.timeline.spec.ts`, `web/src/lib/__tests__/markdown.spec.ts` (XSS). Canlı (geçici mock modu, uygulama ajanı): `+` düğmesi, başlıklar, akordiyonlar, açık metin adımı, soru kartı ve cevap kutusu masaüstü uygulamasının tarayıcı panelinde görüldü.
+
+## D-090: E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri
+
+- **Durum:** Kabul edildi · 2026-10-30
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-089 e-posta HTML'inin Proposal'a eklenen bir önizleme ucuyla `internal/content` üzerinden çizilmesini, sohbette gösterilmesini ve önizlemede düzenlenmesini istedi; D-088 ajan sorularını getirdi. Ucun biçimi, örnek adın kaynağı, HTML'in sayfaya nasıl gireceği ve düzenleme ile cevabın etkileşimi açıktı (T-045).
+- **Karar:**
+  - Uç: `POST /variants/{id}/preview`. Gövde isteğe bağlıdır: boşsa saklı içerik, doluysa kaydedilmemiş düzenlenmiş e-posta içeriği çizilir. Yanıt `{subject, html, text}`. Çizim `content.RenderEmail` ile ve Proposal'ın `CAMPAIGN_CTA_URL` ayarıyla yapılır; içerik kaydedilmez, yeni varyant oluşmaz. Yalnız e-posta varyantları içindir.
+  - `{{first_name}}` yerine dile göre kodda sabit bir örnek ad konur (tr için "Ayşe", diğerleri için "Alex"); gerçek müşteri verisi önizlemeye girmez.
+  - HTML sohbette `<iframe sandbox srcdoc>` içinde çizilir: script ve dış gezinme kapalıdır, e-postanın satır içi CSS'i uygulama stiline karışmaz.
+  - Düzenleme önizlemenin yanında bir alan formudur (konu, ön başlık, başlık, paragraflar, CTA etiketi). Değişiklik gecikmeli (debounce) bir önizleme isteği atar; Kaydet mevcut `edit` ucuna gider.
+  - Ajan sorusunun seçenekleri soru kartında düğmedir. Soru beklerken giriş kutusu serbest cevap gönderir (`POST /messages/{id}/answer`).
+- **Alternatifler:**
+  - `GET /variants/{id}/preview` yalnız saklı içerik — reddedildi: düzenlemenin sonucu ancak kaydedip yeni varyant oluşunca görünürdü.
+  - Kitledeki en uzun ad uzunluğunda dolgu ad — reddedildi: önizleme yapay görünür, Customer'a ek çağrı gerekir. Görünür yer tutucu — reddedildi: alıcının göreceği metin tam görünmez.
+  - DOMPurify + `v-html` — reddedildi: e-posta CSS'i uygulama stiliyle çakışır, güvenilmeyen HTML sayfaya girer.
+  - Önizlemede `contenteditable` — reddedildi: alanları iframe'den geri ayrıştırmak gerekir, işaretleme sızabilir.
+- **Sonuçlar / bedel:** Düzenleme sırasında her gecikmeli değişiklik bir istek atar. iframe yüksekliği içerikten hesaplanır. Düzenleme WYSIWYG değildir. Örnek ad uzun adlarda taşmayı göstermez; sınır backend'de zaten ölçülür (D-028). SMS önizlemesi, segment ve maliyet gösterimi ve zaman seçici T-036'da kalır.
+- **Uygulama notu (T-045, kullanıcı onayladı):** `flow.Service.PreviewEmail` (`internal/proposal/flow/preview.go`), örnek adlar `SampleFirstNameTR = "Ayşe"`, `SampleFirstNameEN = "Alex"`. Düzenlenmiş içerik `edit` ile aynı doğrulamadan geçer; hata 422 `invalid_content`. E-posta olmayan varyant 409 `variant_not_email`. Onaylanmış ve reddedilmiş varyantlar da önizlenir; `{}` veya `content: null` saklı içerik sayılır. iframe `sandbox=""` (izin yok), yüksekliği ölçülemediği için sabit 28rem ve CSS ile elle büyütülebilir. Önizleme gecikmesi `PREVIEW_DEBOUNCE_MS = 400`. E-posta varyantı salt okunur görünümde çizilmiş önizlemeyle gösterilir; istek başarısız olursa metin blokları ve yeniden dene.
+- **Doğrulama:** `make test` geçti. `internal/proposal/api/api_integration_test.go` `TestEmailPreviewOverREST` (saklı tr/en örnek adlarla, düzenlenmiş, geçersiz 422, SMS 409, bilinmeyen 404, view değişmez), `api_test.go` `TestPreview`, `flow/preview_test.go`, `CampaignPage.steps.spec.ts` (önizleme, düzenleme, 422, kaydet). Canlı (mock): curl ile saklı ve düzenlenmiş önizleme 200, geçersiz 422, SMS 409, bilinmeyen 404. Masaüstü uygulamasının tarayıcı panelinde sandbox iframe ekran görüntüsünde boş çıkıyor (opak köken iframe'in panel sınırlaması olduğu düşünülüyor); gerçek bir tarayıcıda gözle kontrol edilmedi.
 
 ---
 

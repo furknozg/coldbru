@@ -9,7 +9,7 @@ import AnalyticsBlock from '@/features/analytics/components/AnalyticsBlock.vue'
 import { useCampaignList } from '../composables/campaignList'
 import CampaignList from './CampaignList.vue'
 
-/** The left column: logo, the new-campaign button, the searchable list and the analytics block. */
+/** The left column (D-089): logo, a `+` for a new campaign, the campaign list, the analytics block. */
 defineProps<{
   selectedId: string | null
   analytics: { report: CampaignReport | null; loading: boolean; failed: boolean }
@@ -18,23 +18,23 @@ defineProps<{
 const emit = defineEmits<{ navigate: [] }>()
 
 const { t } = useI18n()
-const { visible, items, loading, loadingMore, hasMore, error, query, status, load, loadMore } =
-  useCampaignList()
+const { items, loading, loadingMore, hasMore, error, load, loadMore } = useCampaignList()
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 p-3">
-    <RouterLink to="/" class="self-start" :aria-label="t('app.home')" @click="emit('navigate')">
-      <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
-    </RouterLink>
-    <Button as-child>
-      <RouterLink to="/" @click="emit('navigate')"><PlusIcon />{{ t('list.new') }}</RouterLink>
-    </Button>
+    <div class="flex items-center justify-between gap-2">
+      <RouterLink to="/" :aria-label="t('app.home')" @click="emit('navigate')">
+        <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
+      </RouterLink>
+      <Button as-child variant="outline" size="icon" :title="t('list.new')">
+        <RouterLink to="/" :aria-label="t('list.new')" @click="emit('navigate')">
+          <PlusIcon />
+        </RouterLink>
+      </Button>
+    </div>
     <CampaignList
-      v-model:query="query"
-      v-model:status="status"
-      :items="visible"
-      :total="items.length"
+      :items="items"
       :selected-id="selectedId"
       :loading="loading"
       :loading-more="loadingMore"

@@ -7,7 +7,10 @@ export type CampaignView = Schemas['flow.CampaignView']
 export type StepView = Schemas['flow.StepView']
 export type VariantView = Schemas['flow.VariantView']
 export type NoteView = Schemas['flow.NoteView']
+export type ChatMessageView = Schemas['flow.ChatMessageView']
+export type EmailPreview = Schemas['flow.EmailPreview']
 export type Slot = Schemas['flow.Slot']
+export type CostSummary = CampaignView['cost']
 
 export type CampaignStatus = CampaignInfo['status']
 export type StepKind = StepView['kind']
@@ -28,6 +31,7 @@ export const CAMPAIGN_STATUSES: readonly CampaignStatus[] = [
 export const MAX_BRIEF_CHARS = 2000
 export const MAX_NOTE_CHARS = 2000
 export const MAX_REASON_CHARS = 1000
+export const MAX_ANSWER_CHARS = 1000
 
 /** Statuses a campaign can still be cancelled in (D-074). */
 export const CANCELLABLE: readonly CampaignStatus[] = ['drafting', 'scheduled', 'sending']

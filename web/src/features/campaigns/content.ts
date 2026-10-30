@@ -48,6 +48,19 @@ export interface SmsContent {
   cost: { amount: string; currency: 'USD' | 'GBP' } | null
 }
 
+/** The paragraph count the content validators accept (internal/content limits, D-071). */
+export const PARAGRAPHS_MIN = 1
+export const PARAGRAPHS_MAX = 4
+
+/** The blocks of an email as the edit and preview endpoints take them (D-090). */
+export type EmailEdit = {
+  subject: string
+  preheader: string
+  headline: string
+  paragraphs: string[]
+  cta_label: string
+}
+
 export interface EmailContent {
   subject: string
   preheader: string

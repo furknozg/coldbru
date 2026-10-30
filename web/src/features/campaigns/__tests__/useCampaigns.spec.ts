@@ -48,22 +48,4 @@ describe('useCampaigns', () => {
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids).toContain('b0')
   })
-
-  it('combines the search and the status filter', async () => {
-    vi.mocked(proposal.listCampaigns).mockResolvedValue([
-      infoOf({ id: '1', brief: 'Çağrı merkezi indirimi', status: 'drafting' }),
-      infoOf({ id: '2', brief: 'Çağrı merkezi anketi', status: 'completed' }),
-      infoOf({ id: '3', brief: 'Yaz indirimi', status: 'drafting' }),
-    ])
-    const list = useCampaigns()
-    await list.load()
-
-    list.query.value = 'ÇAĞRI'
-    expect(list.visible.value.map((c) => c.id)).toEqual(['1', '2'])
-    list.status.value = 'completed'
-    expect(list.visible.value.map((c) => c.id)).toEqual(['2'])
-    list.query.value = '  '
-    list.status.value = 'drafting'
-    expect(list.visible.value.map((c) => c.id)).toEqual(['1', '3'])
-  })
 })

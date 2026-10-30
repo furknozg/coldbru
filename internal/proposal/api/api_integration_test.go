@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net"
@@ -767,5 +768,101 @@ func TestRegenerationAfterARejectionIsMarkedByTheMock(t *testing.T) {
 		if d.ID != regen.ID && strings.Contains(string(d.Content), "[mock]") {
 			t.Errorf("%s/%s was marked though it was not regenerated: %s", d.Language, d.Channel, d.Content)
 		}
+	}
+}
+
+// TestEmailPreviewOverREST renders the email variants of the sample brief (D-090): the stored
+// blocks with the sample name of their language, unsaved edited blocks, and the errors: invalid
+// edits, an SMS variant, an unknown id. Nothing is written.
+func TestEmailPreviewOverREST(t *testing.T) {
+	s := newSystem(t)
+	info := s.create(sampleBriefText)
+	s.approve(s.waitDrafts(info.ID, flow.KindAudience, 1)[0].ID)
+	s.approve(s.waitDrafts(info.ID, flow.KindChannelPlan, 1)[0].ID)
+	texts := s.waitDrafts(info.ID, flow.KindContent, 3)
+	var tr, en, sms *flow.VariantView
+	for i := range texts {
+		switch v := &texts[i]; {
+		case v.Channel == "email" && v.Language == "tr":
+			tr = v
+		case v.Channel == "email" && v.Language == "en":
+			en = v
+		case v.Channel == "sms":
+			sms = v
+		}
+	}
+	if tr == nil || en == nil || sms == nil {
+		t.Fatalf("variants = %+v, want a Turkish email, an English email and an SMS", texts)
+	}
+	before, _ := json.Marshal(s.view(info.ID))
+
+	// 1. Stored content: the subject carries the sample name of the language, the HTML is a whole
+	// document with the escaped blocks, the button links to the CTA with the campaign id.
+	var stored content.EmailContent
+	if err := json.Unmarshal(tr.Content, &stored); err != nil {
+		t.Fatal(err)
+	}
+	var p flow.EmailPreview
+	if code, raw := s.do("POST", "/variants/"+tr.ID.String()+"/preview", "", &p); code != 200 {
+		t.Fatalf("preview = %d: %s", code, raw)
+	}
+	wantSubject := content.Expand(stored.Subject, flow.SampleFirstNameTR)
+	if p.Subject != wantSubject || !strings.HasPrefix(p.HTML, "<!DOCTYPE html>") || !strings.Contains(p.HTML, `lang="tr"`) ||
+		!strings.Contains(p.HTML, "utm_campaign="+info.ID.String()) || !strings.Contains(p.Text, content.Footer("tr")) {
+		t.Errorf("preview = %+v, want subject %q, a Turkish document and the CTA link", p, wantSubject)
+	}
+	for _, block := range append([]string{stored.Headline, stored.CTALabel}, stored.Paragraphs...) {
+		if want := content.Expand(block, flow.SampleFirstNameTR); !strings.Contains(p.HTML, html.EscapeString(want)) && !strings.Contains(p.HTML, want) {
+			t.Errorf("html lacks the block %q", want)
+		}
+	}
+	if strings.Contains(p.HTML, "{{") || strings.Contains(p.Text, "{{") {
+		t.Errorf("the placeholder survived: %q", p.Text)
+	}
+	var pe flow.EmailPreview
+	if code, raw := s.do("POST", "/variants/"+en.ID.String()+"/preview", "", &pe); code != 200 {
+		t.Fatalf("preview en = %d: %s", code, raw)
+	}
+	if !strings.Contains(pe.HTML, `lang="en"`) || strings.Contains(pe.HTML, flow.SampleFirstNameTR) || !strings.Contains(pe.Text, content.Footer("en")) {
+		t.Errorf("english preview = %+v, want the English footer and no Turkish sample name", pe)
+	}
+	if strings.Contains(string(en.Content), "{{first_name}}") && !strings.Contains(pe.HTML, flow.SampleFirstNameEN) {
+		t.Errorf("english preview lacks %q: %s", flow.SampleFirstNameEN, pe.HTML)
+	}
+
+	// 2. Edited content is rendered as is, stored fields may ride along, nothing is saved.
+	edited := map[string]any{
+		"subject": "Yeni konu {{first_name}}", "preheader": stored.Preheader, "headline": "Yeni başlık",
+		"paragraphs": []string{"Tek paragraf."}, "cta_label": stored.CTALabel, "estimated_cost_usd": stored.EstimatedCostUSD,
+	}
+	body, _ := json.Marshal(map[string]any{"content": edited})
+	var pd flow.EmailPreview
+	if code, raw := s.do("POST", "/variants/"+tr.ID.String()+"/preview", string(body), &pd); code != 200 {
+		t.Fatalf("edited preview = %d: %s", code, raw)
+	}
+	if pd.Subject != "Yeni konu "+flow.SampleFirstNameTR || !strings.Contains(pd.HTML, "Yeni başlık") || !strings.Contains(pd.Text, "Tek paragraf.") {
+		t.Errorf("edited preview = %+v", pd)
+	}
+
+	// 3. Invalid edits are 422 problems that name the field; the store is untouched either way.
+	bad := map[string]any{"subject": "", "preheader": "p", "headline": "h", "paragraphs": []string{"a"}, "cta_label": "c"}
+	body, _ = json.Marshal(map[string]any{"content": bad})
+	code, raw := s.do("POST", "/variants/"+tr.ID.String()+"/preview", string(body), nil)
+	pr := asProblem(t, code, raw, 422, api.CodeInvalidContent)
+	if len(pr.Problems) == 0 || !strings.Contains(strings.Join(pr.Problems, " "), "email.subject") {
+		t.Errorf("problems = %q", pr.Problems)
+	}
+	code, raw = s.do("POST", "/variants/"+tr.ID.String()+"/preview", `{"content":["x"]}`, nil)
+	asProblem(t, code, raw, 422, api.CodeInvalidContent)
+
+	// 4. An SMS variant and an unknown id.
+	code, raw = s.do("POST", "/variants/"+sms.ID.String()+"/preview", "", nil)
+	asProblem(t, code, raw, 409, api.CodeVariantNotEmail)
+	code, raw = s.do("POST", "/variants/"+uuid.New().String()+"/preview", "", nil)
+	asProblem(t, code, raw, 404, api.CodeNotFound)
+
+	after, _ := json.Marshal(s.view(info.ID))
+	if string(before) != string(after) {
+		t.Errorf("the campaign changed under previews:\nbefore %s\nafter  %s", before, after)
 	}
 }

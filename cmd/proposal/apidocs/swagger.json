@@ -203,6 +203,15 @@
                 ],
                 "type": "object"
             },
+            "api.PreviewRequest": {
+                "properties": {
+                    "content": {
+                        "description": "Content is unsaved edited email content in the shape the edit endpoint takes for an email,\n{\"subject\",\"preheader\",\"headline\",\"paragraphs\",\"cta_label\"}; the computed fields of a stored\nvariant may be present and are ignored. Absent, null or an empty body: the stored content is\nrendered.",
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
             "api.Problem": {
                 "properties": {
                     "code": {
@@ -695,6 +704,26 @@
                     "email_usd",
                     "sms_usd",
                     "total_usd"
+                ],
+                "type": "object"
+            },
+            "flow.EmailPreview": {
+                "properties": {
+                    "html": {
+                        "type": "string"
+                    },
+                    "subject": {
+                        "example": "Sepetin seni bekliyor, Ayşe",
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "html",
+                    "subject",
+                    "text"
                 ],
                 "type": "object"
             },
@@ -2656,6 +2685,121 @@
                     }
                 },
                 "summary": "Edit a variant by hand",
+                "tags": [
+                    "variants"
+                ]
+            }
+        },
+        "/variants/{id}/preview": {
+            "post": {
+                "description": "Renders an email variant of the content step the way it is sent (D-090): the stored blocks, or, when the body carries `content`, unsaved edited blocks that pass the validators of the edit endpoint. `{{first_name}}` is replaced by a sample name of the variant's language (\"Ayşe\" for tr, \"Alex\" otherwise) and the button links to the campaign's CTA URL. Nothing is stored and no variant is created; the variant may be in any state.",
+                "parameters": [
+                    {
+                        "description": "Variant id",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.PreviewRequest",
+                                "summary": "request",
+                                "description": "Unsaved edited content; omit the body or `content` to render the stored one"
+                            }
+                        }
+                    },
+                    "description": "Unsaved edited content; omit the body or `content` to render the stored one"
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/flow.EmailPreview"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "id is not a UUID, or malformed JSON"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "variant_not_email: the variant is not an email of the content step"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Request Entity Too Large"
+                    },
+                    "415": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Unsupported Media Type"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "The edited content failed validation; problems lists why"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Preview an email variant",
                 "tags": [
                     "variants"
                 ]

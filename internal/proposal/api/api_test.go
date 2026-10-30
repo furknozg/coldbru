@@ -218,6 +218,7 @@ func TestErrorMapping(t *testing.T) {
 		{"wrapped not found", fmt.Errorf("lookup: %w", flow.ErrNotFound), 404, api.CodeNotFound},
 		{"not open", flow.ErrNotOpen, 409, api.CodeStepNotOpen},
 		{"not draft", flow.ErrNotDraft, 409, api.CodeVariantNotDraft},
+		{"not email", flow.ErrNotEmail, 409, api.CodeVariantNotEmail},
 		{"not drafting", flow.ErrNotDrafting, 409, api.CodeCampaignNotDrafting},
 		{"has steps", flow.ErrHasSteps, 409, api.CodeCampaignHasSteps},
 		{"not approved", flow.ErrNotApproved, 409, api.CodeStepNotApproved},
@@ -383,6 +384,70 @@ func TestEdit(t *testing.T) {
 		return flow.VariantView{}, flow.ErrNotOpen
 	}
 	wantProblem(t, postJSON(t, h, path, `{"content":{"text":"x"}}`), 409, api.CodeStepNotOpen)
+}
+
+func TestPreview(t *testing.T) {
+	t.Parallel()
+	f := &fakeFlow{}
+	h, _ := newRouter(t, f)
+	path := "/variants/" + otherID.String() + "/preview"
+
+	// No body: the stored content, rendered. No media type is needed for an empty body.
+	rec := call(t, h, http.MethodPost, path, "", "")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("content type = %q", ct)
+	}
+	if p := decodeAs[flow.EmailPreview](t, rec); p.Subject != "Konu Ayşe" || p.HTML == "" || p.Text != "metin" {
+		t.Errorf("preview = %+v", p)
+	}
+	if got := f.calls(); len(got) != 1 || got[0] != "preview "+otherID.String()+" " {
+		t.Errorf("calls = %q: an empty body must reach the flow as empty content", got)
+	}
+
+	// An empty object and a null content mean the stored content too.
+	for _, body := range []string{`{}`, `{"content":null}`} {
+		if rec := postJSON(t, h, path, body); rec.Code != 200 {
+			t.Errorf("%s: status = %d: %s", body, rec.Code, rec.Body.String())
+		}
+		if got := f.calls(); got[len(got)-1] != "preview "+otherID.String()+" " {
+			t.Errorf("%s: call = %q", body, got[len(got)-1])
+		}
+	}
+
+	// Edited content reaches the flow untouched.
+	edited := `{"subject":"Yeni konu","preheader":"p","headline":"h","paragraphs":["a"],"cta_label":"c"}`
+	if rec := postJSON(t, h, path, `{"content":`+edited+`}`); rec.Code != 200 {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := f.calls(); got[len(got)-1] != "preview "+otherID.String()+" "+edited {
+		t.Errorf("call = %q", got[len(got)-1])
+	}
+
+	// The body is checked like every other: malformed JSON, unknown fields, wrong media type.
+	wantProblem(t, postJSON(t, h, path, `{"content":`), 400, api.CodeMalformedJSON)
+	wantProblem(t, postJSON(t, h, path, `{"content":{},"x":1}`), 422, api.CodeInvalidRequest)
+	wantProblem(t, call(t, h, http.MethodPost, path, "text/plain", `{}`), 415, api.CodeUnsupportedMedia)
+	wantProblem(t, call(t, h, http.MethodPost, "/variants/nope/preview", "", ""), 400, api.CodeInvalidID)
+
+	// The errors of the flow: unknown variant, an SMS, invalid edited content with its problems.
+	f.preview = func(context.Context, uuid.UUID, json.RawMessage) (flow.EmailPreview, error) {
+		return flow.EmailPreview{}, flow.ErrNotFound
+	}
+	wantProblem(t, call(t, h, http.MethodPost, path, "", ""), 404, api.CodeNotFound)
+	f.preview = func(context.Context, uuid.UUID, json.RawMessage) (flow.EmailPreview, error) {
+		return flow.EmailPreview{}, flow.ErrNotEmail
+	}
+	wantProblem(t, call(t, h, http.MethodPost, path, "", ""), 409, api.CodeVariantNotEmail)
+	f.preview = func(context.Context, uuid.UUID, json.RawMessage) (flow.EmailPreview, error) {
+		return flow.EmailPreview{}, &flow.InvalidContentError{Problems: []string{"email.subject must not be empty"}}
+	}
+	p := wantProblem(t, postJSON(t, h, path, `{"content":{"subject":""}}`), 422, api.CodeInvalidContent)
+	if len(p.Problems) != 1 || p.Problems[0] != "email.subject must not be empty" {
+		t.Errorf("problems = %q", p.Problems)
+	}
 }
 
 func TestAddContext(t *testing.T) {

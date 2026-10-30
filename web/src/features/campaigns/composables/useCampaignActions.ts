@@ -18,7 +18,7 @@ export interface ActionHooks {
 
 /**
  * Everything the marketer can do to one campaign (approve, reject, edit, regenerate, reopen, cancel,
- * confirm, add context). One call runs at a time: `pending` names it and the buttons disable on
+ * confirm, add context, answer a question of the agent). One call runs at a time: `pending` names it and the buttons disable on
  * `busy`. A failed call becomes a toast, except the 422 of a call made `inline`, which goes back to
  * the form that sent it as `problem` so it can show the validation lines next to the field.
  * A 409 also refetches the view: the state the marketer saw has moved on.
@@ -79,6 +79,11 @@ export function useCampaignActions(campaignId: () => string, hooks: ActionHooks)
       run('confirm', () => proposal.confirmCampaign(campaignId()), { returnsView: true }),
     addContext: (body: string) =>
       run('context', () => proposal.addContext(campaignId(), body), { inline: true }),
+    answer: (questionId: string, answer: string) =>
+      run(`answer:${questionId}`, () => proposal.answerQuestion(questionId, answer), {
+        returnsView: true,
+        inline: true,
+      }),
   }
 }
 

@@ -40,6 +40,7 @@ type fakeFlow struct {
 	confirm       func(ctx context.Context, id uuid.UUID) error
 	cancel        func(ctx context.Context, id uuid.UUID, reason string) error
 	answer        func(ctx context.Context, id uuid.UUID, answer string) (flow.ChatMessageView, error)
+	preview       func(ctx context.Context, id uuid.UUID, edited json.RawMessage) (flow.EmailPreview, error)
 	ofVariant     func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	ofStep        func(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 }
@@ -81,6 +82,14 @@ func (f *fakeFlow) Answer(ctx context.Context, id uuid.UUID, answer string) (flo
 		return f.answer(ctx, id, answer)
 	}
 	return flow.ChatMessageView{ID: otherID, CampaignID: campID, Kind: flow.MessageKindAnswer, Body: answer, ReplyTo: &id}, nil
+}
+
+func (f *fakeFlow) PreviewEmail(ctx context.Context, id uuid.UUID, edited json.RawMessage) (flow.EmailPreview, error) {
+	f.note("preview " + id.String() + " " + string(edited))
+	if f.preview != nil {
+		return f.preview(ctx, id, edited)
+	}
+	return flow.EmailPreview{Subject: "Konu Ayşe", HTML: "<!DOCTYPE html><html></html>", Text: "metin"}, nil
 }
 
 func (f *fakeFlow) Hub() *flow.Hub {

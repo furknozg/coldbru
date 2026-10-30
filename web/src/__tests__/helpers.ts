@@ -129,6 +129,7 @@ export function viewOf(overrides: Partial<CampaignView> = {}): CampaignView {
     updated_at: NOW,
     steps: [],
     notes: [],
+    messages: [],
     cost: { sms_usd: '0.0000', email_usd: '0.0000', total_usd: '0.0000' },
     ...overrides,
   }

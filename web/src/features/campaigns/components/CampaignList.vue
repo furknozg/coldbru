@@ -2,21 +2,15 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import FormSelect from '@/components/FormSelect.vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toProblem } from '../problem'
-import { useLabels } from '../labels'
-import type { StatusFilter } from '../composables/useCampaigns'
-import { CAMPAIGN_STATUSES, type CampaignInfo } from '../types'
+import type { CampaignInfo } from '../types'
 import CampaignStatusBadge from './CampaignStatusBadge.vue'
 
+/** The loaded campaigns, newest first: status, title (or the brief) and time (D-089). */
 const props = defineProps<{
-  /** Rows after the search and the status filter. */
   items: readonly CampaignInfo[]
-  /** Rows loaded, before filtering; tells an empty list from an empty search. */
-  total: number
   selectedId: string | null
   loading: boolean
   loadingMore: boolean
@@ -30,46 +24,28 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const query = defineModel<string>('query', { required: true })
-const status = defineModel<StatusFilter>('status', { required: true })
-
 const { t, d } = useI18n()
-const labels = useLabels()
-
-const statusOptions = computed(() => [
-  { value: 'all' as const, label: t('list.allStatuses') },
-  ...CAMPAIGN_STATUSES.map((value) => ({ value, label: labels.status(value) })),
-])
 
 const errorMessage = computed(() => (props.error ? toProblem(props.error, t).message : ''))
 </script>
 
 <template>
   <section class="flex min-h-0 flex-1 flex-col gap-2" :aria-label="t('list.title')">
-    <div class="flex flex-col gap-2">
-      <Input
-        v-model="query"
-        type="search"
-        :placeholder="t('list.searchPlaceholder')"
-        :aria-label="t('list.searchLabel')"
-        maxlength="200"
-      />
-      <FormSelect v-model="status" :options="statusOptions" :aria-label="t('list.statusLabel')" />
-    </div>
-
     <div v-if="loading" class="flex flex-col gap-2" role="status" :aria-label="t('common.loading')">
       <Skeleton v-for="n in 4" :key="n" class="h-16 w-full" />
     </div>
 
-    <div v-else-if="error && total === 0" role="alert" class="text-destructive space-y-2 text-sm">
+    <div
+      v-else-if="error && items.length === 0"
+      role="alert"
+      class="text-destructive space-y-2 text-sm"
+    >
       <p>{{ errorMessage }}</p>
       <Button variant="outline" size="sm" @click="emit('retry')">{{ t('common.retry') }}</Button>
     </div>
 
-    <p v-else-if="total === 0" class="text-muted-foreground text-sm">{{ t('list.empty') }}</p>
-
     <p v-else-if="items.length === 0" class="text-muted-foreground text-sm">
-      {{ t('list.noMatch') }}
+      {{ t('list.empty') }}
     </p>
 
     <ul v-else class="-mx-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-1 pb-1">
@@ -87,7 +63,13 @@ const errorMessage = computed(() => (props.error ? toProblem(props.error, t).mes
               {{ d(campaign.created_at, 'short') }}
             </time>
           </span>
-          <span class="line-clamp-2 break-words">{{ campaign.brief }}</span>
+          <span
+            class="line-clamp-2 break-words"
+            :class="campaign.title ? 'font-medium' : ''"
+            :title="campaign.title ? campaign.brief : undefined"
+          >
+            {{ campaign.title || campaign.brief }}
+          </span>
         </RouterLink>
       </li>
       <li v-if="hasMore">

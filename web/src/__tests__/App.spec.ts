@@ -48,12 +48,17 @@ async function open(path = '/') {
 }
 
 describe('app shell', () => {
-  it('draws the logo, the new-campaign button, the title and the LLM mode, with no profile block', async () => {
+  it('draws the logo, a + for a new campaign, the title and the LLM mode, with no profile block, search or filter', async () => {
     const { wrapper } = await open()
 
     expect(wrapper.get('h1').text()).toBe('Smart Campaign Composer')
     expect(wrapper.get('img[src="/logo.png"]').attributes('alt')).toBe('coldbru')
-    expect(wrapper.text()).toContain('Yeni kampanya')
+    const plus = wrapper.get('aside a[aria-label="Yeni kampanya"]')
+    expect(plus.attributes('href')).toBe('/')
+    expect(plus.find('svg').exists()).toBe(true)
+    expect(plus.text()).toBe('')
+    expect(wrapper.find('input[type="search"]').exists()).toBe(false)
+    expect(wrapper.find('aside select').exists()).toBe(false)
     expect(wrapper.get('[data-mode]').text()).toBe('LLM: mock')
     expect(wrapper.get('[data-mode]').classes()).toContain('bg-primary')
     expect(wrapper.text()).not.toMatch(/profil/i)
@@ -113,30 +118,17 @@ describe('campaign list', () => {
     expect(proposal.listCampaigns).toHaveBeenCalledWith(0)
   })
 
-  it('filters the loaded list by brief text, ignoring Turkish case', async () => {
-    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
+  it('shows the title of a campaign that has one, the brief otherwise', async () => {
+    vi.mocked(proposal.listCampaigns).mockResolvedValue([
+      infoOf({ id: 'a', brief: 'Uzun bir brief metni', title: 'Sepet hatırlatması' }),
+      infoOf({ id: 'b', brief: 'Başlıksız brief' }),
+    ])
     const { wrapper } = await open()
 
-    await wrapper.get('input[type="search"]').setValue('İZMİR')
-
     const rows = wrapper.findAll('aside li')
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.text()).toContain('İzmir hafta sonu')
-    expect(proposal.listCampaigns).toHaveBeenCalledTimes(1)
-
-    await wrapper.get('input[type="search"]').setValue('yok böyle')
-    expect(wrapper.text()).toContain('Aramayla eşleşen kampanya yok.')
-  })
-
-  it('filters by status', async () => {
-    vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
-    const { wrapper } = await open()
-
-    await wrapper.get('select[aria-label="Duruma göre filtrele"]').setValue('drafting')
-
-    const rows = wrapper.findAll('aside li')
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.text()).toContain('Ankara')
+    expect(rows[0]!.text()).toContain('Sepet hatırlatması')
+    expect(rows[0]!.text()).not.toContain('Uzun bir brief metni')
+    expect(rows[1]!.text()).toContain('Başlıksız brief')
   })
 
   it('loads the next page from the offset of what the server already handed out', async () => {

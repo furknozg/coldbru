@@ -38,6 +38,41 @@ describe('buildTimeline', () => {
     ])
   })
 
+  it('puts the approval of a step before the opening of the next one at the same instant', () => {
+    const audience = stepOf('audience', {
+      id: 's1',
+      created_at: at(1),
+      approved_at: at(2),
+      status: 'approved',
+    })
+    audience.variants = [
+      variantOf({ id: 'v1', step_id: 's1', created_at: at(1), approved_at: at(2) }),
+    ]
+    const plan = stepOf('channel_plan', { id: 's2', created_at: at(2) })
+    plan.variants = [
+      variantOf({ id: 'v2', step_id: 's2', kind: 'channel_plan', created_at: at(2) }),
+    ]
+    const items = build(viewOf({ created_at: at(0), steps: [audience, plan] }), [
+      {
+        name: 'screen_result',
+        data: { at: at(0), campaign_id: 'c1', verdict: 'allow', reason: '' },
+      },
+      { name: 'campaign_cancelled', data: { at: at(2), campaign_id: 'c1', reason: 'x' } },
+    ])
+
+    expect(items.map((i) => `${i.kind}:${i.stepId ?? '-'}`)).toEqual([
+      'brief:-',
+      'screen:-',
+      'stepOpened:s1',
+      'variantCreated:s1',
+      'variantApproved:s1',
+      'stepApproved:s1',
+      'stepOpened:s2',
+      'variantCreated:s2',
+      'campaignCancelled:-',
+    ])
+  })
+
   it('names a step version above 1 and finds the slot of an approved variant in the view', () => {
     const step = stepOf('content', { id: 's2', version: 2, created_at: at(1) })
     step.variants = [
@@ -79,6 +114,93 @@ describe('buildTimeline', () => {
     const opened = items.filter((i) => i.kind === 'stepOpened')
     expect(opened).toHaveLength(1)
     expect(opened[0]!.at).toBe(at(5))
+  })
+
+  it('turns chat messages into cards: questions and summaries as agent markdown, answers as the marketer’s', () => {
+    const step = stepOf('content', { id: 's3', created_at: at(1) })
+    const items = build(
+      viewOf({
+        steps: [step],
+        messages: [
+          {
+            id: 'q',
+            campaign_id: 'c1',
+            step_id: 's3',
+            kind: 'question',
+            body: 'Hangi ton?',
+            options: ['Samimi', 'Resmi'],
+            created_at: at(2),
+          },
+          {
+            id: 'a',
+            campaign_id: 'c1',
+            step_id: 's3',
+            kind: 'answer',
+            body: 'Samimi',
+            reply_to: 'q',
+            created_at: at(3),
+          },
+          {
+            id: 'm',
+            campaign_id: 'c1',
+            step_id: 's3',
+            kind: 'summary',
+            body: '**kısa**',
+            created_at: at(4),
+          },
+        ],
+      }),
+      [
+        {
+          name: 'summary_posted',
+          data: {
+            at: at(5),
+            campaign_id: 'c1',
+            step_id: 's3',
+            message_id: 'm2',
+            slot: { language: 'tr', channel: 'sms' },
+            markdown: 'SMS özeti',
+          },
+        },
+      ],
+    )
+
+    const byKind = Object.fromEntries(items.map((i) => [i.key, i]))
+    expect(byKind['message:q']).toMatchObject({
+      kind: 'question',
+      author: 'system',
+      markdown: true,
+      title: 'Metin için soru',
+      question: { id: 'q', options: ['Samimi', 'Resmi'] },
+      stepId: 's3',
+    })
+    expect(byKind['message:a']).toMatchObject({
+      kind: 'answer',
+      author: 'user',
+      title: 'Cevap',
+      body: 'Samimi',
+    })
+    expect(byKind['message:a']!.markdown).toBeUndefined()
+    expect(byKind['message:m']).toMatchObject({
+      kind: 'summary',
+      markdown: true,
+      title: 'Metin özeti',
+    })
+    expect(byKind['message:m2']!.title).toBe('Metin · Türkçe · SMS özeti')
+    expect(items.map((i) => i.kind)).toEqual([
+      'brief',
+      'stepOpened',
+      'question',
+      'answer',
+      'summary',
+      'summary',
+    ])
+  })
+
+  it('gives an approved step its approval card even without approved_at', () => {
+    const step = stepOf('audience', { id: 's1', created_at: at(2), status: 'approved' })
+    const approved = build(viewOf({ steps: [step] })).find((i) => i.kind === 'stepApproved')
+    expect(approved).toMatchObject({ at: at(2), stepId: 's1' })
   })
 
   it('carries the step of a card so a click can focus it, and only user cards are messages', () => {

@@ -2,37 +2,19 @@ import { computed, shallowRef } from 'vue'
 
 import { CAMPAIGN_PAGE_SIZE, listCampaigns } from '@/api/proposal/service'
 
-import type { CampaignInfo, CampaignStatus } from '../types'
+import type { CampaignInfo } from '../types'
 
-export type StatusFilter = CampaignStatus | 'all'
-
-const fold = (text: string) => text.toLocaleLowerCase('tr-TR')
-
-/**
- * The campaign list of the left column: pages loaded newest first, searched and filtered in the
- * browser (D-087: the API has no search, so only the loaded pages are searched).
- */
+/** The campaign list of the left column: pages loaded newest first (D-089: no search, no filter). */
 export function useCampaigns() {
   const items = shallowRef<readonly CampaignInfo[]>([])
   const loading = shallowRef(false)
   const loadingMore = shallowRef(false)
   const error = shallowRef<unknown>(null)
   const hasMore = shallowRef(false)
-  const query = shallowRef('')
-  const status = shallowRef<StatusFilter>('all')
 
   /** How many rows the server has handed out; the next page starts here, not at `items.length`. */
   let fetched = 0
   let generation = 0
-
-  const visible = computed(() => {
-    const needle = fold(query.value.trim())
-    return items.value.filter(
-      (c) =>
-        (status.value === 'all' || c.status === status.value) &&
-        (needle === '' || fold(c.brief).includes(needle)),
-    )
-  })
 
   async function load() {
     const mine = ++generation
@@ -84,6 +66,7 @@ export function useCampaigns() {
     if (
       current.status === info.status &&
       current.brief === info.brief &&
+      current.title === info.title &&
       current.updated_at === info.updated_at
     ) {
       return
@@ -95,13 +78,10 @@ export function useCampaigns() {
 
   return {
     items: computed(() => items.value),
-    visible,
     loading: computed(() => loading.value),
     loadingMore: computed(() => loadingMore.value),
     error: computed(() => error.value),
     hasMore: computed(() => hasMore.value),
-    query,
-    status,
     load,
     loadMore,
     upsert,

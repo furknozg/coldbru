@@ -8,17 +8,24 @@ import { Button } from '@/components/ui/button'
 
 import { useActions } from '../composables/campaignActions'
 import { useLabels } from '../labels'
-import type { CampaignStatus, StepView } from '../types'
+import type { CampaignStatus, CostSummary, StepView } from '../types'
 import ConfirmDialog from './ConfirmDialog.vue'
 import VariantCard from './VariantCard.vue'
 
 /**
- * The step the panel is focused on: its state, the failure and the way out of it, and its variants.
- * An approved step of a drafting campaign can be reopened, which discards it and every later step.
+ * One step in the chat (D-089): its state, the failure and the way out of it, and its variants with
+ * their actions. An approved step of a drafting campaign can be reopened, which discards it and
+ * every later step. `headless` leaves the title to the block around it (the accordion trigger);
+ * `cost` is the campaign's estimated cost, shown under the content step.
  */
-const props = defineProps<{ step: StepView; campaignStatus: CampaignStatus }>()
+const props = defineProps<{
+  step: StepView
+  campaignStatus: CampaignStatus
+  headless?: boolean
+  cost?: CostSummary
+}>()
 
-const { t } = useI18n()
+const { t, n } = useI18n()
 const labels = useLabels()
 const actions = useActions()
 
@@ -44,7 +51,7 @@ async function reopen() {
 
 <template>
   <section class="flex flex-col gap-3" :aria-label="labels.stepKind(step.kind)">
-    <header class="flex items-center justify-between gap-2">
+    <header v-if="!headless" class="flex items-center justify-between gap-2">
       <h3 class="text-base font-semibold">
         {{ labels.stepKind(step.kind) }}
         <span v-if="step.version > 1" class="text-muted-foreground text-xs font-normal">
@@ -113,6 +120,22 @@ async function reopen() {
         />
       </div>
     </details>
+
+    <dl
+      v-if="cost && step.kind === 'content'"
+      class="text-muted-foreground grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-xs"
+      data-cost
+    >
+      <dt class="col-span-2 font-medium">{{ t('cost.title') }}</dt>
+      <dt>{{ t('channel.email') }}</dt>
+      <dd class="text-foreground tabular-nums">{{ n(Number(cost.email_usd), 'usd') }}</dd>
+      <dt>{{ t('channel.sms') }}</dt>
+      <dd class="text-foreground tabular-nums">{{ n(Number(cost.sms_usd), 'usd') }}</dd>
+      <dt class="font-medium">{{ t('cost.total') }}</dt>
+      <dd class="text-foreground font-medium tabular-nums">
+        {{ n(Number(cost.total_usd), 'usd') }}
+      </dd>
+    </dl>
 
     <div v-if="canReopen">
       <Button size="sm" variant="outline" :disabled="actions.busy.value" @click="reopening = true">
