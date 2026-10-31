@@ -117,15 +117,16 @@ func TestSampleBriefAudience(t *testing.T) {
 	h := liveServer(t)
 	d := preview(t, h, sampleFilter()).AudiencePreview
 
-	want := coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3}
-	if d.Count != 46 || d.Coverage != want {
-		t.Errorf("count = %d, coverage = %+v; want 46 and %+v (D-010, D-062)", d.Count, d.Coverage, want)
+	// Seed of 3000 users (D-113): 155 match the brief, 138 of them reachable.
+	want := coverage{Both: 85, EmailOnly: 35, SmsOnly: 18, Unreachable: 17}
+	if d.Count != 138 || d.Coverage != want {
+		t.Errorf("count = %d, coverage = %+v; want 138 and %+v (D-010, D-062, D-113)", d.Count, d.Coverage, want)
 	}
-	if sms := d.Coverage.Both + d.Coverage.SmsOnly; sms != 33 {
-		t.Errorf("SMS-eligible = %d, want 33", sms)
+	if sms := d.Coverage.Both + d.Coverage.SmsOnly; sms != 103 {
+		t.Errorf("SMS-eligible = %d, want 103", sms)
 	}
-	if email := d.Coverage.Both + d.Coverage.EmailOnly; email != 33 {
-		t.Errorf("email-eligible = %d, want 33", email)
+	if email := d.Coverage.Both + d.Coverage.EmailOnly; email != 120 {
+		t.Errorf("email-eligible = %d, want 120", email)
 	}
 	if d.Count != d.Coverage.Both+d.Coverage.EmailOnly+d.Coverage.SmsOnly {
 		t.Errorf("count %d is not both + emailOnly + smsOnly", d.Count)
@@ -296,13 +297,13 @@ func TestRecipientsPagingCoversTheAudienceOnce(t *testing.T) {
 			t.Fatalf("page %d is short (%d) but hasNextPage is true", pages, len(page.Nodes))
 		}
 		after = page.PageInfo.EndCursor
-		if pages > 10 {
+		if pages > 20 {
 			t.Fatal("paging does not end")
 		}
 	}
 
-	if len(all) != 46 || pages != 5 {
-		t.Errorf("got %d recipients in %d pages, want 46 in 5", len(all), pages)
+	if len(all) != 138 || pages != 14 {
+		t.Errorf("got %d recipients in %d pages, want 138 in 14", len(all), pages)
 	}
 	seen := map[string]bool{}
 	smsOK, emailOK := 0, 0
@@ -330,8 +331,8 @@ func TestRecipientsPagingCoversTheAudienceOnce(t *testing.T) {
 			smsOK++
 		}
 	}
-	if emailOK != 33 || smsOK != 33 {
-		t.Errorf("email-eligible = %d, SMS-eligible = %d, want 33 and 33", emailOK, smsOK)
+	if emailOK != 120 || smsOK != 103 {
+		t.Errorf("email-eligible = %d, SMS-eligible = %d, want 120 and 103", emailOK, smsOK)
 	}
 
 	// The same people an independent SQL query finds for the sample brief.
@@ -370,8 +371,8 @@ func TestRecipientsLastPageAndEmptyAudience(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &d); err != nil {
 			t.Fatal(err)
 		}
-		if n := len(d.AudienceRecipients.Nodes); n != 46 || d.AudienceRecipients.PageInfo.HasNextPage {
-			t.Errorf("nodes = %d, hasNextPage = %v; want 46, false", n, d.AudienceRecipients.PageInfo.HasNextPage)
+		if n := len(d.AudienceRecipients.Nodes); n != 138 || d.AudienceRecipients.PageInfo.HasNextPage {
+			t.Errorf("nodes = %d, hasNextPage = %v; want 138, false", n, d.AudienceRecipients.PageInfo.HasNextPage)
 		}
 	})
 	t.Run("no match", func(t *testing.T) {

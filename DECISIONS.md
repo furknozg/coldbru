@@ -4,7 +4,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 | No | Karar | Alan | Durum |
 |----|-------|------|-------|
-| D-001 | Ham stub'ın deterministik üreticiyle segmentasyon verisine zenginleştirilmesi | Mock provider ve seed | Kabul edildi |
+| D-001 | Ham stub'ın deterministik üreticiyle segmentasyon verisine zenginleştirilmesi | Mock provider ve seed | Kabul edildi; 1000 kullanıcı ölçeği yerini aldı → D-113 |
 | D-002 | Backend dili Go | Takip ve altyapı | Kabul edildi |
 | D-003 | Tek Postgres 18 servisi, servis başına veritabanı ve sahip rol | Takip ve altyapı | Kabul edildi |
 | D-004 | customer_db filtrelenmiş DWH: yıldız şema, kart/CVV/IBAN hariç | Kitle ve izinler | Kabul edildi |
@@ -64,7 +64,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-058 | Customer GraphQL sözleşmesi: alan başına tipli filtre işleçleri, TimeValue @oneOf, tam işlem seti, Decimal string, null-güvenli eq/ne; gqlgen v0.17.95 | LLM entegrasyonu | Kabul edildi |
 | D-059 | Prompt'lar repoda dosya, go:embed ile gömülü; sürüm kimliği ad@semver + istek öneki sha256'sı, kilit dosyası testi | LLM entegrasyonu | Kabul edildi |
 | D-060 | Prompt'lar düz metin; llm_call sürüm, önbellek ve sonuç sütunları alır; sürüm token olayına ve llm_usage'a taşınır; prompt_snapshot yok | LLM entegrasyonu | Kabul edildi; outcome listesi yerini aldı → D-068 |
-| D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi |
+| D-061 | Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama | Test ve kapsam | Kabul edildi; `make eval-live`, promptfoo ve vaka kaynağı yerini aldı → D-115 |
 | D-062 | Filtre derleyicisi: ulaşılabilirlik koşulu, bellekte şehir sözlüğü, CHECK'li kategoriler doğrulanır, elle SQL, sınırlar 8/100/100/5 sn | Kitle ve izinler | Kabul edildi |
 | D-063 | Customer kimliği: çağıran başına env token, kapsamlar kodda ve şemada @hasScope; 401 ve alan başına FORBIDDEN; consent:write yalnız admin token | Kitle ve izinler | Kabul edildi |
 | D-064 | İzin işlemleri: id başına consentStatus satırı, kilit + max+1 kimlik, yalnız değişiklikte kayıt, kapalı source listesi, make consent | Kitle ve izinler | Kabul edildi |
@@ -115,13 +115,18 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-109 | SMS izleme linki metnin sonuna eklenir; bütçe 160 − link uzunluğu | LLM entegrasyonu | Kabul edildi |
 | D-110 | Kenar çubuğunda tek kaydırma alanı en dıştaki aside | Takip ve altyapı | Kabul edildi |
 | D-111 | Dashboard'da kartlı metrik grupları, önce başarı metrikleri, yükleme iskeletleri ve hareket tercihine uyan animasyonlar | Takip ve altyapı | Kabul edildi |
-| D-112 | Sohbette adım akordiyonları varsayılan kapalı, mesajlar fade-in ile gelir | Takip ve altyapı | Kabul edildi |
+| D-112 | Sohbette adım akordiyonları varsayılan kapalı, mesajlar fade-in ile gelir | Takip ve altyapı | Kabul edildi; başarısız adımın kapalı gelmesi yerini aldı → D-117 |
+| D-113 | Seed 3000 kullanıcı: 2000 ek kullanıcı kaynak satırlardan deterministik yeniden örnekleme ile | Mock provider ve seed | Kabul edildi |
+| D-114 | Kampanya veya ajan bütçesi kapsam dışı | Test ve kapsam | Kabul edildi |
+| D-115 | Prompt değerlendirmesi yalnız Go içi `make eval`: elle yazılmış ~12 vaka, ayrı hedef ve CI adımı; promptfoo ve `make eval-live` kapsam dışı | Test ve kapsam | Kabul edildi |
+| D-116 | Sipariş kalemi ve ürün alanları segment filtrelerine girmez | LLM entegrasyonu | Kabul edildi |
+| D-117 | Üretimi başarısız olan adımın akordiyonu kendiliğinden açılır | Takip ve altyapı | Kabul edildi |
 
 ---
 
 ## D-001: Ham stub'ın deterministik üreticiyle segmentasyon verisine zenginleştirilmesi
 
-- **Durum:** Kabul edildi · 2026-10-26
+- **Durum:** Kabul edildi · 2026-10-26; 1000 kullanıcı ölçeği yerini aldı → D-113 · 2026-10-31
 - **Alan:** Mock provider ve seed
 - **Bağlam:** Brief "birkaç bin kullanıcılık seed" ve örnek olarak "son 30 günde sepete ekleyip almayan İstanbul'daki kullanıcılar" istiyor. Elimizdeki `stub/acw_user_data.csv` 1000 satırlık İngiliz Faker export'u: email, telefon, kanal izni, alışveriş geçmişi yok; `Address City` 980 benzersiz değer (şehir filtresi anlamsız).
 - **Karar:** Ham dosya `stub/source/acw_user_data.csv` olarak dondurulur. `stub/generate_stub_data.py` (stdlib, `SEED=20261026`, `AS_OF=2026-10-26`) bundan `stub/acw_user_data.csv` (orijinal 23 kolon + 32 kolon) ve 8 ilişkili CSV üretir: products, orders, order_items, events (son 90 gün), cart_items (30 gün sonra `abandoned`), consents (olay günlüğü; son satır güncel izin), campaigns, campaign_messages. `City` yeniden çekilir: TR %60 / GB %40, nüfus ağırlıklı (İstanbul TR'nin %35'i); `Language` tr/en; tek para birimi GBP; başlıklar orijinalle uyumlu Title Case. Ayrıntı: `stub/README.md`.
@@ -608,7 +613,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - CloudEvents 1.0 JSON — reddedildi: ek bağımlılık ve NATS bağlaması için ek ayar.
   - Protobuf — reddedildi: kod üretimi ekler, mesajlar elle okunamaz.
 - **Sonuçlar / bedel:** Şema doğrulaması ve sürüm uyumu elle korunur; ortak bir şema kaydı yoktur. Olay listesi ve `data` alanları `docs/domain-model.md`'de taslaktır.
-- **Doğrulama:** 2026-10-27'de (T-012): `internal/platform/events` zarfı ve konu adı birim testleriyle, relay üzerinden yayınlanan zarfın `id`'sinin `Nats-Msg-Id` ile aynı olması entegrasyon testiyle doğrulandı. Olay kataloğu hâlâ taslak.
+- **Doğrulama:** 2026-10-27'de (T-012): `internal/platform/events` zarfı ve konu adı birim testleriyle, relay üzerinden yayınlanan zarfın `id`'sinin `Nats-Msg-Id` ile aynı olması entegrasyon testiyle doğrulandı. Olay kataloğu 2026-10-31'de (T-039) koddan kesinleştirildi: `docs/domain-model.md` §6 (`proposal.confirmed`, `proposal.cancelled`, `proposal.token_completed`, `notification.started`, `notification.completed`, `redirect.clicked`).
 
 ## D-036: Canlı dashboard Notification'dan; kampanya özetleri Analytics'te
 
@@ -989,7 +994,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-061: Prompt değerlendirmesi 3 katman (make test, make eval, make eval-live) + promptfoo; LLM hakem yok; arayüzde sürüm yok; live testte önbellek tanılama
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; `make eval-live`, promptfoo ve vaka kaynağı yerini aldı → D-115 · 2026-10-31
 - **Alan:** Test ve kapsam
 - **Bağlam:** Prompt sürümlemesi ancak değişikliğin etkisi ölçülebilirse anlamlıdır (`docs/research/05-prompt-versioning.md` §4). Brief testlerin gerçek API anahtarı olmadan çalışmasını istiyor; D-025 `live` build tag'ini ayırdı.
 - **Karar:**
@@ -1996,7 +2001,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-112: Sohbette adım akordiyonları varsayılan kapalı, mesajlar fade-in ile gelir
 
-- **Durum:** Kabul edildi · 2026-10-31
+- **Durum:** Kabul edildi · 2026-10-31; başarısız adımın kapalı gelmesi yerini aldı → D-117 · 2026-10-31
 - **Alan:** Takip ve altyapı
 - **Bağlam:** D-091 her adımın olay ve eylemlerini o adımın akordiyonuna koydu; açık adımın akordiyonu açık geliyordu. Kullanıcı sohbette eylem akordiyonunun varsayılan olarak kapalı olmasını ve sohbet mesajlarının fade-in ile gelmesini istedi (T-051).
 - **Karar:**
@@ -2009,15 +2014,83 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Uygulama notu (T-051):** `StepBlock.vue` `expanded = chosen ?? false`; `ChatMessage`, `SystemLine`, `StreamLine`, `VariantLine`, `VariantCard` ve adım satırı `motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300`; anahtarlar sabit olduğu için SSE güncellemesi animasyonu yeniden oynatmaz.
 - **Doğrulama:** 2026-10-31'de: `make test` geçti. `CampaignPage.steps.spec.ts` "starts with the open step folded and unfolds it on a click"; adım akordiyonunu açık bekleyen testler önce açacak şekilde güncellendi. Canlı: taslak bir kampanyada üç adımın (iki onaylı, bir açık) akordiyonu `aria-expanded="false"`.
 
+## D-113: Seed 3000 kullanıcı: 2000 ek kullanıcı kaynak satırlardan deterministik yeniden örnekleme ile
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Mock provider ve seed
+- **Bağlam:** Brief "birkaç bin kullanıcılık bir seed" istiyor. D-001'in üreticisi ham dosyadaki 1000 satırı zenginleştiriyor; `customer_db`'de 1000 kullanıcı var (T-039).
+- **Karar:** `stub/generate_stub_data.py` aynı `SEED` ile toplam 3000 kullanıcı üretir. İlk 1000 kullanıcı ham satırlardan eskisi gibi gelir. Ek 2000 kullanıcının ad dışı profil alanları (yaş, maaş, emeklilik, araç, bakmakla yükümlü, medeni durum, işe uzaklık) rastgele seçilen bir kaynak satırdan, ad ve soyadı kaynaktaki ad ve soyadların karışımından gelir. E-posta ve telefon benzersizdir. Ülke, şehir, dil, sipariş, sepet, izin ve olaylar mevcut dağılımlarla aynı kodla üretilir. Kart numarası, kart tarihleri, CVV ve IBAN yine hiçbir çıktıya yazılmaz.
+- **Alternatifler:**
+  - 5000 kullanıcı — reddedildi: kullanıcı 3000'i seçti, seed ve testler daha hızlı kalır.
+  - 1000'de kalıp README'de belirtmek — reddedildi: brief'teki açık bir gereksinimden sapma olurdu.
+  - Tamamen sentetik kullanıcılar — reddedildi: dağılımların elle ayarlanması gerekirdi, kaynakla tutarlılık azalırdı.
+- **Sonuçlar / bedel:** Aynı profiller ek kullanıcılarda tekrar eder. Stub CSV'leri yeniden üretilir; kullanıcı sayısına bağlı testler ve seed süresi değişir. 3000, "birkaç bin"in alt sınırındadır.
+- **Uygulama notu (T-039):** `TOTAL_USERS = 3000`; ek satırlar `rng.choice(src_rows)` kopyasıdır, ad ve soyad kaynak ad listelerinden ayrı ayrı çekilir, hassas kolonlar boşaltılır. Telefonlar da artık benzersizdir (çakışmada yeniden çekilir). Bir oturum `AS_OF`'u aşarsa tümü geri kaydırılır: 3000 kullanıcıyla `03_customer_seed.sql`'in `now()` kontrolü (D-017) 22 zaman damgasında düşüyordu; dağılım değişmez. İlk 1000 satırın stub CSV'deki ham kart kolonları eskisi gibidir ve `dwh`'ye girmez (D-004). Satırlar: sipariş 11.912, sipariş kalemi 27.871, olay 137.566, sepet 11.896, izin 6.705. Örnek brief'in kitlesi 46 → 138 (85/35/18/17), plan 120 e-posta + 18 SMS; en/SMS dolduğu için metin yuvası 3 → 4.
+- **Doğrulama:** 2026-10-31'de: üretici iki kez çalıştırıldı, dokuz CSV'nin md5'i aynı; 3000 benzersiz e-posta, 1001+ satırlarda kart/IBAN yok, `AS_OF`'tan sonra zaman damgası yok. `make test` geçti (55 Go paketi): `TestSampleBriefAudience`, `TestSampleBriefByLocale`, `TestSampleBriefDeliversEndToEnd` (138 teslimat, CTR 3/138), `TestSampleBriefConfirmsAndPublishes`, `TestSampleBriefContentWithTheRealGenerator` (4 yuva), `TestStatusEligibilityAgreesWithAudienceRecipients` (`consent.MaxIDs` 1000'lik parçalarla). Canlı stack'in Postgres'i yeniden yüklenmedi.
+
+## D-114: Kampanya veya ajan bütçesi kapsam dışı
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** "Bütçenin anlamı" açık konu olarak duruyordu: kampanya harcama tavanı mı, ajan token tavanı mı (T-039).
+- **Karar:** Harcamayı veya token kullanımını durduran bir bütçe yoktur. Tahmini teslimat maliyeti onay ekranında, LLM maliyeti analitikte görünür (D-071, D-083, D-097); karar insandadır. README'de kapsam dışı olarak belirtilir.
+- **Alternatifler:**
+  - Kampanya harcama tavanı (tahmin aşarsa onay engellenir) — reddedildi: Proposal şeması, API ve arayüz değişirdi.
+  - Ajan token tavanı — reddedildi: akış ortasında yeni bir hata durumu eklerdi.
+- **Sonuçlar / bedel:** Pahalı bir kampanyayı veya kaçak bir LLM döngüsünü durduran otomatik bir sınır yoktur; LLM tarafında yalnız onarım deneme sınırları (D-027, D-069) vardır.
+- **Doğrulama:** README'de kapsam dışı notu (T-040).
+
+## D-115: Prompt değerlendirmesi yalnız Go içi `make eval`: elle yazılmış ~12 vaka, ayrı hedef ve CI adımı; promptfoo ve `make eval-live` kapsam dışı
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** D-061 `make eval`, `make eval-live` ve promptfoo'yu kabul etmişti; kodda hiçbiri yoktu (T-039).
+- **Karar:**
+  - `eval/cases/` altında segment, metin ve ön eleme prompt'ları için yaklaşık 12 vaka, elle yazılmış kayıtlı model yanıtlarıyla (JSON). Vakalar hem iyi yanıtları hem bilinen bozuklukları (SMS/konu limit aşımı, `{{first_name}}` dışı değişken, katalog dışı alan, prompt injection) içerir ve beklenen sonucu (kabul, onarım istenir, ret) belirtir.
+  - `make eval` vakaları anahtarsız olarak Go içindeki doğrulama hattından geçirir ve vaka başına sonuç basar. `make test`'in parçası değildir; GitHub Actions'ta `make test`'ten sonra ayrı bir adımda koşar (D-105).
+  - promptfoo, `make eval-live` ve `make eval-record` yoktur.
+- **Alternatifler:**
+  - D-061'i tam uygulamak — reddedildi: Node bağımlılığı, YAML'da tekrar eden kurallar ve API maliyeti.
+  - Gerçek modelden kaydedilen yanıtlar — reddedildi: API maliyeti ve prompt değişince eskiyen kayıtlar.
+  - `make test`'in parçası — reddedildi: eval raporu test çıktısında kaybolurdu.
+- **Sonuçlar / bedel:** Vakalar gerçek modelin kaçamaklarını değil, doğrulayıcının bilinen bozuklukları yakaladığını kanıtlar. Ton ve model karşılaştırması yoktur.
+- **Uygulama notu (T-039):** `eval/eval_test.go` `//go:build eval` etiketli bir testtir; anahtarsız tek yol `llmtest.MessagesServer` `testing.TB` üzerine kurulu olduğu için `cmd/eval` yerine seçildi. Kayıtlı turlar gerçek `anthropic.Client`'a bu sunucudan verilir: `Client.Screen`, `Client.ProposeSegment` (`llm.NewCustomerTools` + kitle sayısı vakadan gelen sahte önizleyici), `contentgen.Generator.Generate` (SMS bütçesi 125). Doğrulayıcı mantığı kopyalanmadı. 16 vaka: ön eleme 3 (sıradan, enjeksiyon, max_tokens), segment 7 (örnek brief, bilinmeyen alan, sözdizimi hatası, tip uyuşmazlığı, boş kitle, araçsız metin, ret), metin 6 (iyi SMS ve e-posta, SMS bütçe aşımı, 80'i aşan konu, izinsiz yer tutucu, max_tokens). Kitle sayısı ve Customer filtre hataları, `channel_plan` ve `schedule` prompt'ları kapsam dışıdır (`eval/README.md`). `make eval EVAL_RUN=<vaka>` tek vaka koşar.
+- **Doğrulama:** 2026-10-31'de: `make eval` 16/16 geçti; bir beklenti çevrilince FAIL ve çıkış kodu 2, geri alınınca geçti. `make test` eval paketini koşmaz (`[no test files]`). `.github/workflows/test.yml`'de `make test`'ten sonra `make eval` adımı.
+
+## D-116: Sipariş kalemi ve ürün alanları segment filtrelerine girmez
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-042 sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceğini açık bırakmıştı. Katalogda `orders`, `cartItems` ve `events` ilişkileri ile `favouriteCategory` var; `fact_order_item` ve `dim_product` filtrelenemiyor (T-039).
+- **Karar:** DSL kataloğu, Customer GraphQL şeması ve SQL derleyicisi değişmez. Ürün hedeflemesi `favouriteCategory`, sepet kalemleri ve olay kategorisi üzerinden yapılır. README'de kapsam dışı olarak belirtilir.
+- **Alternatifler:**
+  - `orders.items.some(...)` ile ürün adı, kategori ve fiyat — reddedildi: katalog, şema ve derleyici değişirdi; örnek brief bunlarsız çalışıyor.
+- **Sonuçlar / bedel:** "Son 90 günde X kategorisinden satın alanlar" gibi sipariş kalemi düzeyinde hedefleme yapılamaz.
+- **Doğrulama:** Katalogda sipariş kalemi ve ürün ilişkisi yok (`internal/proposal/catalog/metadata.yaml`).
+
+## D-117: Üretimi başarısız olan adımın akordiyonu kendiliğinden açılır
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-027 ve D-069'da onarım denemeleri tükenince adım başarısız olur; hata mesajı ve "yeniden üret" adımın akordiyonundadır (D-091). D-112 adım akordiyonlarını varsayılan kapalı yaptı, böylece hata bir tık arkada kaldı (T-039).
+- **Karar:** Bir adımın son üretimi başarısızsa akordiyonu kendiliğinden açılır; okuyucu kapatırsa adımın durumu değişene kadar kapalı kalır. D-112'nin geri kalanı geçerlidir.
+- **Alternatifler:**
+  - Kapalı kalıp başlıkta kırmızı "başarısız" işareti — reddedildi: yeniden üretmek bir tık daha isterdi.
+- **Sonuçlar / bedel:** Başarısız bir adım sohbette yer kaplar.
+- **Uygulama notu (T-039):** `StepBlock.vue` `failed = step.failed && !step.generating`, `expanded = chosen ?? failed`; `chosen` adım durumu veya başarısızlık durumu değişince sıfırlanır, böylece yeniden üretim akordiyonu kapatır, yeni bir başarısızlık yeniden açar.
+- **Doğrulama:** 2026-10-31'de: `make test` geçti (335 Vitest testi). `CampaignPage.steps.spec.ts` "opens a step whose generation failed by itself, and keeps it closed once the reader folds it (D-117)" ve "keeps an open step that did not fail folded, generating or not (D-112, D-117)"; "shows why a generation failed and regenerates the step" güncellendi. Canlıda başarısız adım üretilmedi (anthropic modda kampanya açılmaz), testle doğrulandı.
+
 ---
 
 ## Açık konular
 
 Seçenekler, kaynaklar ve öneriler için bkz. [docs/research/](docs/research/README.md) (2026-10-27). Oradaki öneriler karar değildir.
 
-- Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042)
-- Olay listesi ve `data` alanlarının kesinleşmesi (taslak: `docs/domain-model.md`) (D-035)
-- Üç onarım denemesi başarısız olunca kullanıcıya ne gösterilir (D-027); ön eleme işaretlerse akış durur ve gerekçe gösterilir (D-069), arayüzü T-035'te
-- Bütçenin anlamı: kampanya harcama tavanı ve/veya ajan token tavanı
-- promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061)
-- Seed: 1000 kullanıcının "birkaç bin"e nasıl çıkarılacağı; kampanya stub'larının ne zaman ve hangi DB'ye yükleneceği
+2026-10-31 (T-039) itibarıyla açık konu yok. Kapananlar:
+
+- Sipariş kalemi ve ürün alanlarının ilişki filtrelerine girip girmeyeceği (D-042) → D-116, girmez.
+- Olay listesi ve `data` alanlarının kesinleşmesi (D-035) → `docs/domain-model.md` §6 olay kataloğu koddan güncellendi.
+- Üç onarım denemesi başarısız olunca kullanıcıya ne gösterilir (D-027) → sohbette "Üretim başarısız oldu." ve yeniden üret (D-091); adımın akordiyonu kendiliğinden açılır (D-117).
+- Bütçenin anlamı → D-114, kapsam dışı.
+- promptfoo sürümü, `eval/cases/` vaka biçimi ve `make eval-record` akışı (D-061) → D-115.
+- Seed ölçeği → D-113, 3000 kullanıcı. Kampanya stub'ları DB'ye yüklenmez; kampanyalar Proposal'da üretilir.

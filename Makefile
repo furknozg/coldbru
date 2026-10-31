@@ -1,4 +1,4 @@
-.PHONY: test test-go test-unit test-web coverage generate generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts consent web-image
+.PHONY: test test-go test-unit test-web eval coverage generate generate-sqlc generate-openapi generate-web-api generate-graphql generate-catalog generate-prompts consent web-image
 
 # testcontainers-go needs the Docker socket. Docker Desktop on macOS keeps it under
 # ~/.docker/run; point DOCKER_HOST there only if it exists and the caller set nothing.
@@ -26,6 +26,15 @@ test-unit:
 
 test-web:
 	pnpm -C web test:unit --run
+
+# Prompt evaluation (D-115): every eval/cases/*.json (a brief, a hand-written model answer and the
+# expected outcome) runs through the real validation pipeline against a scripted Messages API
+# server, so no API key is needed; one line per case, non-zero exit on any mismatch. Not part of
+# `make test` (the file is behind the eval build tag); CI runs it as its own step after make test.
+# Run from the package directory with no package argument: in that mode go test streams the
+# per-case lines instead of keeping them for a failure. Filter with EVAL_RUN=<case name>.
+eval:
+	cd eval && go test -tags=eval -count=1 -run '^TestEval$$$(if $(EVAL_RUN),/$(EVAL_RUN),)'
 
 # Unit test coverage, reported to coverage/ (gitignored); no thresholds (D-052).
 coverage:

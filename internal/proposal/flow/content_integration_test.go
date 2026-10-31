@@ -94,8 +94,8 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			slots = append(slots, slot{l.Language, "sms", l.SMS})
 		}
 	}
-	if len(slots) != 3 {
-		t.Fatalf("slots = %v, want the three of the sample brief", slots)
+	if len(slots) != 4 { // tr/en x email/sms all have recipients with the 3000-user seed (D-113)
+		t.Fatalf("slots = %v, want the four of the sample brief", slots)
 	}
 
 	// Script one answer per slot; the first slot gets an over-long answer first, then a repair.
@@ -145,7 +145,7 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 
 	h.approveAll(camp.ID, flow.KindChannelPlan)
 	cs := h.step(camp.ID, flow.KindContent)
-	if len(cs.Variants) != 3 || cs.Failed {
+	if len(cs.Variants) != 4 || cs.Failed {
 		t.Fatalf("content step = %d variants, failed %v %q", len(cs.Variants), cs.Failed, cs.Reason)
 	}
 
@@ -195,8 +195,8 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			contentRows = append(contentRows, r)
 		}
 	}
-	if len(contentRows) != 4 {
-		t.Fatalf("%d content llm_call rows, want 4 (3 slots, one repaired)", len(contentRows))
+	if len(contentRows) != 5 {
+		t.Fatalf("%d content llm_call rows, want 5 (4 slots, one repaired)", len(contentRows))
 	}
 	repaired, accepted := 0, 0
 	for _, r := range contentRows {
@@ -209,12 +209,12 @@ func TestSampleBriefContentWithTheRealGenerator(t *testing.T) {
 			accepted++
 		}
 	}
-	if repaired != 1 || accepted != 3 {
-		t.Errorf("%d failed first attempts and %d accepted rows recorded, want 1 and 3", repaired, accepted)
+	if repaired != 1 || accepted != 4 {
+		t.Errorf("%d failed first attempts and %d accepted rows recorded, want 1 and 4", repaired, accepted)
 	}
 	calls := h.llm.StreamCalls()
-	if len(calls) != 4 {
-		t.Fatalf("%d model calls, want 4", len(calls))
+	if len(calls) != 5 {
+		t.Fatalf("%d model calls, want 5", len(calls))
 	}
 	if !strings.Contains(string(calls[1].UserJSON), `"repair":{"attempt":2`) || strings.Contains(string(calls[0].UserJSON), `"repair"`) {
 		t.Errorf("repair data: first call %s, second call %s", calls[0].UserJSON, calls[1].UserJSON)

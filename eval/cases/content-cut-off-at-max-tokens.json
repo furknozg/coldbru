@@ -1,0 +1,25 @@
+{
+  "description": "The streamed answer stops at max_tokens before the JSON is complete. The adapter refuses to parse it (llm.InvalidOutputError) and contentgen counts it as a failed attempt with the rule invalid_output (D-071); the complete answer of the next attempt is accepted.",
+  "prompt": "content",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "language": "tr",
+    "channel": "sms",
+    "recipients": 33,
+    "max_first_name_length": 9
+  },
+  "turns": [
+    {
+      "text": "{\"sms\":{\"text\":\"Merhaba {{first_name}}, sepetindeki ürünler seni bekli",
+      "stop_reason": "max_tokens"
+    },
+    {
+      "json": {
+        "sms": {"text": "Merhaba {{first_name}}, sepetindeki ürünler seni bekliyor: %30 indirim fırsatını kaçırma!"},
+        "email": null,
+        "summary": "Samimi ve kısa bir hatırlatma; indirim %30."
+      }
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "invalid_output"}
+}

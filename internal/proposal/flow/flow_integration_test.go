@@ -75,15 +75,15 @@ func countRows(t *testing.T, h *harness, sql string, args ...any) int {
 	return n
 }
 
-// The sample brief of the case, start to finish (D-070): screen allow, audience of 46 (20/13/13/3),
-// plan primary_fallback with email as primary (33 email, 13 sms), content only for the
+// The sample brief of the case, start to finish (D-070): screen allow, audience of 138 (85/35/18/17
+// with the 3000-user seed, D-113), plan primary_fallback with email as primary (120 email, 18 sms), content only for the
 // (language, channel) pairs that have recipients, one schedule per language, and the Confirmer
 // once at the end. Every model call has its llm_call row.
 func TestSampleBriefEndToEnd(t *testing.T) {
 	h := newHarness(t)
 	prev := h.scriptAudienceAndPlan(llm.ModePrimaryFallback, llm.ChannelEmail)
-	if prev.Count != 46 || prev.Coverage != (customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3}) {
-		t.Fatalf("the seed changed: the sample audience is %d with %+v, want 46 with 20/13/13/3", prev.Count, prev.Coverage)
+	if prev.Count != 138 || prev.Coverage != (customer.Coverage{Both: 85, EmailOnly: 35, SmsOnly: 18, Unreachable: 17}) {
+		t.Fatalf("the seed changed: the sample audience is %d with %+v, want 138 with 85/35/18/17", prev.Count, prev.Coverage)
 	}
 	langs := langsOf(prev)
 	locales := localesOf(prev)
@@ -103,8 +103,8 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 	}
 	var aud flow.AudienceContent
 	decodeInto(t, audStep.Variants[0].Content, &aud)
-	if audStep.Variants[0].Status != flow.VariantStatusDraft || aud.DSL != sampleDSL || aud.Count != 46 ||
-		aud.Coverage != (flow.Coverage{Both: 20, EmailOnly: 13, SMSOnly: 13, Unreachable: 3}) || len(aud.ByLanguage) != len(langs) ||
+	if audStep.Variants[0].Status != flow.VariantStatusDraft || aud.DSL != sampleDSL || aud.Count != 138 ||
+		aud.Coverage != (flow.Coverage{Both: 85, EmailOnly: 35, SMSOnly: 18, Unreachable: 17}) || len(aud.ByLanguage) != len(langs) ||
 		!strings.HasPrefix(string(aud.Filter), "{") {
 		t.Fatalf("audience content = %+v", aud)
 	}
@@ -124,11 +124,11 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 	}
 	var plan flow.PlanContent
 	decodeInto(t, planStep.Variants[0].Content, &plan)
-	if plan.Mode != llm.ModePrimaryFallback || plan.Primary != llm.ChannelEmail || plan.Recipients != (flow.Recipients{Email: 33, SMS: 13, Total: 46}) {
-		t.Fatalf("plan content = %+v, want primary_fallback email with 33 email / 13 sms", plan)
+	if plan.Mode != llm.ModePrimaryFallback || plan.Primary != llm.ChannelEmail || plan.Recipients != (flow.Recipients{Email: 120, SMS: 18, Total: 138}) {
+		t.Fatalf("plan content = %+v, want primary_fallback email with 120 email / 18 sms", plan)
 	}
 	in := h.llm.ChannelPlanInputs()
-	if len(in) != 1 || in[0].Brief != sampleBrief || in[0].Coverage.Count != 46 || in[0].Coverage.Coverage.Both != 20 {
+	if len(in) != 1 || in[0].Brief != sampleBrief || in[0].Coverage.Count != 138 || in[0].Coverage.Coverage.Both != 85 {
 		t.Errorf("plan input = %+v", in)
 	}
 	h.mustApprove(planStep.Variants[0])
@@ -158,7 +158,7 @@ func TestSampleBriefEndToEnd(t *testing.T) {
 		}
 	}
 	for _, r := range h.content.Requests() {
-		if r.Recipients <= 0 || r.Brief != sampleBrief || r.Plan.Mode != llm.ModePrimaryFallback || r.Audience.Count != 46 || r.RejectionReason != "" || r.StepID != contentStep.ID {
+		if r.Recipients <= 0 || r.Brief != sampleBrief || r.Plan.Mode != llm.ModePrimaryFallback || r.Audience.Count != 138 || r.RejectionReason != "" || r.StepID != contentStep.ID {
 			t.Errorf("content request = %+v", r)
 		}
 	}
@@ -642,7 +642,7 @@ func TestEditAudienceRecompilesAndRecounts(t *testing.T) {
 	}
 	var aud flow.AudienceContent
 	decodeInto(t, nv.Content, &aud)
-	if nv.ID == orig.ID || nv.Status != flow.VariantStatusDraft || aud.DSL != edited || aud.Count != want.Count || aud.Count == 46 ||
+	if nv.ID == orig.ID || nv.Status != flow.VariantStatusDraft || aud.DSL != edited || aud.Count != want.Count || aud.Count == 138 ||
 		aud.Coverage.Both != want.Coverage.Both || !strings.HasPrefix(string(aud.Filter), "{") {
 		t.Fatalf("edited variant = %+v content %+v (preview %+v)", nv, aud, want)
 	}
@@ -697,8 +697,8 @@ func TestEditPlanContentAndSchedule(t *testing.T) {
 	}
 	var pc flow.PlanContent
 	decodeInto(t, nv.Content, &pc)
-	if pc.Mode != llm.ModeBoth || pc.Rationale != "the marketer wants both" || pc.Recipients != (flow.Recipients{Email: 33, SMS: 33, Total: 66}) {
-		t.Errorf("edited plan = %+v, want both with 33 + 33 messages", pc)
+	if pc.Mode != llm.ModeBoth || pc.Rationale != "the marketer wants both" || pc.Recipients != (flow.Recipients{Email: 120, SMS: 103, Total: 223}) {
+		t.Errorf("edited plan = %+v, want both with 120 + 103 messages", pc)
 	}
 	h.mustApprove(nv)
 	h.idle()
@@ -1185,7 +1185,7 @@ func TestNoteDuringGenerationDropsTheStaleResult(t *testing.T) {
 	}
 	var aud flow.AudienceContent
 	decodeInto(t, step.Variants[0].Content, &aud)
-	if aud.DSL != sampleDSL || aud.Count != 46 {
+	if aud.DSL != sampleDSL || aud.Count != 138 {
 		t.Errorf("the variant is from the stale call: %+v", aud)
 	}
 	in := h.llm.SegmentInputs()

@@ -1,0 +1,13 @@
+{
+  "description": "The sample brief of the case study: an ordinary marketing request. The pre-screen allows it and names the campaign.",
+  "prompt": "screen",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun."
+  },
+  "turns": [
+    {
+      "json": {"verdict": "allow", "reason": "Sıradan bir pazarlama isteği: belirli bir kitleye indirim hatırlatması.", "title": "İstanbul sepet hatırlatması %30"}
+    }
+  ],
+  "expect": {"verdict": "accepted"}
+}

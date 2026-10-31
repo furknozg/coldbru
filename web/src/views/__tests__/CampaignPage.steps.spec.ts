@@ -822,14 +822,17 @@ describe('failure and recovery actions', () => {
       viewOf({ steps: flowUpTo('content', { generating: true }) }),
     )
 
-    // The failure and its action are in the step's accordion, folded until unfolded (D-112).
-    await expand('step-content')
+    // The failure and its action are in the step's accordion, which opens by itself (D-117).
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('true')
     expect(openStep()!.textContent).toContain('Üretim başarısız oldu.')
     expect(openStep()!.textContent).toContain('Model 3 denemede geçerli çıktı vermedi')
     await button('Yeniden üret', openStep()!).trigger('click')
     await flushPromises()
 
     expect(proposal.regenerateStep).toHaveBeenCalledWith('step-content')
+    // The failure is gone, so the accordion is an ordinary one again: folded (D-112).
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
+    await expand('step-content')
     expect(openStep()!.textContent).toContain('Üretiliyor…')
     expect(openStep()!.textContent).not.toContain('Yeniden üret')
   })
@@ -946,6 +949,57 @@ describe('chat behaviour', () => {
 
     await expand('step-audience')
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('opens a step whose generation failed by itself, and keeps it closed once the reader folds it (D-117)', async () => {
+    const failed = flowUpTo('content', {
+      failed: true,
+      failure_reason: 'Model 3 denemede geçerli çıktı vermedi',
+    })
+    await open(viewOf({ steps: failed }))
+
+    // Open without a click: the reason and the way to try again are on screen.
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('true')
+    expect(openStep()!.textContent).toContain('Üretim başarısız oldu.')
+    expect(hasButton('Yeniden üret', openStep()!)).toBe(true)
+    // The earlier, approved steps still start folded.
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
+
+    // Folded by the reader: it stays folded through a refetch that changes nothing.
+    await expand('step-content')
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
+    FakeEventSource.last.emit('snapshot', viewOf({ steps: failed }))
+    await flushPromises()
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
+
+    // A regenerate clears the failure; the step is an ordinary open step again, folded (D-112).
+    FakeEventSource.last.emit(
+      'snapshot',
+      viewOf({ steps: flowUpTo('content', { failed: true, generating: true }) }),
+    )
+    await flushPromises()
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
+    expect(openStep()!.textContent).not.toContain('Üretim başarısız oldu.')
+
+    // The regenerate fails too: the accordion opens again by itself.
+    FakeEventSource.last.emit(
+      'snapshot',
+      viewOf({ steps: flowUpTo('content', { failed: true, failure_reason: 'Yine olmadı' }) }),
+    )
+    await flushPromises()
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('true')
+    expect(openStep()!.textContent).toContain('Yine olmadı')
+  })
+
+  it('keeps an open step that did not fail folded, generating or not (D-112, D-117)', async () => {
+    await open(viewOf({ steps: flowUpTo('content', { generating: true }) }))
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
+
+    // Not generating either: still folded.
+    FakeEventSource.last.emit('snapshot', viewOf({ steps: flowUpTo('content') }))
+    await flushPromises()
+    expect(trigger('step-content').getAttribute('aria-expanded')).toBe('false')
   })
 
   it('lets the reader unfold the open step and an approved one, and keeps the choice', async () => {
@@ -1167,7 +1221,7 @@ describe('plain chat (D-091)', () => {
     })
     await open(viewOf({ steps }))
 
-    await expand('step-content')
+    // A failed step's accordion is open from the start (D-117).
     const inside = openStep()!.querySelector('[data-slot="accordion"]')!
     expect(inside.textContent).toContain('Üretim başarısız oldu.')
     expect(inside.textContent).toContain('Model geçerli çıktı vermedi')

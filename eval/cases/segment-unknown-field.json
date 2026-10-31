@@ -1,0 +1,21 @@
+{
+  "description": "The first proposal uses cityName, a field that is not in the catalog. catalog.Check rejects it as UNKNOWN_FIELD with a suggestion; the loop sends the error back as an is_error tool_result and the repaired proposal is accepted.",
+  "prompt": "segment",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun."
+  },
+  "turns": [
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "cityName === \"İstanbul\" && lastCartAddDate >= ago(\"30d\") && orders.none(o => o.orderDate >= ago(\"30d\"))"}}
+      ]
+    },
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "city === \"İstanbul\" && lastCartAddDate >= ago(\"30d\") && orders.none(o => o.orderDate >= ago(\"30d\"))"}},
+        {"name": "send_summary", "input": {"markdown": "**Kitle:** son 30 günde sepetine ürün ekleyen ve bu sürede sipariş vermeyen İstanbul'daki müşteriler."}}
+      ]
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "UNKNOWN_FIELD"}
+}

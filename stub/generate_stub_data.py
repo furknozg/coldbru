@@ -2,7 +2,8 @@
 """Enrich the raw ACW user export into a segmentation-ready stub dataset.
 
 Input  (never modified):  stub/source/acw_user_data.csv   - original 1000-row Faker export
-Output (regenerated):     stub/acw_user_data.csv          - original 23 columns + enrichment columns
+Output (regenerated):     stub/acw_user_data.csv          - original 23 columns + enrichment columns;
+                                                            1000 raw rows + 2000 resampled rows (D-113)
                           stub/acw_products.csv
                           stub/acw_orders.csv
                           stub/acw_order_items.csv
@@ -26,6 +27,10 @@ SEED = 20261026
 AS_OF = datetime(2026, 10, 26, 12, 0, 0)          # "now" for the whole dataset (UTC)
 EVENT_WINDOW_DAYS = 90                             # behavioural events kept for this long
 OPEN_CART_DAYS = 30                                # cart item older than this => abandoned
+TOTAL_USERS = 3000                                 # raw rows first, then resampled rows (D-113)
+# Raw columns never copied into a resampled row: card data and IBAN stay out of every output.
+SENSITIVE_COLUMNS = ("Credit Card Start Date", "Credit Card Expiry Date", "Credit Card Number",
+                     "Credit Card CVV", "Bank IBAN")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "source", "acw_user_data.csv")
 
@@ -195,10 +200,25 @@ def main():
         by_category[p["category"]].append(p)
     categories = list(CATALOGUE.keys())
 
+    # ---------------- users: raw rows first, then resampled rows up to TOTAL_USERS (D-113)
+    # A resampled row copies one random raw row's profile (age, salary, vehicle, address, ...) and
+    # takes its first and last name from two other random raw rows. Card data and IBAN are blanked.
+    first_names = [r[col["First Name"]] for r in src_rows]
+    last_names = [r[col["Last Name"]] for r in src_rows]
+    user_rows_src = list(src_rows)
+    while len(user_rows_src) < TOTAL_USERS:
+        row = list(rng.choice(src_rows))
+        row[col["First Name"]] = rng.choice(first_names)
+        row[col["Last Name"]] = rng.choice(last_names)
+        for name in SENSITIVE_COLUMNS:
+            row[col[name]] = ""
+        user_rows_src.append(row)
+
     # ---------------- users: base enrichment
     users = []
     seen_emails = set()
-    for idx, row in enumerate(src_rows):
+    seen_phones = set()
+    for idx, row in enumerate(user_rows_src):
         uid = "CUS-%06d" % (idx + 1)
         first, last = row[col["First Name"]], row[col["Last Name"]]
         age = int(row[col["Age (Years)"]])
@@ -221,10 +241,15 @@ def main():
         seen_emails.add(email)
         if rng.random() < 0.04:
             phone = ""
-        elif country == "TR":
-            phone = "+905%02d%07d" % (rng.choice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30, 32, 33, 35, 36, 38, 41, 42, 43, 44, 51, 52, 53, 54, 55, 59]) % 100, rng.randint(0, 9999999))
         else:
-            phone = "+447%09d" % rng.randint(0, 999999999)
+            while True:                                # redraw on the rare collision: phones are unique
+                if country == "TR":
+                    phone = "+905%02d%07d" % (rng.choice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30, 32, 33, 35, 36, 38, 41, 42, 43, 44, 51, 52, 53, 54, 55, 59]) % 100, rng.randint(0, 9999999))
+                else:
+                    phone = "+447%09d" % rng.randint(0, 999999999)
+                if phone not in seen_phones:
+                    break
+            seen_phones.add(phone)
 
         status = wchoice(rng, [("active", 95), ("inactive", 3), ("deleted", 2)])
         activity = wchoice(rng, [("churned", 25), ("low", 30), ("medium", 30), ("high", 15)])
@@ -315,6 +340,7 @@ def main():
             sid = "SES-%07d" % session_seq[0]
             platform = u["platform"] if rng.random() < 0.8 else wchoice(rng, PLATFORMS[u["country"]])
             ev = []
+            session_items, session_order = [], None     # what this session creates, for the clamp below
 
             def emit(kind, product=None, value="", order_id=""):
                 ev.append({"when": t + timedelta(seconds=len(ev) * rng.randint(15, 150) + rng.randint(0, 30)),
@@ -343,6 +369,7 @@ def main():
                     else:
                         open_cart[p["id"]] = item
                         u["cart_items"].append(item)
+                        session_items.append(item)
                     session_cart.append(p["id"])
             if open_cart and rng.random() < 0.08:
                 pid = rng.choice(list(open_cart))
@@ -359,6 +386,21 @@ def main():
                 for i in open_cart.values():
                     i["status"], i["converted"], i["order"] = "converted", order["when"], order
                 open_cart = {}
+                session_order = order
+            # A session drawn minutes before `end` (AS_OF or the deletion) may run past it. Shift the
+            # whole session back so its last timestamp is `end`: nothing is dated after "now" (D-017).
+            latest = max([e["when"] for e in ev] + ([session_order["when"]] if session_order else []))
+            if latest > end:
+                shift = latest - end
+                for e in ev:
+                    e["when"] -= shift
+                for i in session_items:
+                    i["added"] -= shift
+                if session_order:
+                    session_order["when"] -= shift
+                    for i in u["cart_items"]:
+                        if i["order"] is session_order:
+                            i["converted"] = session_order["when"]
             u["events"].extend(ev)
         for i in open_cart.values():
             if (AS_OF - i["added"]).days > OPEN_CART_DAYS:

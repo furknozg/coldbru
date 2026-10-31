@@ -61,8 +61,8 @@ func TestSampleBriefByLocale(t *testing.T) {
 		sum.Unreachable += l.Coverage.Unreachable
 		n += l.Count
 	}
-	if n != 46 || d.Count != 46 || sum != d.Coverage {
-		t.Errorf("byLocale counts sum to %d (coverage %+v), want 46 and %+v", n, sum, d.Coverage)
+	if n != 138 || d.Count != 138 || sum != d.Coverage { // 138 reachable with the 3000-user seed (D-113)
+		t.Errorf("byLocale counts sum to %d (coverage %+v), want 138 and %+v", n, sum, d.Coverage)
 	}
 	if !slices.IsSortedFunc(d.ByLocale, func(a, b localeCoverage) int {
 		return cmp.Or(cmp.Compare(a.Language, b.Language), cmp.Compare(a.Timezone, b.Timezone))

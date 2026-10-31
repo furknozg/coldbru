@@ -320,7 +320,12 @@ func TestStatusEligibilityAgreesWithAudienceRecipients(t *testing.T) {
 		channel string
 		want    map[string]bool
 	}{{"email", emailOK}, {"sms", smsOK}} {
-		got := consentStatus(t, h, ids, tc.channel)
+		// The seed has 3000 customers (D-113) and consentStatus takes at most MaxIDs per call:
+		// ask in pages, in request order.
+		var got []status
+		for start := 0; start < len(ids); start += consent.MaxIDs {
+			got = append(got, consentStatus(t, h, ids[start:min(start+consent.MaxIDs, len(ids))], tc.channel)...)
+		}
 		if len(got) != len(ids) {
 			t.Fatalf("%s: rows = %d, want %d", tc.channel, len(got), len(ids))
 		}
