@@ -1,0 +1,42 @@
+# Runs `make test` (Go unit + integration tests with testcontainers, and the web unit tests) on every
+# push and pull request (D-105). The ubuntu-latest runner ships Docker, which testcontainers needs
+# (D-025). No secrets: the tests use scripted LLM doubles and never read ANTHROPIC_API_KEY.
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # web/package.json has no "packageManager" field, so the pnpm version is pinned here, the same
+      # one as web/Dockerfile (PNPM_VERSION). pnpm must be installed before setup-node uses its cache.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - run: pnpm -C web install --frozen-lockfile
+
+      - run: make test
