@@ -1882,7 +1882,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Alternatifler:**
   - Tek Playwright smoke testi — reddedildi: tarayıcı indirmesi ve çalışan yığın gerektirir, `make test` dışında kalır.
 - **Sonuçlar / bedel:** SSE akışı, router ve gerçek API ile ekran etkileşimi tarayıcıda yalnız elle doğrulanmış olur.
-- **Doğrulama:** README'de kapsam dışı olarak belirtilecek (T-040).
+- **Doğrulama:** README'nin "Kapsam dışı / yetişmeyenler" bölümünde (T-040).
 
 ## D-105: make test'i koşan GitHub Actions pipeline'ı
 
@@ -2040,7 +2040,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Kampanya harcama tavanı (tahmin aşarsa onay engellenir) — reddedildi: Proposal şeması, API ve arayüz değişirdi.
   - Ajan token tavanı — reddedildi: akış ortasında yeni bir hata durumu eklerdi.
 - **Sonuçlar / bedel:** Pahalı bir kampanyayı veya kaçak bir LLM döngüsünü durduran otomatik bir sınır yoktur; LLM tarafında yalnız onarım deneme sınırları (D-027, D-069) vardır.
-- **Doğrulama:** README'de kapsam dışı notu (T-040).
+- **Doğrulama:** README'nin "Kapsam dışı / yetişmeyenler" bölümünde (T-040).
 
 ## D-115: Prompt değerlendirmesi yalnız Go içi `make eval`: elle yazılmış ~12 vaka, ayrı hedef ve CI adımı; promptfoo ve `make eval-live` kapsam dışı
 
@@ -2098,7 +2098,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Bonuslar için durum tablosu (A/B'nin yapılmadığı dahil) — reddedildi: kullanıcı yalnız yapılanları istedi.
   - T-036'yı yetişmeyenlere yazmak — reddedildi: kullanıcı önce tamamlanmasını istedi.
 - **Sonuçlar / bedel:** README yabancı okuyucuya kapalıdır. Mermaid diyagramı kodla elle senkron tutulur. A/B varyantı yapılmadığı README'de açıkça yazmaz; insanın seçtiği varyantlar A/B ile karıştırılabilir. README T-036'yı bekler.
-- **Doğrulama:** Doğrulanmadı.
+- **Doğrulama:** 2026-10-31'de (T-040): `README.md` yazıldı; göreli linklerin hepsi mevcut dosyaya gidiyor, anılan `make` hedefleri Makefile'da var, portlar `docker-compose.yml` ile aynı. Canlı: 8081–8085 `/docs` 200, MockServer dashboard ve NATS monitoring 200; mock provider oranları ve limiti (`MOCK_*`, 110/s, 24 sa idempotency) compose ile aynı. Örnek brief'in kitle sayıları D-113 uygulama notuyla aynı (155 eşleşme, 138 ulaşılabilir).
 
 ## D-119: Sohbette zamanlama yuvası ve SMS metni düzenlenir; saat seçici yuvanın saat diliminde, shadcn-vue takvim + saat alanı, "hemen gönder" seçeneği
 
