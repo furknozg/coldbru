@@ -165,3 +165,61 @@ func TestDecodeKeepsTheStepIDNullable(t *testing.T) {
 		t.Errorf("decoded %+v", d)
 	}
 }
+
+const clickID = "0198a2c4-0000-7000-8000-000000000003"
+
+func clickedJSON(mutate func(m map[string]any)) string {
+	m := map[string]any{
+		"click_id": clickID, "delivery_id": call, "campaign_id": campaign, "channel": "sms", "language": "tr",
+		"timezone": "Europe/Istanbul", "clicked_at": "2026-10-31T09:00:00Z", "first": true, "future_field": "ignored",
+	}
+	if mutate != nil {
+		mutate(m)
+	}
+	raw, _ := json.Marshal(m)
+	return string(raw)
+}
+
+func TestHandleRejectsMalformedClicked(t *testing.T) {
+	tests := map[string]string{
+		"not json":            `{"click_id":`,
+		"click not a uuid":    clickedJSON(func(m map[string]any) { m["click_id"] = "c" }),
+		"delivery not a uuid": clickedJSON(func(m map[string]any) { m["delivery_id"] = "" }),
+		"campaign not a uuid": clickedJSON(func(m map[string]any) { m["campaign_id"] = "c1" }),
+		"unknown channel":     clickedJSON(func(m map[string]any) { m["channel"] = "push" }),
+		"unknown language":    clickedJSON(func(m map[string]any) { m["language"] = "de" }),
+		"blank timezone":      clickedJSON(func(m map[string]any) { m["timezone"] = " " }),
+		"no clicked_at":       clickedJSON(func(m map[string]any) { delete(m, "clicked_at") }),
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := handler().Handle(context.Background(), nil, envelope(EventTypeClicked, 1, data))
+			if err == nil || !strings.HasPrefix(err.Error(), "malformed message:") {
+				t.Errorf("Handle() error = %v, want a malformed-message error", err)
+			}
+		})
+	}
+}
+
+func TestHandleRejectsMalformedSentByLocale(t *testing.T) {
+	loc := func(channel, language, timezone string, sent int) map[string]any {
+		return map[string]any{"channel": channel, "language": language, "timezone": timezone, "sent": sent}
+	}
+	tests := map[string][]any{
+		"unknown channel":  {loc("push", "tr", "Europe/Istanbul", 1)},
+		"unknown language": {loc("sms", "de", "Europe/Istanbul", 1)},
+		"blank timezone":   {loc("sms", "tr", "", 1)},
+		"zero sent":        {loc("sms", "tr", "Europe/Istanbul", 0)},
+		"negative sent":    {loc("sms", "tr", "Europe/Istanbul", -3)},
+		"duplicate slot":   {loc("sms", "tr", "Europe/Istanbul", 1), loc("sms", "tr", "Europe/Istanbul", 2)},
+	}
+	for name, locales := range tests {
+		t.Run(name, func(t *testing.T) {
+			data := completedJSON(func(m map[string]any) { m["sent_by_locale"] = locales })
+			err := handler().Handle(context.Background(), nil, envelope(EventTypeCompleted, 1, data))
+			if err == nil || !strings.HasPrefix(err.Error(), "malformed message:") {
+				t.Errorf("Handle() error = %v, want a malformed-message error", err)
+			}
+		})
+	}
+}

@@ -37,14 +37,14 @@ var (
 	leadingJunk      = regexp.MustCompile(`^[\s,;:.\-–—]+`)
 )
 
-// fitSMS renders template for a recipient so that the text stays within the 160 characters of the
-// brief (D-028, D-079). The approved text was measured with the longest first name of the audience,
-// but the real name is what goes out: if the expanded text is longer than 160 Unicode characters,
+// fitSMS renders template for a recipient so that the text stays within limit characters: the 160
+// of the brief (D-028, D-079) less the room of the tracking link when one is appended (D-109). The
+// approved text was measured with the longest first name of the audience, but the real name is what
+// goes out: if the expanded text is longer than limit Unicode characters,
 // the name is shortened to the longest prefix that fits; if not even one character fits, the name
 // is removed. The result can still exceed the limit when the text without the name does; the caller
 // must check that (it cannot happen for text that passed validation).
-func fitSMS(template, firstName string) (string, nameFit) {
-	limit := content.SMSMaxChars
+func fitSMS(template, firstName string, limit int) (string, nameFit) {
 	if text := content.RenderSMS(template, firstName); utf8.RuneCountInString(text) <= limit {
 		return text, nameFull
 	}

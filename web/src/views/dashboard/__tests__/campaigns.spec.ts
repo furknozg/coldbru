@@ -164,6 +164,96 @@ describe('Kampanya analitiği', () => {
     expect(titles).toEqual(['Amaca göre maliyet'])
   })
 
+  it('shows the success metrics of a completed campaign: CTR, clicks, CTR per channel and the language and time zone table', async () => {
+    const { wrapper } = await open()
+    const section = wrapper.get('main [data-section="clicks"]')
+
+    expect(section.get('h3').text()).toBe('Başarı metrikleri')
+    expect(section.find('[data-testid="ctr-pending"]').exists()).toBe(false)
+    expect(section.get('[data-stat="ctr"] dd').text()).toBe('%14,3')
+    expect(section.get('[data-stat="uniqueClicks"] dd').text()).toBe('20')
+    expect(section.get('[data-stat="totalClicks"] dd').text()).toBe('31')
+    expect(section.get('[data-stat="ctr-email"] dd').text()).toBe('%16,7')
+    expect(section.get('[data-stat="ctr-email"]').text()).toContain('tekil 15 / gönderilen 90')
+    expect(section.get('[data-stat="ctr-sms"] dd').text()).toBe('%10')
+    expect(
+      section
+        .findAll('[data-row="locale"]')
+        .map((row) => row.findAll('th, td').map((c) => c.text())),
+    ).toEqual([
+      ['E-posta', 'Türkçe', 'Europe/Istanbul', '60', '12', '20', '%20'],
+      ['E-posta', 'İngilizce', 'Europe/London', '30', '3', '4', '%10'],
+      ['SMS', 'Türkçe', 'Europe/Istanbul', '50', '5', '7', '%10'],
+    ])
+  })
+
+  it('shows live click counts and no CTR before the campaign completes', async () => {
+    vi.mocked(analytics.getCampaignSummary).mockResolvedValue(
+      reportOf({
+        campaign_id: 'c2',
+        completed_at: null as unknown as string,
+        deliveries: [],
+        clicks: {
+          sent: 0,
+          unique_clicks: 3,
+          total_clicks: 5,
+          ctr: 0,
+          by_channel: [{ channel: 'email', sent: 0, unique_clicks: 3, total_clicks: 5, ctr: 0 }],
+          by_locale: [
+            {
+              channel: 'email',
+              language: 'tr',
+              timezone: 'Europe/Istanbul',
+              sent: 0,
+              unique_clicks: 3,
+              total_clicks: 5,
+              ctr: 0,
+            },
+          ],
+        },
+      }),
+    )
+    const { wrapper } = await open('/analytics/campaigns/c2')
+    const section = wrapper.get('main [data-section="clicks"]')
+
+    expect(section.get('[data-testid="ctr-pending"]').text()).toContain('CTR kesinleşir')
+    expect(section.find('[data-stat="ctr"]').exists()).toBe(false)
+    expect(section.find('[data-stat="ctr-email"]').exists()).toBe(false)
+    expect(section.get('[data-stat="uniqueClicks"] dd').text()).toBe('3')
+    expect(section.get('[data-stat="totalClicks"] dd').text()).toBe('5')
+    // The sent count and the rate are unknown until completion: a dash, never 0 or %0.
+    expect(
+      section
+        .get('[data-row="locale"]')
+        .findAll('th, td')
+        .map((c) => c.text()),
+    ).toEqual(['E-posta', 'Türkçe', 'Europe/Istanbul', '—', '3', '5', '—'])
+    expect(section.text()).not.toContain('%0')
+  })
+
+  it('says there are no clicks yet for a campaign that has not completed and has none', async () => {
+    vi.mocked(analytics.getCampaignSummary).mockResolvedValue(
+      reportOf({
+        completed_at: null as unknown as string,
+        clicks: {
+          sent: 0,
+          unique_clicks: 0,
+          total_clicks: 0,
+          ctr: 0,
+          by_channel: [],
+          by_locale: [],
+        },
+      }),
+    )
+    const { wrapper } = await open('/analytics/campaigns/c2')
+    const section = wrapper.get('main [data-section="clicks"]')
+
+    expect(section.get('[data-testid="clicks-empty"]').text()).toBe(
+      'Henüz tıklama veya gönderim yok.',
+    )
+    expect(section.find('[data-stat]').exists()).toBe(false)
+  })
+
   it('says Analytics has no data yet when the report is missing', async () => {
     vi.mocked(analytics.getCampaignSummary).mockResolvedValue(null)
     const { wrapper } = await open()

@@ -266,7 +266,9 @@
       "cache": "Önbellek tokenı",
       "cacheSplit": "okuma {read} · yazma {creation}",
       "inputTokens": "Giriş tokenı",
-      "outputTokens": "Çıkış tokenı"
+      "outputTokens": "Çıkış tokenı",
+      "ctr": "Tıklama oranı (CTR)",
+      "ctrSplit": "tekil {unique} · toplam {total}"
     },
     "deliveryStatus": {
       "pending": "Bekleyen",
@@ -287,7 +289,25 @@
       "byChannel": "Kanala göre teslimat",
       "byStatus": "Duruma göre teslimat",
       "series": "Kanal başına gönderilen teslimat",
-      "seriesRecent": "Kanal başına gönderilen teslimat · son 90 gün"
+      "seriesRecent": "Kanal başına gönderilen teslimat · son 90 gün",
+      "clickSeries": "Kanal başına tekil tıklama",
+      "clickSeriesRecent": "Kanal başına tekil tıklama · son 90 gün"
+    },
+    "click": {
+      "title": "Başarı metrikleri",
+      "ctr": "Tıklama oranı (CTR)",
+      "uniqueClicks": "Tekil tıklama",
+      "totalClicks": "Toplam tıklama",
+      "sent": "Gönderilen",
+      "byChannel": "Kanala göre CTR",
+      "ctrNote": "tekil {unique} / gönderilen {sent}",
+      "byLocale": "Dil ve saat dilimine göre",
+      "channel": "Kanal",
+      "language": "Dil",
+      "timezone": "Saat dilimi",
+      "pending": "Kampanya tamamlanınca CTR kesinleşir. O zamana kadar tıklama sayıları canlı gösterilir.",
+      "none": "Henüz tıklama veya gönderim yok.",
+      "unknown": "—"
     },
     "llm": {
       "costByPurpose": "Amaca göre maliyet",

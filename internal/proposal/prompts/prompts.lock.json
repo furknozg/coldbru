@@ -7,8 +7,8 @@
     },
     {
       "name": "content",
-      "version": "2.0.0",
-      "sha256": "7b38553fae943576ebaa9990c51a6c4cd9ec5007ff7182751943e34ed968f592"
+      "version": "2.1.0",
+      "sha256": "d1f0778b9fdc6060e7ebd526cae4e7c7ab3704ea99f282224abe827dd76d86cf"
     },
     {
       "name": "schedule",

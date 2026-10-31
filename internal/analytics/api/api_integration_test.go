@@ -556,3 +556,178 @@ func TestSeriesBucketsAreUTCUnderOtherSessionZones(t *testing.T) {
 		t.Errorf("series under New York = %+v", s)
 	}
 }
+
+// seedCompleted stores a completed campaign with its sent counts per slot.
+func seedCompleted(t *testing.T, q *store.Queries, id uuid.UUID, at time.Time, sent ...store.InsertSentLocaleParams) {
+	t.Helper()
+	ctx := t.Context()
+	if err := q.UpsertCampaignSummary(ctx, store.UpsertCampaignSummaryParams{
+		CampaignID: id, CompletedAt: pgtype.Timestamptz{Time: at, Valid: true}, SmsSegments: 0, DeliveryCostUsd: numeric(t, "0"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sent {
+		s.CampaignID = id
+		if err := q.InsertSentLocale(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// seedClick stores one click the way the intake does: the event row and the counters.
+func seedClick(t *testing.T, q *store.Queries, id uuid.UUID, channel, language, timezone string, first bool, at time.Time) {
+	t.Helper()
+	ctx := t.Context()
+	if _, err := q.InsertClickEvent(ctx, store.InsertClickEventParams{
+		ClickID: uuid.New(), CampaignID: id, Channel: channel, Language: language, Timezone: timezone,
+		ClickedAt: pgtype.Timestamptz{Time: at, Valid: true}, First: first,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.AddCampaignClick(ctx, store.AddCampaignClickParams{CampaignID: id, Channel: channel, Language: language, Timezone: timezone, First: first}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCampaignClickThroughRate(t *testing.T) {
+	pool := pg.NewMigratedPool(t)
+	q := store.New(pool)
+	srv := server(t, pool)
+	id := uuid.New()
+	at := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+
+	// Clicks before the completed event: visible and live, but there is no denominator yet, so CTR is 0.
+	seedClick(t, q, id, "sms", "tr", "Europe/Istanbul", true, at)
+	var rep api.CampaignReport
+	if code := getInto(t, srv, "/campaigns/"+id.String()+"/summary", &rep); code != 200 {
+		t.Fatalf("a campaign with clicks only: status %d, want 200", code)
+	}
+	if rep.CompletedAt != nil || rep.Clicks.UniqueClicks != 1 || rep.Clicks.TotalClicks != 1 || rep.Clicks.Sent != 0 || rep.Clicks.CTR != 0 ||
+		len(rep.Clicks.ByLocale) != 1 || rep.Clicks.ByLocale[0].Sent != 0 {
+		t.Errorf("clicks before completion = %+v", rep.Clicks)
+	}
+
+	// Completed: 40 SMS to tr/Istanbul, 10 SMS to en/London, 100 emails to tr/Istanbul and 5 to en/London.
+	seedCompleted(t, q, id, at.Add(time.Hour),
+		store.InsertSentLocaleParams{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 40},
+		store.InsertSentLocaleParams{Channel: "sms", Language: "en", Timezone: "Europe/London", Sent: 10},
+		store.InsertSentLocaleParams{Channel: "email", Language: "tr", Timezone: "Europe/Istanbul", Sent: 100},
+		store.InsertSentLocaleParams{Channel: "email", Language: "en", Timezone: "Europe/London", Sent: 5})
+	for range 9 { // sms/tr: 10 unique clickers in all (one above), 3 more clicks by the same people
+		seedClick(t, q, id, "sms", "tr", "Europe/Istanbul", true, at)
+	}
+	for range 3 {
+		seedClick(t, q, id, "sms", "tr", "Europe/Istanbul", false, at)
+	}
+	for range 25 { // email/tr: 25 unique of 100
+		seedClick(t, q, id, "email", "tr", "Europe/Istanbul", true, at)
+	}
+	seedClick(t, q, id, "email", "en", "Europe/London", true, at) // 1 of 5
+
+	if code := getInto(t, srv, "/campaigns/"+id.String()+"/summary", &rep); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	c := rep.Clicks
+	if c.Sent != 155 || c.UniqueClicks != 36 || c.TotalClicks != 39 || c.CTR != 0.2323 {
+		t.Errorf("campaign clicks = sent %d, unique %d, total %d, ctr %v; want 155, 36, 39, 0.2323", c.Sent, c.UniqueClicks, c.TotalClicks, c.CTR)
+	}
+	wantChannels := []api.ChannelClicks{
+		{Channel: "email", Sent: 105, UniqueClicks: 26, TotalClicks: 26, CTR: 0.2476},
+		{Channel: "sms", Sent: 50, UniqueClicks: 10, TotalClicks: 13, CTR: 0.2},
+	}
+	if !reflect.DeepEqual(c.ByChannel, wantChannels) {
+		t.Errorf("by channel = %+v\nwant %+v", c.ByChannel, wantChannels)
+	}
+	wantLocales := []api.LocaleClicks{
+		{Channel: "email", Language: "en", Timezone: "Europe/London", Sent: 5, UniqueClicks: 1, TotalClicks: 1, CTR: 0.2},
+		{Channel: "email", Language: "tr", Timezone: "Europe/Istanbul", Sent: 100, UniqueClicks: 25, TotalClicks: 25, CTR: 0.25},
+		{Channel: "sms", Language: "en", Timezone: "Europe/London", Sent: 10, UniqueClicks: 0, TotalClicks: 0, CTR: 0},
+		{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 40, UniqueClicks: 10, TotalClicks: 13, CTR: 0.25},
+	}
+	if !reflect.DeepEqual(c.ByLocale, wantLocales) {
+		t.Errorf("by locale = %+v\nwant %+v", c.ByLocale, wantLocales)
+	}
+
+	// A campaign nobody has heard of is still a 404, and a completed one with nothing sent has an empty report.
+	if code := getInto(t, srv, "/campaigns/"+uuid.NewString()+"/summary", nil); code != 404 {
+		t.Errorf("unknown campaign: status %d, want 404", code)
+	}
+	quiet := uuid.New()
+	seedCompleted(t, q, quiet, at)
+	var empty api.CampaignReport
+	if code := getInto(t, srv, "/campaigns/"+quiet.String()+"/summary", &empty); code != 200 ||
+		empty.Clicks.ByChannel == nil || empty.Clicks.ByLocale == nil || len(empty.Clicks.ByLocale) != 0 || empty.Clicks.CTR != 0 {
+		t.Errorf("completed with nothing sent: status %d, %+v", code, empty.Clicks)
+	}
+}
+
+func TestOverviewClicksAndSeries(t *testing.T) {
+	pool := pg.NewMigratedPool(t)
+	q := store.New(pool)
+	srv := server(t, pool)
+	d1 := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	d2 := d1.Add(24 * time.Hour)
+	d3 := d2.Add(24 * time.Hour)
+
+	// Campaign A completed on d1, campaign B on d3. A: 10 SMS sent, 2 unique clickers (one clicked
+	// twice); 20 emails, 5 clickers. B: 10 SMS sent, 1 clicker.
+	a, b := uuid.New(), uuid.New()
+	seedCompleted(t, q, a, d1.Add(time.Hour),
+		store.InsertSentLocaleParams{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 10},
+		store.InsertSentLocaleParams{Channel: "email", Language: "tr", Timezone: "Europe/Istanbul", Sent: 20})
+	seedCompleted(t, q, b, d3.Add(time.Hour), store.InsertSentLocaleParams{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 10})
+	seedClick(t, q, a, "sms", "tr", "Europe/Istanbul", true, d1.Add(2*time.Hour))
+	seedClick(t, q, a, "sms", "tr", "Europe/Istanbul", true, d2.Add(2*time.Hour))
+	seedClick(t, q, a, "sms", "tr", "Europe/Istanbul", false, d2.Add(3*time.Hour))
+	for range 5 {
+		seedClick(t, q, a, "email", "tr", "Europe/Istanbul", true, d2.Add(4*time.Hour))
+	}
+	seedClick(t, q, b, "sms", "tr", "Europe/Istanbul", true, d3.Add(2*time.Hour))
+
+	var all api.Overview
+	if code := getInto(t, srv, "/overview", &all); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	wantAll := api.OverviewClicks{
+		Sent: 40, UniqueClicks: 8, TotalClicks: 9, CTR: 0.2,
+		ByChannel: []api.ChannelClicks{
+			{Channel: "email", Sent: 20, UniqueClicks: 5, TotalClicks: 5, CTR: 0.25},
+			{Channel: "sms", Sent: 20, UniqueClicks: 3, TotalClicks: 4, CTR: 0.15},
+		},
+	}
+	if !reflect.DeepEqual(all.Clicks, wantAll) {
+		t.Errorf("overview clicks = %+v\nwant %+v", all.Clicks, wantAll)
+	}
+
+	// The range picks campaigns by completion: only A completed in [d1, d2+24h) ... [d1, d3).
+	var rng api.Overview
+	if code := getInto(t, srv, "/overview?from="+d1.Format(time.RFC3339)+"&to="+d3.Format(time.RFC3339), &rng); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if rng.Clicks.Sent != 30 || rng.Clicks.UniqueClicks != 7 || rng.Clicks.TotalClicks != 8 || rng.Clicks.CTR != 0.2333 {
+		t.Errorf("overview clicks of campaign A only = %+v", rng.Clicks)
+	}
+	var none api.Overview
+	if code := getInto(t, srv, "/overview?from=2027-01-01T00:00:00Z", &none); code != 200 || none.Clicks.ByChannel == nil || len(none.Clicks.ByChannel) != 0 || none.Clicks.CTR != 0 {
+		t.Errorf("empty range clicks: status %d, %+v", code, none.Clicks)
+	}
+
+	// The series is by click time.
+	var series api.OverviewSeries
+	if code := getInto(t, srv, "/overview/series?bucket=day&from="+d1.Format(time.RFC3339)+"&to="+d3.Add(24*time.Hour).Format(time.RFC3339), &series); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	wantSeries := []api.ClickSeriesPoint{
+		{Start: d1, Channel: "sms", UniqueClicks: 1, TotalClicks: 1},
+		{Start: d2, Channel: "email", UniqueClicks: 5, TotalClicks: 5},
+		{Start: d2, Channel: "sms", UniqueClicks: 1, TotalClicks: 2},
+		{Start: d3, Channel: "sms", UniqueClicks: 1, TotalClicks: 1},
+	}
+	if !reflect.DeepEqual(series.Clicks, wantSeries) {
+		t.Errorf("click series = %+v\nwant %+v", series.Clicks, wantSeries)
+	}
+	var quiet api.OverviewSeries
+	if code := getInto(t, srv, "/overview/series?bucket=day&from=2027-01-01T00:00:00Z&to=2027-01-03T00:00:00Z", &quiet); code != 200 || quiet.Clicks == nil || len(quiet.Clicks) != 0 {
+		t.Errorf("empty click series: status %d, %+v", code, quiet.Clicks)
+	}
+}

@@ -23,10 +23,11 @@ import (
 // Values the tables accept; the CHECK constraints repeat them. An event outside them can never be
 // stored, so it is rejected as malformed instead of being retried until the delivery limit.
 var (
-	channels = []string{"sms", "email"}
-	statuses = []string{"pending", "sending", "sent", "failed", "skipped_no_consent", "cancelled"}
-	purposes = []string{"screen", "segment", "content", "channel_plan", "schedule"}
-	outcomes = []string{"accepted", "validation_failed", "refusal", "api_error"}
+	channels  = []string{"sms", "email"}
+	statuses  = []string{"pending", "sending", "sent", "failed", "skipped_no_consent", "cancelled"}
+	purposes  = []string{"screen", "segment", "content", "channel_plan", "schedule"}
+	outcomes  = []string{"accepted", "validation_failed", "refusal", "api_error"}
+	languages = []string{"tr", "en"}
 
 	// deliveryCostRE fits numeric(14,6): up to 8 integer and 6 fraction digits.
 	deliveryCostRE = regexp.MustCompile(`^\d{1,8}(\.\d{1,6})?$`)
@@ -51,13 +52,15 @@ func (h *Events) Handle(ctx context.Context, tx pgx.Tx, env events.Envelope) err
 		return h.completed(ctx, tx, env)
 	case EventTypeTokenCompleted:
 		return h.tokenCompleted(ctx, tx, env)
+	case EventTypeClicked:
+		return h.clicked(ctx, tx, env)
 	default:
 		h.Logger.DebugContext(ctx, "event type ignored", slog.String("type", env.Type))
 		return nil
 	}
 }
 
-// completed replaces the summary and the delivery counts of the campaign.
+// completed replaces the summary, the delivery counts and the sent-by-locale counts of the campaign.
 func (h *Events) completed(ctx context.Context, tx pgx.Tx, env events.Envelope) error {
 	var d CompletedData
 	if err := json.Unmarshal(env.Data, &d); err != nil {
@@ -85,8 +88,19 @@ func (h *Events) completed(ctx context.Context, tx pgx.Tx, env events.Envelope) 
 			return fmt.Errorf("insert delivery count: %w", err)
 		}
 	}
+	if err := q.DeleteSentLocales(ctx, p.campaign); err != nil {
+		return fmt.Errorf("delete sent locales: %w", err)
+	}
+	for _, l := range d.SentByLocale {
+		if err := q.InsertSentLocale(ctx, store.InsertSentLocaleParams{
+			CampaignID: p.campaign, Channel: l.Channel, Language: l.Language, Timezone: l.Timezone, Sent: int32(l.Sent),
+		}); err != nil {
+			return fmt.Errorf("insert sent locale: %w", err)
+		}
+	}
 	h.Logger.InfoContext(ctx, "campaign summary stored",
-		slog.String("campaign_id", d.CampaignID), slog.Int("counts", len(d.Counts)), slog.Int64("sms_segments", d.SMSSegments))
+		slog.String("campaign_id", d.CampaignID), slog.Int("counts", len(d.Counts)), slog.Int("sent_locales", len(d.SentByLocale)),
+		slog.Int64("sms_segments", d.SMSSegments))
 	return nil
 }
 
@@ -128,7 +142,86 @@ func (d CompletedData) validate() (completedParsed, error) {
 		}
 		seen[[2]string{c.Channel, c.Status}] = true
 	}
+	seenLocale := map[[3]string]bool{}
+	for _, l := range d.SentByLocale {
+		if err := checkLocale(l.Channel, l.Language, l.Timezone); err != nil {
+			return p, fmt.Errorf("sent_by_locale: %w", err)
+		}
+		key := [3]string{l.Channel, l.Language, l.Timezone}
+		switch {
+		case l.Sent < 1 || l.Sent > math.MaxInt32:
+			return p, fmt.Errorf("sent_by_locale %v: sent %d is out of range", key, l.Sent)
+		case seenLocale[key]:
+			return p, fmt.Errorf("sent_by_locale %v appears twice", key)
+		}
+		seenLocale[key] = true
+	}
 	return p, nil
+}
+
+// checkLocale checks the (channel, language, timezone) of a count or a click against the tables.
+func checkLocale(channel, language, timezone string) error {
+	switch {
+	case !slices.Contains(channels, channel):
+		return fmt.Errorf("channel %q is unknown", channel)
+	case !slices.Contains(languages, language):
+		return fmt.Errorf("language %q is unknown", language)
+	case !nonBlank(timezone):
+		return fmt.Errorf("timezone is blank")
+	}
+	return nil
+}
+
+// clicked stores one click of a short link and bumps the campaign's click counters (D-108). A click
+// whose click_id is stored already inserts nothing and bumps nothing, so a repeat is harmless even
+// without the Processor's processed_event row.
+func (h *Events) clicked(ctx context.Context, tx pgx.Tx, env events.Envelope) error {
+	var d ClickedData
+	if err := json.Unmarshal(env.Data, &d); err != nil {
+		return consumer.Malformed(fmt.Errorf("decode %s data: %w", env.Type, err))
+	}
+	click, campaign, err := d.validate()
+	if err != nil {
+		return consumer.Malformed(fmt.Errorf("%s event %s: %w", env.Type, env.ID, err))
+	}
+	q := store.New(tx)
+	n, err := q.InsertClickEvent(ctx, store.InsertClickEventParams{
+		ClickID: click, CampaignID: campaign, Channel: d.Channel, Language: d.Language, Timezone: d.Timezone,
+		ClickedAt: pgtype.Timestamptz{Time: d.ClickedAt, Valid: true}, First: d.First,
+	})
+	if err != nil {
+		return fmt.Errorf("insert click event: %w", err)
+	}
+	if n == 0 {
+		h.Logger.InfoContext(ctx, "click already stored, event ignored", slog.String("click_id", d.ClickID))
+		return nil
+	}
+	if err := q.AddCampaignClick(ctx, store.AddCampaignClickParams{
+		CampaignID: campaign, Channel: d.Channel, Language: d.Language, Timezone: d.Timezone, First: d.First,
+	}); err != nil {
+		return fmt.Errorf("add campaign click: %w", err)
+	}
+	return nil
+}
+
+// validate checks the event against what click_event accepts and returns the click and campaign ids.
+func (d ClickedData) validate() (click, campaign uuid.UUID, err error) {
+	if click, err = uuid.Parse(d.ClickID); err != nil {
+		return click, campaign, fmt.Errorf("click_id %q is not a uuid", d.ClickID)
+	}
+	if campaign, err = uuid.Parse(d.CampaignID); err != nil {
+		return click, campaign, fmt.Errorf("campaign_id %q is not a uuid", d.CampaignID)
+	}
+	if _, err = uuid.Parse(d.DeliveryID); err != nil {
+		return click, campaign, fmt.Errorf("delivery_id %q is not a uuid", d.DeliveryID)
+	}
+	if err = checkLocale(d.Channel, d.Language, d.Timezone); err != nil {
+		return click, campaign, err
+	}
+	if d.ClickedAt.IsZero() {
+		return click, campaign, fmt.Errorf("clicked_at is missing")
+	}
+	return click, campaign, nil
 }
 
 // tokenCompleted stores the usage of one model call, priced by its model. A call already stored

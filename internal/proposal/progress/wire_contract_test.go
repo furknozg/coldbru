@@ -33,6 +33,7 @@ func TestWireMirrorsNotification(t *testing.T) {
 		{"started data", reflect.TypeFor[nprogress.StartedData](), reflect.TypeFor[progress.StartedData]()},
 		{"completed data", reflect.TypeFor[nprogress.CompletedData](), reflect.TypeFor[progress.CompletedData]()},
 		{"count", reflect.TypeFor[nprogress.Count](), reflect.TypeFor[progress.Count]()},
+		{"locale count", reflect.TypeFor[nprogress.LocaleCount](), reflect.TypeFor[progress.LocaleCount]()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,6 +56,7 @@ func TestWireDecodesWhatNotificationPublishes(t *testing.T) {
 	at := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
 	raw, err := json.Marshal(nprogress.CompletedData{
 		CampaignID: "c", CompletedAt: at, Counts: []nprogress.Count{{Channel: "sms", Status: "sent", Count: 3}}, SMSSegments: 6, EstimatedCostUSD: "0.2400",
+		SentByLocale: []nprogress.LocaleCount{{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 3}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +66,8 @@ func TestWireDecodesWhatNotificationPublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.CampaignID != "c" || !got.CompletedAt.Equal(at) || len(got.Counts) != 1 || got.Counts[0] != (progress.Count{Channel: "sms", Status: "sent", Count: 3}) ||
-		got.SMSSegments != 6 || got.EstimatedCostUSD != "0.2400" {
+		got.SMSSegments != 6 || got.EstimatedCostUSD != "0.2400" ||
+		len(got.SentByLocale) != 1 || got.SentByLocale[0] != (progress.LocaleCount{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 3}) {
 		t.Errorf("decoded completed data = %+v", got)
 	}
 	raw, err = json.Marshal(nprogress.StartedData{CampaignID: "c", ScheduleID: "s", Language: "tr", Timezone: "Europe/Istanbul", StartedAt: at})

@@ -182,7 +182,13 @@ func TestMigrations_Applied(t *testing.T) {
 		{
 			name: "service versions",
 			sql:  "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id",
-			want: []string{"1", "2"},
+			want: []string{"1", "2", "3"},
+		},
+		{
+			name: "link_code column",
+			sql: `SELECT data_type || ' ' || is_nullable FROM information_schema.columns
+				WHERE table_schema = 'notification' AND table_name = 'delivery' AND column_name = 'link_code'`,
+			want: []string{"text YES"},
 		},
 		{
 			name: "platform versions",
@@ -955,3 +961,108 @@ func TestQueries(t *testing.T) {
 
 // execErr drops the command tag of Exec so it can feed mustExec.
 func execErr(_ pgconn.CommandTag, err error) error { return err }
+
+func TestDeliveryLinkCode(t *testing.T) {
+	linkCode := func(code any) func(*testing.T, context.Context, fixture) error {
+		return func(_ *testing.T, ctx context.Context, f fixture) error {
+			return f.exec(ctx, `INSERT INTO delivery (campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact, link_code)
+				VALUES ($1, $2, $3, 'CUS-1', 'sms', 'Ayse', '+905550000000', $4)`, f.campaign, f.schedule, f.message, code)
+		}
+	}
+	runConstraintCases(t, []constraintCase{
+		{name: "no code (a delivery written before the links)", run: linkCode(nil)},
+		{name: "ten base62 characters", run: linkCode("k3JdQ9aB7x")},
+		{name: "nine characters", run: linkCode("k3JdQ9aB7"), want: "delivery_link_code_check"},
+		{name: "eleven characters", run: linkCode("k3JdQ9aB7xY"), want: "delivery_link_code_check"},
+		{name: "a symbol", run: linkCode("k3JdQ9aB7-"), want: "delivery_link_code_check"},
+		{name: "empty", run: linkCode(""), want: "delivery_link_code_check"},
+	})
+}
+
+func TestInsertDeliveryBatchStoresIdAndLinkCode(t *testing.T) {
+	ctx := t.Context()
+	f := newFixture(t, newMigratedPool(t))
+	first, second := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	rows := []store.InsertDeliveryBatchParams{
+		{ID: first, CampaignID: f.campaign, ScheduleID: f.schedule, MessageID: f.message, CustomerID: "CUS-1", Channel: "sms",
+			FirstName: pgtype.Text{String: "Ayse", Valid: true}, Contact: pgtype.Text{String: "+905550000001", Valid: true}, LinkCode: pgtype.Text{String: "aaaaaaaaaa", Valid: true}},
+		{ID: second, CampaignID: f.campaign, ScheduleID: f.schedule, MessageID: f.email, CustomerID: "CUS-2", Channel: "email",
+			FirstName: pgtype.Text{String: "Can", Valid: true}, Contact: pgtype.Text{String: "can@example.com", Valid: true}, LinkCode: pgtype.Text{String: "bbbbbbbbbb", Valid: true}},
+		// The same (campaign, customer, channel) again: ignored, the first row stands.
+		{ID: uuid.Must(uuid.NewV7()), CampaignID: f.campaign, ScheduleID: f.schedule, MessageID: f.message, CustomerID: "CUS-1", Channel: "sms",
+			FirstName: pgtype.Text{String: "Ayse", Valid: true}, Contact: pgtype.Text{String: "+905550000001", Valid: true}, LinkCode: pgtype.Text{String: "cccccccccc", Valid: true}},
+	}
+	var batchErr error
+	f.q.InsertDeliveryBatch(ctx, rows).Exec(func(_ int, err error) {
+		if err != nil && batchErr == nil {
+			batchErr = err
+		}
+	})
+	if batchErr != nil {
+		t.Fatal(batchErr)
+	}
+	got := queryStrings(t, f.pool, `SELECT id::text || ' ' || channel || ' ' || link_code FROM delivery WHERE campaign_id = '`+f.campaign.String()+`' ORDER BY customer_id`)
+	want := []string{first.String() + " sms aaaaaaaaaa", second.String() + " email bbbbbbbbbb"}
+	if !slices.Equal(got, want) {
+		t.Errorf("deliveries = %v, want %v", got, want)
+	}
+	send, err := f.q.ListSendDeliveries(ctx, []uuid.UUID{first, second})
+	if err != nil || len(send) != 2 {
+		t.Fatalf("ListSendDeliveries = %d rows, %v", len(send), err)
+	}
+	for _, r := range send {
+		if !r.LinkCode.Valid || (r.ID == first && r.LinkCode.String != "aaaaaaaaaa") || (r.ID == second && r.LinkCode.String != "bbbbbbbbbb") {
+			t.Errorf("send row %s link_code = %+v", r.ID, r.LinkCode)
+		}
+	}
+}
+
+func TestCountSentByLocale(t *testing.T) {
+	ctx := t.Context()
+	pool := newMigratedPool(t)
+	f := newFixture(t, pool)
+	// A second slot: English, London, with its own sms message.
+	lon, err := f.q.CreateLocaleSchedule(ctx, store.CreateLocaleScheduleParams{CampaignID: f.campaign, Language: "en", Timezone: "Europe/London"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enSMS, err := f.q.CreateMessage(ctx, store.CreateMessageParams{CampaignID: f.campaign, Language: "en", Channel: "sms", Content: []byte(`{"text":"Hi"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(customer, channel, status string, schedule, message uuid.UUID) {
+		t.Helper()
+		sentAt := any(nil)
+		if status == "sent" {
+			sentAt = time.Now()
+		}
+		lastErr := any(nil)
+		if status == "failed" {
+			lastErr = "boom"
+		}
+		mustExec(t, f.exec(ctx, `INSERT INTO delivery (campaign_id, schedule_id, message_id, customer_id, channel, status, sent_at, last_error, first_name, contact)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Ayse', '+905550000000')`, f.campaign, schedule, message, customer, channel, status, sentAt, lastErr))
+	}
+	add("CUS-1", "sms", "sent", f.schedule, f.message)
+	add("CUS-2", "sms", "sent", f.schedule, f.message)
+	add("CUS-3", "sms", "pending", f.schedule, f.message)
+	add("CUS-4", "email", "sent", f.schedule, f.email)
+	add("CUS-5", "sms", "sent", lon.ID, enSMS.ID)
+	add("CUS-6", "sms", "failed", lon.ID, enSMS.ID)
+	// Another campaign's sent delivery must not show.
+	other := f.otherCampaign(t, ctx)
+	mustExec(t, other.delivery(ctx, deliveryRow{status: "sent", sentAt: time.Now()}))
+
+	rows, err := f.q.CountSentByLocale(ctx, f.campaign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range rows {
+		got = append(got, fmt.Sprintf("%s/%s/%s=%d", r.Channel, r.Language, r.Timezone, r.Sent))
+	}
+	want := []string{"email/tr/Europe/Istanbul=1", "sms/en/Europe/London=1", "sms/tr/Europe/Istanbul=2"}
+	if !slices.Equal(got, want) {
+		t.Errorf("sent by locale = %v, want %v", got, want)
+	}
+}

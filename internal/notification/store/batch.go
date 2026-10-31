@@ -19,8 +19,8 @@ var (
 )
 
 const insertDeliveryBatch = `-- name: InsertDeliveryBatch :batchexec
-INSERT INTO delivery (campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO delivery (id, campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact, link_code)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (campaign_id, customer_id, channel) DO NOTHING
 `
 
@@ -31,6 +31,7 @@ type InsertDeliveryBatchBatchResults struct {
 }
 
 type InsertDeliveryBatchParams struct {
+	ID         uuid.UUID
 	CampaignID uuid.UUID
 	ScheduleID uuid.UUID
 	MessageID  uuid.UUID
@@ -38,14 +39,17 @@ type InsertDeliveryBatchParams struct {
 	Channel    string
 	FirstName  pgtype.Text
 	Contact    pgtype.Text
+	LinkCode   pgtype.Text
 }
 
 // InsertDelivery for a whole recipient batch in one round trip (D-077): one queued statement per
-// recipient, same ON CONFLICT rule as InsertDelivery (D-023).
+// recipient, same ON CONFLICT rule as InsertDelivery (D-023). The id and the link code are chosen by
+// the caller: the redirect service is asked for the links of those ids first (D-106).
 func (q *Queries) InsertDeliveryBatch(ctx context.Context, arg []InsertDeliveryBatchParams) *InsertDeliveryBatchBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {
 		vals := []interface{}{
+			a.ID,
 			a.CampaignID,
 			a.ScheduleID,
 			a.MessageID,
@@ -53,6 +57,7 @@ func (q *Queries) InsertDeliveryBatch(ctx context.Context, arg []InsertDeliveryB
 			a.Channel,
 			a.FirstName,
 			a.Contact,
+			a.LinkCode,
 		}
 		batch.Queue(insertDeliveryBatch, vals...)
 	}

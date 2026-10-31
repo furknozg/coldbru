@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/furknozg/coldbru/internal/content"
+	"github.com/furknozg/coldbru/internal/notification/links"
 	"github.com/furknozg/coldbru/internal/notification/store"
 	"github.com/furknozg/coldbru/internal/platform/consumer"
 )
@@ -29,6 +31,8 @@ const (
 // consumer.RawHandler of a consumer.RawProcessor.
 type Recipients struct {
 	Logger *slog.Logger
+	// Links creates the short link of every delivery of a batch (D-106).
+	Links links.Creator
 }
 
 // Handle records the batch and creates a delivery per recipient in the RawProcessor's transaction.
@@ -41,6 +45,12 @@ type Recipients struct {
 //     channel), or no usable customer id, contact and channel is skipped and logged at error level;
 //     the rest of the batch is written and the batch counts as received.
 //   - Undecodable batch, or a batch number outside the campaign's batch count: Malformed.
+//   - The short links of the batch's deliveries are requested from the redirect service in one call
+//     before the rows are written (D-106). The delivery ids are chosen here (UUIDv7) so the request
+//     can name them; the code the service returns is stored on the row. If the service cannot be
+//     reached or fails, the handler fails: the transaction rolls back, nothing of the batch is
+//     recorded and the message is redelivered with backoff, so the batch is delayed, never half
+//     written. An answer that rejects the request (4xx) can never succeed and is Malformed.
 func (h *Recipients) Handle(ctx context.Context, tx pgx.Tx, msg jetstream.Msg) error {
 	var b Batch
 	if err := json.Unmarshal(msg.Data(), &b); err != nil {
@@ -99,8 +109,14 @@ func (h *Recipients) Handle(ctx context.Context, tx pgx.Tx, msg jetstream.Msg) e
 		messageIDs[[2]string{m.Language, m.Channel}] = m.ID
 	}
 
+	target, err := content.CTAURL(c.CtaUrl, campaignID.String())
+	if err != nil {
+		return consumer.Malformed(fmt.Errorf("campaign %s cta_url: %w", b.CampaignID, err))
+	}
 	rows := make([]store.InsertDeliveryBatchParams, 0, len(b.Recipients))
+	reqs := make([]links.Request, 0, len(b.Recipients))
 	skipped := map[skipKey]int{}
+	seen := make(map[[2]string]bool, len(b.Recipients))
 	for _, r := range b.Recipients {
 		scheduleID, hasSchedule := scheduleIDs[[2]string{r.Language, r.Timezone}]
 		messageID, hasMessage := messageIDs[[2]string{r.Language, r.Channel}]
@@ -111,16 +127,39 @@ func (h *Recipients) Handle(ctx context.Context, tx pgx.Tx, msg jetstream.Msg) e
 			skipped[skipKey{r.Language, r.Timezone, r.Channel, skipNoSchedule}]++
 		case !hasMessage:
 			skipped[skipKey{r.Language, r.Timezone, r.Channel, skipNoMessage}]++
+		case seen[[2]string{r.CustomerID, r.Channel}]:
+			// The same person twice in a batch: one delivery (D-023), so one link.
 		default:
+			seen[[2]string{r.CustomerID, r.Channel}] = true
+			id, err := uuid.NewV7()
+			if err != nil {
+				return fmt.Errorf("new delivery id: %w", err)
+			}
 			rows = append(rows, store.InsertDeliveryBatchParams{
-				CampaignID: campaignID, ScheduleID: scheduleID, MessageID: messageID,
+				ID: id, CampaignID: campaignID, ScheduleID: scheduleID, MessageID: messageID,
 				CustomerID: r.CustomerID, Channel: r.Channel,
 				FirstName: pgtype.Text{String: r.FirstName, Valid: true},
 				Contact:   pgtype.Text{String: r.Contact, Valid: true},
 			})
+			reqs = append(reqs, links.Request{
+				DeliveryID: id, CampaignID: campaignID, Channel: r.Channel, Language: r.Language, Timezone: r.Timezone, TargetURL: target,
+			})
 		}
 	}
 	h.logSkipped(ctx, b, skipped)
+
+	if len(reqs) > 0 {
+		codes, err := h.Links.Create(ctx, reqs)
+		switch {
+		case links.IsRejected(err):
+			return consumer.Malformed(fmt.Errorf("batch %d of campaign %s: %w", b.BatchNo, b.CampaignID, err))
+		case err != nil:
+			return fmt.Errorf("create links for batch %d of campaign %s: %w", b.BatchNo, b.CampaignID, err)
+		}
+		for i := range rows {
+			rows[i].LinkCode = pgtype.Text{String: codes[rows[i].ID], Valid: true}
+		}
+	}
 
 	var batchErr error
 	q.InsertDeliveryBatch(ctx, rows).Exec(func(_ int, err error) {

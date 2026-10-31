@@ -120,10 +120,11 @@ func segments(sizes []int, total, single, multi int) int {
 }
 
 // CheckSMS validates the template text of an SMS ("sms.text") and measures it with {{first_name}}
-// replaced by a name of maxNameLength characters. The limit of 160 applies to Unicode characters of
-// the expanded text (D-028, D-071). The measurement is returned even when problems are found, unless
+// replaced by a name of maxNameLength characters. The limit applies to Unicode characters of the
+// expanded text (D-028, D-071); it is SMSMaxChars less the room of the tracking link (SMSBudget,
+// D-109). The measurement is returned even when problems are found, unless
 // the text is unusable (not UTF-8).
-func CheckSMS(text string, maxNameLength int) (SMSInfo, []Problem) {
+func CheckSMS(text string, maxNameLength, limit int) (SMSInfo, []Problem) {
 	const field = "sms.text"
 	var problems []Problem
 	if strings.TrimSpace(text) == "" {
@@ -134,8 +135,8 @@ func CheckSMS(text string, maxNameLength int) (SMSInfo, []Problem) {
 		return SMSInfo{}, problems
 	}
 	info := MeasureSMS(ExpandMax(text, maxNameLength))
-	if info.Length > SMSMaxChars {
-		problems = append(problems, Problem{Field: field, Rule: RuleMaxLength, Got: info.Length, Limit: SMSMaxChars})
+	if info.Length > limit {
+		problems = append(problems, Problem{Field: field, Rule: RuleMaxLength, Got: info.Length, Limit: limit})
 	}
 	return info, problems
 }

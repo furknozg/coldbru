@@ -83,11 +83,12 @@ func TestWireJSONNames(t *testing.T) {
 	}
 	completed, err := json.Marshal(CompletedData{
 		CampaignID: "c", CompletedAt: at, Counts: []Count{{Channel: "sms", Status: "sent", Count: 3}}, SMSSegments: 6, EstimatedCostUSD: "0.2400",
+		SentByLocale: []LocaleCount{{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 3}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"campaign_id":"c","completed_at":"2026-10-29T09:00:00Z","counts":[{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"estimated_cost_usd":"0.2400"}`; string(completed) != want {
+	if want := `{"campaign_id":"c","completed_at":"2026-10-29T09:00:00Z","counts":[{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"estimated_cost_usd":"0.2400","sent_by_locale":[{"channel":"sms","language":"tr","timezone":"Europe/Istanbul","sent":3}]}`; string(completed) != want {
 		t.Errorf("completed data = %s, want %s", completed, want)
 	}
 }

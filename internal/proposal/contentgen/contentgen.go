@@ -31,16 +31,36 @@ const MaxAttempts = 3
 
 // Generator implements flow.ContentGenerator. It is safe for concurrent use.
 type Generator struct {
-	llm    llm.LLM
-	pkg    *prompts.Package
-	prices content.Prices
+	llm       llm.LLM
+	pkg       *prompts.Package
+	prices    content.Prices
+	smsBudget int
+	smsLink   string
 }
 
 var _ flow.ContentGenerator = (*Generator)(nil)
 
+// Option customises New.
+type Option func(*Generator)
+
+// WithSMSBudget sets the number of characters the SMS text may have (content.SMSBudget, D-109): 160
+// less the tracking link that Notification appends. It is the limit the model is told and the
+// validator enforces. Without the option the budget is content.SMSMaxChars, as if no link were added.
+func WithSMSBudget(n int) Option { return func(g *Generator) { g.smsBudget = n } }
+
+// WithSMSLink sets the placeholder of the tracking link (content.PlaceholderLink): the stored
+// encoding, segment count and cost estimate of an SMS are measured on the text, a space and this
+// link, so the approval screen shows what Notification will send. The character limit is not
+// affected; it is WithSMSBudget's. Without the option the text is measured alone.
+func WithSMSLink(link string) Option { return func(g *Generator) { g.smsLink = link } }
+
 // New returns a Generator that calls l with the content package and prices the estimates with prices.
-func New(l llm.LLM, prices content.Prices) *Generator {
-	return &Generator{llm: l, pkg: prompts.Content(), prices: prices}
+func New(l llm.LLM, prices content.Prices, opts ...Option) *Generator {
+	g := &Generator{llm: l, pkg: prompts.Content(), prices: prices, smsBudget: content.SMSMaxChars}
+	for _, o := range opts {
+		o(g)
+	}
+	return g
 }
 
 // slot is what a slot's validation and measurement depend on.
@@ -266,7 +286,7 @@ func (g *Generator) build(obj json.RawMessage, sl slot, ignoreComputed bool) (js
 		if in.Text == nil {
 			return nil, []content.Problem{{Field: field("text"), Rule: ruleRequired}}
 		}
-		out, problems := content.BuildSMS(*in.Text, sl.maxName, sl.recipients, g.prices)
+		out, problems := content.BuildSMS(*in.Text, sl.maxName, sl.recipients, g.smsBudget, g.smsLink, g.prices)
 		if len(problems) > 0 {
 			return nil, problems
 		}

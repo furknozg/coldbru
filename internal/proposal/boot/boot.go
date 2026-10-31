@@ -120,10 +120,11 @@ func Setup(ctx context.Context, d *app.Deps) error {
 	startRelay(ctx, d)
 
 	svc, err := flow.New(flow.Deps{
-		Pool:      d.Pool,
-		LLM:       model,
-		Customer:  cust,
-		Content:   contentgen.New(model, contentCfg.Prices),
+		Pool:     d.Pool,
+		LLM:      model,
+		Customer: cust,
+		Content: contentgen.New(model, contentCfg.Prices, contentgen.WithSMSBudget(contentCfg.SMSBudget),
+			contentgen.WithSMSLink(content.PlaceholderLink(contentCfg.TrackingBaseURL))),
 		Confirmer: confirmer,
 		Hub:       hub,
 		Logger:    d.Logger,
@@ -147,7 +148,7 @@ func Setup(ctx context.Context, d *app.Deps) error {
 	}
 
 	api.New(api.Config{Flow: svc, Logger: d.Logger, Shutdown: ctx}).Mount(d.Router)
-	d.Logger.Info("proposal routes mounted", "llm_mode", string(mode), "cta_url", contentCfg.CTAURL)
+	d.Logger.Info("proposal routes mounted", "llm_mode", string(mode), "cta_url", contentCfg.CTAURL, "sms_text_budget", contentCfg.SMSBudget)
 	return nil
 }
 

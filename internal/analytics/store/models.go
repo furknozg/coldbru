@@ -9,11 +9,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CampaignClick struct {
+	CampaignID   uuid.UUID
+	Channel      string
+	Language     string
+	Timezone     string
+	UniqueClicks int32
+	TotalClicks  int32
+}
+
 type CampaignDeliveryCount struct {
 	CampaignID uuid.UUID
 	Channel    string
 	Status     string
 	Count      int32
+}
+
+type CampaignSentLocale struct {
+	CampaignID uuid.UUID
+	Channel    string
+	Language   string
+	Timezone   string
+	Sent       int32
 }
 
 type CampaignSummary struct {
@@ -22,6 +39,16 @@ type CampaignSummary struct {
 	SmsSegments     int32
 	DeliveryCostUsd pgtype.Numeric
 	UpdatedAt       pgtype.Timestamptz
+}
+
+type ClickEvent struct {
+	ClickID    uuid.UUID
+	CampaignID uuid.UUID
+	Channel    string
+	Language   string
+	Timezone   string
+	ClickedAt  pgtype.Timestamptz
+	First      bool
 }
 
 type LlmUsage struct {

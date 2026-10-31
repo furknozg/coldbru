@@ -50,6 +50,7 @@ func Start(ctx context.Context) (*Env, error) {
 			"PROPOSAL_DB_PASSWORD":     "proposal_svc_dev",
 			"NOTIFICATION_DB_PASSWORD": "notification_svc_dev",
 			"ANALYTICS_DB_PASSWORD":    "analytics_svc_dev",
+			"REDIRECT_DB_PASSWORD":     "redirect_svc_dev",
 			"TZ":                       "UTC",
 			"PGTZ":                     "UTC",
 		}),

@@ -4,8 +4,8 @@
 
 -- name: ListSendDeliveries :many
 -- The rows a batch of SEND messages points at: the delivery, the approved content of its message and
--- the campaign's status and button link. Ids that do not exist are simply absent from the result.
-SELECT d.id, d.campaign_id, d.customer_id, d.channel, d.first_name, d.contact, d.status, d.attempts, d.lease_until,
+-- the campaign's status and button link, and the delivery's short link code (D-106). Ids that do not exist are simply absent from the result.
+SELECT d.id, d.campaign_id, d.customer_id, d.channel, d.first_name, d.contact, d.status, d.attempts, d.lease_until, d.link_code,
        m.language, m.content, c.status AS campaign_status, c.cta_url
 FROM delivery d
 JOIN message m ON m.id = d.message_id

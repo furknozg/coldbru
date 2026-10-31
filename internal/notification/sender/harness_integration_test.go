@@ -37,6 +37,7 @@ import (
 	"github.com/furknozg/coldbru/internal/customer/pgtest"
 	nconsent "github.com/furknozg/coldbru/internal/notification/consent"
 	"github.com/furknozg/coldbru/internal/notification/intake"
+	"github.com/furknozg/coldbru/internal/notification/links/linktest"
 	"github.com/furknozg/coldbru/internal/notification/progress"
 	"github.com/furknozg/coldbru/internal/notification/provider"
 	"github.com/furknozg/coldbru/internal/notification/sender"
@@ -387,6 +388,8 @@ type envOptions struct {
 	workers     int
 	lease       time.Duration
 	breaker     nconsent.Config
+	// trackingBase is TRACKING_BASE_URL of the send workers; empty sends without tracking links.
+	trackingBase string
 }
 
 type envOption func(*envOptions)
@@ -398,6 +401,9 @@ func withDeferredSender() envOption { return func(o *envOptions) { o.deferSender
 func withChecker() envOption                   { return func(o *envOptions) { o.checker = true } }
 func withBackoff(b consumer.Backoff) envOption { return func(o *envOptions) { o.backoff = b } }
 func withWorkers(n int) envOption              { return func(o *envOptions) { o.workers = n } }
+
+// withTracking sends with tracking links under base (D-106, D-109).
+func withTracking(base string) envOption { return func(o *envOptions) { o.trackingBase = base } }
 func withBreaker(maxFailures uint32, openFor time.Duration) envOption {
 	return func(o *envOptions) { o.breaker.MaxFailures, o.breaker.OpenFor = maxFailures, openFor }
 }
@@ -417,6 +423,8 @@ type env struct {
 	customer *customerStub
 	consent  *nconsent.Client
 	reg      *prometheus.Registry
+	// links is the fake redirect service the intake asks for the short link of every delivery.
+	links *linktest.Fake
 
 	opts     envOptions
 	logger   *slog.Logger
@@ -466,7 +474,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 
 	e := &env{
 		t: t, pool: pool, js: js, streams: streams, logs: logs, q: store.New(pool),
-		prov: newFakeProvider(t), customer: newCustomerStub(t), reg: prometheus.NewRegistry(),
+		prov: newFakeProvider(t), customer: newCustomerStub(t), reg: prometheus.NewRegistry(), links: linktest.New(),
 		opts: o, logger: logger,
 	}
 
@@ -478,7 +486,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 
 	relay := &outbox.Relay{Pool: pool, JS: js, Logger: quiet, PollInterval: 50 * time.Millisecond}
 	stopRelay := relay.Start(ctx)
-	stopIntake, err := intake.Start(ctx, intake.Deps{JS: js, Pool: pool, Logger: logger, Backoff: fastBackoff})
+	stopIntake, err := intake.Start(ctx, intake.Deps{JS: js, Pool: pool, Logger: logger, Links: e.links, Backoff: fastBackoff})
 	if err != nil {
 		t.Fatalf("intake.Start() error = %v", err)
 	}
@@ -527,7 +535,7 @@ func (e *env) startSender() {
 	}
 	deps := sender.Deps{
 		JS: e.js, Pool: e.pool, Logger: e.logger, Provider: pc, Consent: e.consent, Registerer: e.reg,
-		Backoff: e.opts.backoff, Workers: e.opts.workers, Lease: e.opts.lease,
+		Backoff: e.opts.backoff, Workers: e.opts.workers, Lease: e.opts.lease, TrackingBaseURL: e.opts.trackingBase,
 	}
 	if e.checker != nil {
 		deps.Nudge = e.checker.Nudge

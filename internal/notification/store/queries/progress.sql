@@ -32,3 +32,16 @@ SELECT coalesce(sum(CASE WHEN jsonb_typeof(m.content -> 'segments') = 'number' T
 FROM delivery d
 JOIN message m ON m.id = d.message_id
 WHERE d.campaign_id = $1 AND d.channel = 'sms' AND d.status = 'sent';
+
+-- name: CountSentByLocale :many
+-- The deliveries that were sent, per channel and the language and time zone of their send slot
+-- (D-108): the denominators of the click-through rate, written into the completed event. The language
+-- is that of the delivery's message, the time zone that of its schedule. Served by
+-- delivery_campaign_channel_status_idx.
+SELECT d.channel, m.language, s.timezone, count(*)::bigint AS sent
+FROM delivery d
+JOIN message m ON m.id = d.message_id
+JOIN locale_schedule s ON s.id = d.schedule_id
+WHERE d.campaign_id = $1 AND d.status = 'sent'
+GROUP BY d.channel, m.language, s.timezone
+ORDER BY d.channel, m.language, s.timezone;

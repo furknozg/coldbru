@@ -27,6 +27,52 @@ func (q *Queries) CompleteSendCampaign(ctx context.Context, id uuid.UUID) (pgtyp
 	return completed_at, err
 }
 
+const countSentByLocale = `-- name: CountSentByLocale :many
+SELECT d.channel, m.language, s.timezone, count(*)::bigint AS sent
+FROM delivery d
+JOIN message m ON m.id = d.message_id
+JOIN locale_schedule s ON s.id = d.schedule_id
+WHERE d.campaign_id = $1 AND d.status = 'sent'
+GROUP BY d.channel, m.language, s.timezone
+ORDER BY d.channel, m.language, s.timezone
+`
+
+type CountSentByLocaleRow struct {
+	Channel  string
+	Language string
+	Timezone string
+	Sent     int64
+}
+
+// The deliveries that were sent, per channel and the language and time zone of their send slot
+// (D-108): the denominators of the click-through rate, written into the completed event. The language
+// is that of the delivery's message, the time zone that of its schedule. Served by
+// delivery_campaign_channel_status_idx.
+func (q *Queries) CountSentByLocale(ctx context.Context, campaignID uuid.UUID) ([]CountSentByLocaleRow, error) {
+	rows, err := q.db.Query(ctx, countSentByLocale, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountSentByLocaleRow
+	for rows.Next() {
+		var i CountSentByLocaleRow
+		if err := rows.Scan(
+			&i.Channel,
+			&i.Language,
+			&i.Timezone,
+			&i.Sent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCampaignProgress = `-- name: GetCampaignProgress :one
 SELECT c.status,
        (SELECT count(*) FROM locale_schedule s WHERE s.campaign_id = c.id AND s.status = 'scheduled') AS scheduled_schedules,

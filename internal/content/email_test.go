@@ -114,7 +114,7 @@ func TestCheckEmailReportsEveryProblem(t *testing.T) {
 func TestBuildSMSAndEmail(t *testing.T) {
 	t.Parallel()
 	prices := Prices{SMSSegment: 40_000, Email: 1_000}
-	sms, problems := BuildSMS("Merhaba {{first_name}}, sepetini unutma!", 8, 33, prices)
+	sms, problems := BuildSMS("Merhaba {{first_name}}, sepetini unutma!", 8, 33, SMSMaxChars, "", prices)
 	if len(problems) > 0 {
 		t.Fatal(problems)
 	}
@@ -122,15 +122,15 @@ func TestBuildSMSAndEmail(t *testing.T) {
 	if sms.Encoding != GSM7 || sms.Segments != 1 || sms.RenderedLength != 34 || sms.EstimatedCostUSD != "1.3200" {
 		t.Errorf("sms = %+v", sms)
 	}
-	tr, _ := BuildSMS("Şimdi sepete dön {{first_name}}", 8, 10, prices)
+	tr, _ := BuildSMS("Şimdi sepete dön {{first_name}}", 8, 10, SMSMaxChars, "", prices)
 	if tr.Encoding != UCS2 || tr.Segments != 1 || tr.EstimatedCostUSD != "0.4000" {
 		t.Errorf("tr = %+v", tr)
 	}
-	long, _ := BuildSMS(strings.Repeat("ş", 100), 0, 10, prices)
+	long, _ := BuildSMS(strings.Repeat("ş", 100), 0, 10, SMSMaxChars, "", prices)
 	if long.Segments != 2 || long.EstimatedCostUSD != "0.8000" {
 		t.Errorf("long = %+v, want 2 segments x 10 x 0.04", long)
 	}
-	if got, p := BuildSMS(strings.Repeat("a", 161), 0, 10, prices); len(p) == 0 || got != (SMSContent{}) {
+	if got, p := BuildSMS(strings.Repeat("a", 161), 0, 10, SMSMaxChars, "", prices); len(p) == 0 || got != (SMSContent{}) {
 		t.Errorf("an over-long text was built: %+v %+v", got, p)
 	}
 

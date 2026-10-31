@@ -26,6 +26,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/furknozg/coldbru/internal/notification/intake"
+	"github.com/furknozg/coldbru/internal/notification/links/linktest"
 	"github.com/furknozg/coldbru/internal/notification/store"
 	"github.com/furknozg/coldbru/internal/platform/consumer"
 	"github.com/furknozg/coldbru/internal/platform/db"
@@ -207,6 +208,8 @@ type env struct {
 	streams map[string]jetstream.Stream
 	logs    *logCapture
 	q       *store.Queries
+	// links is the fake redirect service the intake asks for the short link of every delivery.
+	links *linktest.Fake
 }
 
 var fastBackoff = consumer.Backoff{Base: 20 * time.Millisecond, Factor: 1.5, Max: 150 * time.Millisecond}
@@ -251,7 +254,8 @@ func newEnv(t *testing.T) *env {
 
 	relay := &outbox.Relay{Pool: pool, JS: js, Logger: quiet, PollInterval: 50 * time.Millisecond}
 	stopRelay := relay.Start(ctx)
-	stop, err := intake.Start(ctx, intake.Deps{JS: js, Pool: pool, Logger: logger, Backoff: fastBackoff})
+	fakeLinks := linktest.New()
+	stop, err := intake.Start(ctx, intake.Deps{JS: js, Pool: pool, Logger: logger, Links: fakeLinks, Backoff: fastBackoff})
 	if err != nil {
 		t.Fatalf("intake.Start() error = %v", err)
 	}
@@ -266,7 +270,7 @@ func newEnv(t *testing.T) *env {
 			t.Errorf("stop relay: %v", err)
 		}
 	})
-	return &env{pool: pool, js: js, streams: streams, logs: logs, q: store.New(pool)}
+	return &env{pool: pool, js: js, streams: streams, logs: logs, q: store.New(pool), links: fakeLinks}
 }
 
 func eventually(t *testing.T, timeout time.Duration, what string, cond func() bool) {

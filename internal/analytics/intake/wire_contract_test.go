@@ -8,6 +8,7 @@ import (
 
 	nprogress "github.com/furknozg/coldbru/internal/notification/progress"
 	"github.com/furknozg/coldbru/internal/proposal/flow"
+	rapi "github.com/furknozg/coldbru/internal/redirect/api"
 )
 
 // The producers' wire shapes (D-035, D-080, D-083) and Analytics' mirror of them must stay the
@@ -20,7 +21,8 @@ func TestContractWithNotificationCompleted(t *testing.T) {
 	at := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
 	sent := nprogress.CompletedData{
 		CampaignID: "c", CompletedAt: at, SMSSegments: 6, EstimatedCostUSD: "0.2400",
-		Counts: []nprogress.Count{{Channel: "sms", Status: "sent", Count: 3}, {Channel: "email", Status: "failed", Count: 1}},
+		Counts:       []nprogress.Count{{Channel: "sms", Status: "sent", Count: 3}, {Channel: "email", Status: "failed", Count: 1}},
+		SentByLocale: []nprogress.LocaleCount{{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 3}},
 	}
 	raw, err := json.Marshal(sent)
 	if err != nil {
@@ -32,13 +34,39 @@ func TestContractWithNotificationCompleted(t *testing.T) {
 	}
 	want := CompletedData{
 		CampaignID: "c", CompletedAt: at, SMSSegments: 6, EstimatedCostUSD: "0.2400",
-		Counts: []Count{{Channel: "sms", Status: "sent", Count: 3}, {Channel: "email", Status: "failed", Count: 1}},
+		Counts:       []Count{{Channel: "sms", Status: "sent", Count: 3}, {Channel: "email", Status: "failed", Count: 1}},
+		SentByLocale: []LocaleCount{{Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 3}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("decoded %+v, want %+v", got, want)
 	}
 	if jsonNames(t, sent) != jsonNames(t, want) {
 		t.Errorf("JSON names differ: notification %s, analytics %s", jsonNames(t, sent), jsonNames(t, want))
+	}
+}
+
+func TestContractWithRedirectClicked(t *testing.T) {
+	if EventTypeClicked != rapi.EventTypeClicked || EventVersion != rapi.EventClickVersion {
+		t.Errorf("event type/version = %s v%d, redirect sends %s v%d", EventTypeClicked, EventVersion, rapi.EventTypeClicked, rapi.EventClickVersion)
+	}
+	at := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	sent := rapi.ClickedData{
+		ClickID: "k", DeliveryID: "d", CampaignID: "c", Channel: "email", Language: "en", Timezone: "Europe/London", ClickedAt: at, First: true,
+	}
+	raw, err := json.Marshal(sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got ClickedData
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := ClickedData{ClickID: "k", DeliveryID: "d", CampaignID: "c", Channel: "email", Language: "en", Timezone: "Europe/London", ClickedAt: at, First: true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("decoded %+v, want %+v", got, want)
+	}
+	if jsonNames(t, sent) != jsonNames(t, want) {
+		t.Errorf("JSON names differ: redirect %s, analytics %s", jsonNames(t, sent), jsonNames(t, want))
 	}
 }
 

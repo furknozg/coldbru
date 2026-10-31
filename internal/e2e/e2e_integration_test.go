@@ -15,9 +15,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -41,6 +43,7 @@ import (
 	"github.com/furknozg/coldbru/internal/mockprovider"
 	nconsent "github.com/furknozg/coldbru/internal/notification/consent"
 	nintake "github.com/furknozg/coldbru/internal/notification/intake"
+	"github.com/furknozg/coldbru/internal/notification/links"
 	nprogress "github.com/furknozg/coldbru/internal/notification/progress"
 	"github.com/furknozg/coldbru/internal/notification/provider"
 	"github.com/furknozg/coldbru/internal/notification/sender"
@@ -58,6 +61,9 @@ import (
 	pprogress "github.com/furknozg/coldbru/internal/proposal/progress"
 	"github.com/furknozg/coldbru/internal/proposal/prompts"
 	pstore "github.com/furknozg/coldbru/internal/proposal/store"
+	rapi "github.com/furknozg/coldbru/internal/redirect/api"
+	"github.com/furknozg/coldbru/internal/redirect/code"
+	rstore "github.com/furknozg/coldbru/internal/redirect/store"
 )
 
 // The sample brief of the case and its audience (D-010, D-062): 46 reachable, coverage 20/13/13/3.
@@ -195,15 +201,17 @@ type inbox struct {
 
 type inboxMsg struct {
 	Key, Channel, To string
+	// Body is the SMS text, or the HTML of the email.
+	Body string
 }
 
 func (b *inbox) SendEmail(_ context.Context, e mockprovider.Email) error {
-	b.add(inboxMsg{Key: e.IdempotencyKey, Channel: "email", To: e.To})
+	b.add(inboxMsg{Key: e.IdempotencyKey, Channel: "email", To: e.To, Body: e.HTML})
 	return nil
 }
 
 func (b *inbox) SendSMS(_ context.Context, s mockprovider.SMS) error {
-	b.add(inboxMsg{Key: s.IdempotencyKey, Channel: "sms", To: s.To})
+	b.add(inboxMsg{Key: s.IdempotencyKey, Channel: "sms", To: s.To, Body: s.Text})
 	return nil
 }
 
@@ -287,8 +295,9 @@ func eventually(t *testing.T, timeout time.Duration, what string, cond func() bo
 
 // TestSampleBriefDeliversEndToEnd takes the sample brief of the case through every service in one
 // process: Proposal (scripted LLM, real Customer) to the confirmed event and the recipient batches,
-// Notification (intake, send workers, completion checker) to the real mock provider, and Analytics
-// from the completed event (D-102).
+// Notification (intake, send workers, completion checker) to the real mock provider, the redirect
+// service for the tracking links and the clicks (D-106), and Analytics from the completed and
+// click events (D-102, D-108).
 func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	ctx := t.Context()
 	fast := consumer.Backoff{Base: 20 * time.Millisecond, Factor: 1.5, Max: 150 * time.Millisecond}
@@ -297,10 +306,11 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	proposalPool := openDB(t, "e2e_proposal", "proposal")
 	notifyPool := openDB(t, "e2e_notification", "")
 	analyticsPool := openDB(t, "e2e_analytics", "analytics")
+	redirectPool := openDB(t, "e2e_redirect", "redirect")
 	for _, m := range []struct {
 		pool *pgxpool.Pool
 		set  fs.FS
-	}{{proposalPool, pstore.Migrations()}, {notifyPool, nstore.Migrations()}, {analyticsPool, astore.Migrations()}} {
+	}{{proposalPool, pstore.Migrations()}, {notifyPool, nstore.Migrations()}, {analyticsPool, astore.Migrations()}, {redirectPool, rstore.Migrations()}} {
 		if err := migrate.Up(ctx, m.pool, m.set, discard()); err != nil {
 			t.Fatalf("migrate: %v", err)
 		}
@@ -332,6 +342,27 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// --- the redirect service (D-106): the real handler over its own database. The tracking links
+	// point at it directly, so the test can click them.
+	signer, err := code.NewSigner("e2e-redirect-signing-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectHandler, err := rapi.New(rapi.Config{Pool: redirectPool, Signer: signer, FallbackURL: content.DefaultCTAURL, Logger: discard()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectRouter := chi.NewRouter()
+	redirectHandler.Mount(redirectRouter)
+	redirectSrv := httptest.NewServer(redirectRouter)
+	t.Cleanup(redirectSrv.Close)
+	linkClient, err := links.New(links.Config{URL: redirectSrv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trackingBase := redirectSrv.URL
+	smsBudget := content.SMSBudget(trackingBase)
 
 	// --- Proposal: the flow with the scripted LLM, the real content generator and confirmer.
 	prev, err := llm.NewCustomerTools(cust).CountAudience(ctx, sampleDSL)
@@ -367,7 +398,7 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	}
 	svc, err := flow.New(flow.Deps{
 		Pool: proposalPool, LLM: script, Customer: cust,
-		Content:   contentgen.New(script, content.Prices{SMSSegment: 40_000, Email: 1_000}),
+		Content:   contentgen.New(script, content.Prices{SMSSegment: 40_000, Email: 1_000}, contentgen.WithSMSBudget(smsBudget), contentgen.WithSMSLink(content.PlaceholderLink(trackingBase))),
 		Confirmer: conf, Hub: hub, Logger: discard(),
 	})
 	if err != nil {
@@ -381,7 +412,8 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		t.Fatalf("proposal progress: %v", err)
 	}
 	notifyRelay := (&outbox.Relay{Pool: notifyPool, JS: js, Logger: discard(), PollInterval: 50 * time.Millisecond}).Start(ctx)
-	stopIntake, err := nintake.Start(ctx, nintake.Deps{JS: js, Pool: notifyPool, Logger: discard(), Backoff: fast})
+	redirectRelay := (&outbox.Relay{Pool: redirectPool, JS: js, Logger: discard(), PollInterval: 50 * time.Millisecond}).Start(ctx)
+	stopIntake, err := nintake.Start(ctx, nintake.Deps{JS: js, Pool: notifyPool, Logger: discard(), Links: linkClient, Backoff: fast})
 	if err != nil {
 		t.Fatalf("notification intake: %v", err)
 	}
@@ -391,7 +423,7 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	}
 	stopSend, err := sender.Start(ctx, sender.Deps{
 		JS: js, Pool: notifyPool, Logger: discard(), Provider: provClient, Consent: consent,
-		Registerer: prometheus.NewRegistry(), Backoff: fast, Nudge: checker.Nudge,
+		Registerer: prometheus.NewRegistry(), Backoff: fast, Nudge: checker.Nudge, TrackingBaseURL: trackingBase,
 	})
 	if err != nil {
 		t.Fatalf("sender: %v", err)
@@ -421,6 +453,9 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		}
 		if err := notifyRelay(cctx); err != nil {
 			t.Errorf("stop notification relay: %v", err)
+		}
+		if err := redirectRelay(cctx); err != nil {
+			t.Errorf("stop redirect relay: %v", err)
 		}
 		if err := proposalRelay(cctx); err != nil {
 			t.Errorf("stop proposal relay: %v", err)
@@ -585,5 +620,120 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	}
 	if wantSegments < 13 || report.SMSSegments != wantSegments {
 		t.Errorf("Analytics sms_segments = %d, want %d (at least one per sms)", report.SMSSegments, wantSegments)
+	}
+
+	// --- 4. Tracking links (D-106, D-109): every delivery has a link in the redirect service, and
+	// the message that went out carries it.
+	linkRows, err := notifyPool.Query(ctx, `SELECT id::text, customer_id, channel, link_code FROM delivery WHERE campaign_id = $1`, camp.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeOf := map[string]string{} // delivery id to link code
+	var emailsToClick, smsToClick []string
+	for linkRows.Next() {
+		var id, customerID, channel string
+		var linkCode *string
+		if err := linkRows.Scan(&id, &customerID, &channel, &linkCode); err != nil {
+			t.Fatal(err)
+		}
+		if linkCode == nil || !signer.Verify(*linkCode) {
+			t.Errorf("delivery %s (%s) has link_code %v, want a code that verifies", id, channel, linkCode)
+			continue
+		}
+		codeOf[id] = *linkCode
+		if channel == "email" && len(emailsToClick) < 2 {
+			emailsToClick = append(emailsToClick, id)
+		}
+		if channel == "sms" && len(smsToClick) < 1 {
+			smsToClick = append(smsToClick, id)
+		}
+	}
+	linkRows.Close()
+	if len(codeOf) != 46 {
+		t.Fatalf("%d deliveries have a link code, want all 46", len(codeOf))
+	}
+	var storedLinks, linksOfDeliveries int
+	if err := redirectPool.QueryRow(ctx, `SELECT count(*), count(DISTINCT delivery_id) FROM link WHERE campaign_id = $1`, camp.ID).Scan(&storedLinks, &linksOfDeliveries); err != nil {
+		t.Fatal(err)
+	}
+	if storedLinks != 46 || linksOfDeliveries != 46 {
+		t.Errorf("the redirect service holds %d links for %d deliveries, want 46 and 46", storedLinks, linksOfDeliveries)
+	}
+	for _, m := range in.all() {
+		link := content.TrackingLink(trackingBase, codeOf[m.Key])
+		switch m.Channel {
+		case "sms":
+			if !strings.HasSuffix(m.Body, " "+link) || utf8.RuneCountInString(m.Body) > content.SMSMaxChars {
+				t.Errorf("sms of %s = %q, want it to end with %q within 160 characters", m.Key, m.Body, link)
+			}
+		case "email":
+			if !strings.Contains(m.Body, `href="`+link+`"`) {
+				t.Errorf("email of %s has no button with %s", m.Key, link)
+			}
+		}
+	}
+
+	// --- 5. Clicks: two emails (one of them twice) and one SMS are clicked, and a code nobody issued.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	click := func(c string) *http.Response {
+		t.Helper()
+		resp, err := noFollow.Get(redirectSrv.URL + "/r/" + c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	wantTarget := content.DefaultCTAURL + "?utm_campaign=" + camp.ID.String()
+	for _, id := range []string{emailsToClick[0], emailsToClick[0], emailsToClick[1], smsToClick[0]} {
+		resp := click(codeOf[id])
+		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != wantTarget {
+			t.Fatalf("click on %s = %d, Location %q; want 302 to %s", id, resp.StatusCode, resp.Header.Get("Location"), wantTarget)
+		}
+	}
+	bad, _ := signer.New() // validly signed, but no link has it
+	if resp := click(bad); resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != content.DefaultCTAURL {
+		t.Errorf("click on an unknown code = %d, Location %q; want 302 to the default page", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	eventually(t, 30*time.Second, "Analytics to count the clicks", func() bool {
+		resp, err := http.Get(analyticsSrv.URL + "/campaigns/" + camp.ID.String() + "/summary")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		report = aapi.CampaignReport{}
+		return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&report) == nil && report.Clicks.TotalClicks == 4
+	})
+	c := report.Clicks
+	if c.Sent != 46 || c.UniqueClicks != 3 || c.TotalClicks != 4 || c.CTR != 0.0652 {
+		t.Errorf("campaign clicks = sent %d, unique %d, total %d, ctr %v; want 46, 3, 4, 0.0652 (3 of 46)", c.Sent, c.UniqueClicks, c.TotalClicks, c.CTR)
+	}
+	wantChannels := map[string]aapi.ChannelClicks{
+		"email": {Channel: "email", Sent: 33, UniqueClicks: 2, TotalClicks: 3, CTR: 0.0606},
+		"sms":   {Channel: "sms", Sent: 13, UniqueClicks: 1, TotalClicks: 1, CTR: 0.0769},
+	}
+	for _, ch := range c.ByChannel {
+		if ch != wantChannels[ch.Channel] {
+			t.Errorf("clicks of %s = %+v, want %+v", ch.Channel, ch, wantChannels[ch.Channel])
+		}
+	}
+	var localeSent, localeUnique int64
+	for _, l := range c.ByLocale {
+		localeSent += l.Sent
+		localeUnique += l.UniqueClicks
+	}
+	if len(c.ByChannel) != 2 || localeSent != 46 || localeUnique != 3 {
+		t.Errorf("by channel %d entries, by locale sent %d and unique %d; want 2, 46 and 3", len(c.ByChannel), localeSent, localeUnique)
+	}
+
+	var overview aapi.Overview
+	resp, err := http.Get(analyticsSrv.URL + "/overview")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&overview); err != nil || overview.Clicks.Sent != 46 || overview.Clicks.UniqueClicks != 3 || overview.Clicks.CTR != 0.0652 {
+		t.Errorf("overview clicks = %+v (%v), want 3 of 46", overview.Clicks, err)
 	}
 }

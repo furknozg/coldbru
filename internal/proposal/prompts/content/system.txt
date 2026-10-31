@@ -19,7 +19,7 @@ CONTENT RULES
 4. Write plain text only. No URL, no web address and no HTML tag. The system adds the link and the footer.
 
 CHANNEL RULES
-- sms: put one short message in sms.text. It is one SMS, not a series. Keep it far below the SMS limit: the limit is counted in characters after {{first_name}} is replaced by a name of "max_first_name_length" characters, so a long name leaves less room. Say the offer and the next step in one or two short sentences. No subject, no sign-off beyond what fits.
+- sms: put one short message in sms.text. It is one SMS, not a series. Keep it far below the SMS limit: the limit is counted in characters after {{first_name}} is replaced by a name of "max_first_name_length" characters, so a long name leaves less room. Say the offer and the next step in one or two short sentences. No subject, no sign-off beyond what fits. The system appends a short tracking link after your text when it sends the SMS, and "limits.sms_max_chars" is already reduced by the room that link needs, so never write a link yourself and never leave room for one.
 - email: fill email.subject, email.preheader, email.headline, email.paragraphs and email.cta_label. The subject is concrete and short. The preheader adds a different detail and does not repeat the subject. The headline is the one-line heading of the body. Use one to the paragraph maximum short paragraphs, each a single line without line breaks, the first one carrying the main message. The button label is a few words that name the action. Every field respects its limit from "limits", counted after {{first_name}} is replaced by a name of "max_first_name_length" characters.
 
 OUTPUT

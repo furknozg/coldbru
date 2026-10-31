@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -523,5 +524,101 @@ func TestReportsFromEvents(t *testing.T) {
 	}
 	if code := getJSON("/llm-usage?group=model", nil); code != 422 {
 		t.Errorf("group=model status %d, want 422", code)
+	}
+}
+
+func (h *harness) clicked(campaign uuid.UUID, click uuid.UUID, channel, language, timezone string, first bool, at time.Time) string {
+	return h.publish(intake.EventTypeClicked, 1, "redirect", intake.ClickedData{
+		ClickID: click.String(), DeliveryID: uuid.NewString(), CampaignID: campaign.String(),
+		Channel: channel, Language: language, Timezone: timezone, ClickedAt: at, First: first,
+	}, "", true)
+}
+
+func TestCompletedStoresSentByLocale(t *testing.T) {
+	h := newHarness(t)
+	h.start(pricing.Defaults())
+	id := uuid.New()
+	at := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	sent := func(channel, language, timezone string, n int64) intake.LocaleCount {
+		return intake.LocaleCount{Channel: channel, Language: language, Timezone: timezone, Sent: n}
+	}
+	h.publish(intake.EventTypeCompleted, 1, "notification", intake.CompletedData{
+		CampaignID: id.String(), CompletedAt: at, EstimatedCostUSD: "0.1000", SMSSegments: 2,
+		Counts: []intake.Count{{Channel: "sms", Status: "sent", Count: 2}},
+		SentByLocale: []intake.LocaleCount{
+			sent("sms", "tr", "Europe/Istanbul", 2), sent("email", "en", "Europe/London", 5), sent("email", "tr", "Europe/Istanbul", 7),
+		},
+	}, "", true)
+	h.idle()
+	const query = `SELECT string_agg(channel || '/' || language || '/' || timezone || '=' || sent, ',' ORDER BY channel, language, timezone)
+		FROM campaign_sent_locale WHERE campaign_id = $1`
+	if got := h.text(query, id); got != "email/en/Europe/London=5,email/tr/Europe/Istanbul=7,sms/tr/Europe/Istanbul=2" {
+		t.Errorf("sent by locale = %s", got)
+	}
+
+	// A repeated completed event replaces the rows; an old-style one without the field clears them.
+	h.publish(intake.EventTypeCompleted, 1, "notification", intake.CompletedData{
+		CampaignID: id.String(), CompletedAt: at, EstimatedCostUSD: "0.1000", SentByLocale: []intake.LocaleCount{sent("sms", "en", "Europe/London", 1)},
+	}, "", true)
+	eventually(t, "the replacement", func() bool { return h.text(query, id) == "sms/en/Europe/London=1" })
+	h.publish(intake.EventTypeCompleted, 1, "notification", map[string]any{
+		"campaign_id": id.String(), "completed_at": at, "counts": []any{}, "sms_segments": 0, "estimated_cost_usd": "0.0000",
+	}, "", true)
+	eventually(t, "the old-style event", func() bool {
+		return h.count(`SELECT count(*) FROM campaign_sent_locale WHERE campaign_id = $1`, id) == 0
+	})
+}
+
+func TestClicksAreCountedOnceAndLive(t *testing.T) {
+	h := newHarness(t)
+	h.start(pricing.Defaults())
+	id := uuid.New()
+	at := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+
+	// Two deliveries are clicked: one three times, one once. The clicks arrive before the campaign
+	// has completed (no summary row yet).
+	k1, k2, k3, k4 := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	first := h.clicked(id, k1, "sms", "tr", "Europe/Istanbul", true, at)
+	h.clicked(id, k2, "sms", "tr", "Europe/Istanbul", false, at.Add(time.Minute))
+	h.clicked(id, k3, "sms", "tr", "Europe/Istanbul", false, at.Add(2*time.Minute))
+	h.clicked(id, k4, "email", "en", "Europe/London", true, at.Add(3*time.Minute))
+	h.idle()
+
+	// The same event id again (the stream's dedup window bypassed) is skipped by processed_event; the
+	// same click under a new event id is skipped by click_event's key and bumps no counter.
+	h.publish(intake.EventTypeClicked, 1, "redirect", intake.ClickedData{
+		ClickID: k1.String(), DeliveryID: uuid.NewString(), CampaignID: id.String(), Channel: "sms", Language: "tr",
+		Timezone: "Europe/Istanbul", ClickedAt: at, First: true,
+	}, first, false)
+	h.clicked(id, k1, "sms", "tr", "Europe/Istanbul", true, at)
+	eventually(t, "the repeats to be skipped", func() bool {
+		return len(h.logs.find("duplicate event skipped")) == 1 && len(h.logs.find("click already stored, event ignored")) == 1
+	})
+	h.idle()
+
+	if got := h.count(`SELECT count(*) FROM click_event WHERE campaign_id = $1`, id); got != 4 {
+		t.Errorf("%d click events, want 4", got)
+	}
+	rows, err := h.pool.Query(t.Context(), `SELECT channel || '/' || language || '/' || timezone, unique_clicks, total_clicks
+		FROM campaign_click WHERE campaign_id = $1 ORDER BY 1`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string][2]int{}
+	for rows.Next() {
+		var key string
+		var u, tot int
+		if err := rows.Scan(&key, &u, &tot); err != nil {
+			t.Fatal(err)
+		}
+		got[key] = [2]int{u, tot}
+	}
+	want := map[string][2]int{"sms/tr/Europe/Istanbul": {1, 3}, "email/en/Europe/London": {1, 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("campaign_click = %v, want %v", got, want)
+	}
+	if n := h.count(`SELECT count(*) FROM campaign_summary WHERE campaign_id = $1`, id); n != 0 {
+		t.Errorf("%d summaries before the completed event, want 0", n)
 	}
 }

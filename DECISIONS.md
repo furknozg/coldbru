@@ -21,7 +21,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-015 | Tek nginx konteyneri: Vue statik build'ini sunar ve API gateway'dir | Takip ve altyapı | Kabul edildi |
 | D-016 | REST sözleşmesi Go kodundan swag v2 ile OpenAPI 3; TS tipleri ve istemci spec'ten üretilir | Takip ve altyapı | Kabul edildi |
 | D-017 | Seed zaman damgaları yüklemede bugüne kaydırılır | Mock provider ve seed | Kabul edildi |
-| D-018 | Dört servis ve mock provider, her biri ayrı konteyner | Takip ve altyapı | Kabul edildi |
+| D-018 | Dört servis ve mock provider, her biri ayrı konteyner | Takip ve altyapı | Kabul edildi; servis sayısı yerini aldı → D-106 |
 | D-019 | proposal_db, notification_db, analytics_db; rol ve boş DB initdb'de açılır | Takip ve altyapı | Kabul edildi |
 | D-020 | Migration ve DB erişimi goose + sqlc + pgx/v5 | Takip ve altyapı | Kabul edildi |
 | D-021 | Tek Go modülü; cmd/ altında servis başına binary, internal/ altında kod | Takip ve altyapı | Kabul edildi |
@@ -85,7 +85,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-079 | Gönderim worker'ları: provider sözleşmesi, 5 deneme 2 sn ×2 1 dk tavan, 30 sn lease, x/time/rate 100/s burst 10, 100'lük izin kontrolü, gobreaker 5/30 sn/1, SMS'te ad kısaltma | Gönderim | Kabul edildi |
 | D-080 | Canlı durum ve olaylar: 2 sn tamamlanma denetleyicisi, started zamanlama başına / completed kampanya başına, Proposal tüketir, Notification'da 1 sn yoklamalı SSE | Takip ve altyapı | Kabul edildi; completed olayının maliyet alanı yerini aldı → D-083 |
 | D-081 | Mock provider: Go cephe D-079 sözleşmesini uygular, e-postayı Mailpit'e, SMS'i MockServer'a iletir; %5 5xx, %2 429, %1 zaman aşımı, 50–300 ms; kanal başına 110/s; bellekte 24 sa idempotency; receipt yok | Gönderim | Kabul edildi |
-| D-082 | Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link | Takip ve altyapı | Kabul edildi |
+| D-082 | Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link | Takip ve altyapı | Kısmen yerini aldı → D-106, D-108, D-109 |
 | D-083 | Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları | Takip ve altyapı | Kabul edildi |
 | D-084 | Web API istemcisi: servis başına /api/<servis> öneki, commit edilen spec'lerden üretilen ve commit edilen tipler, EventSource + tipli olaylar, problem+json ApiError | Takip ve altyapı | Kabul edildi |
 | D-085 | nginx gateway: web/Dockerfile (node 24 build → nginx stable-alpine), host 8080, /api/<servis> öneki, proxy_redirect, /api altında tamponsuz ve 1 sa okuma; /r/ T-044'te | Takip ve altyapı | Kabul edildi |
@@ -109,6 +109,10 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-103 | Sender, MOCK_SEED'li gerçek mockprovider handler'ına karşı test edilir | Test ve kapsam | Kabul edildi |
 | D-104 | Tarayıcıda uçtan uca test (Playwright) kapsam dışı | Test ve kapsam | Kabul edildi |
 | D-105 | make test'i koşan GitHub Actions pipeline'ı | Test ve kapsam | Kabul edildi |
+| D-106 | Ayrı redirect servisi; imzalı kısa link intake'te toplu oluşturulur | Takip ve altyapı | Kabul edildi |
+| D-107 | redirect_db şeması: link, click, outbox; tıklama evt.redirect.clicked.v1 ile yayınlanır | Takip ve altyapı | Kabul edildi |
+| D-108 | CTR Analytics'te: completed olayına dil/saat dilimi kırılımı, tıklama tabloları ve serisi, bot ayıklaması yok | Takip ve altyapı | Kabul edildi |
+| D-109 | SMS izleme linki metnin sonuna eklenir; bütçe 160 − link uzunluğu | LLM entegrasyonu | Kabul edildi |
 
 ---
 
@@ -363,7 +367,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-018: Dört servis ve mock provider, her biri ayrı konteyner
 
-- **Durum:** Kabul edildi · 2026-10-27
+- **Durum:** Kabul edildi · 2026-10-27; servis sayısı yerini aldı → D-106 (beşinci servis redirect) · 2026-10-31
 - **Alan:** Takip ve altyapı
 - **Bağlam:** THOUGHTS.md diyagramı Customer, Proposal, Notification ve Analytics servislerini gösteriyor. Araştırma Analytics'i ilk kesilecekler arasına koymuştu (docs/research/README.md).
 - **Karar:** Customer, Proposal, Notification ve Analytics ayrı Go süreçleri ve ayrı compose servisleridir. Mock SMS/e-posta provider da ayrı bir konteynerdir. Analytics `notification.completed` ve `token.completed` olaylarını NATS'ten tüketir ve kendi veritabanına yazar.
@@ -1463,7 +1467,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-082: Tıklama takibi (T-044): imzalı token ve Analytics yönlendirme ucu + nginx yedeği, tekil CTR, SMS'e kodla kısa link
 
-- **Durum:** Kabul edildi · 2026-10-29
+- **Durum:** Kabul edildi · 2026-10-29; yönlendirme ucu, token biçimi ve SMS link uzunluğu yerini aldı → D-106, D-109 · 2026-10-31; bot ayıklaması geri alındı → D-108 · 2026-10-31
 - **Alan:** Takip ve altyapı
 - **Bağlam:** Kullanıcı T-032'yi başlatırken başarı metriği olarak tıklanma oranının (CTR) izlenmesini önerdi; örnek olarak linkin bir proxy'de aynalanıp hem asıl adrese hem bir izleyiciye gitmesini (nginx mirror) verdi. D-071 CTA URL'sini yapılandırmadan alıyor, HTML'i gönderimde Notification çiziyor ve SMS'te URL'yi yasaklıyordu. Kullanıcı tıklama takibini T-032'den ayrı, yeni bir görev (T-044) olarak istedi.
 - **Karar:**
@@ -1477,7 +1481,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Yalnız toplam tıklama — reddedildi: tekil CTR hesaplanamazdı.
   - SMS'te takip olmaması — reddedildi: SMS kampanyalarının başarısı ölçülmezdi.
 - **Sonuçlar / bedel:** Token teslimat id'sini taşır (takma adlı kişisel veri). İki yönlendirme yolu ve T-034'te ek nginx ayarı. D-071'in SMS kuralı değişir: SMS metin bütçesi küçülür, `content` prompt'unun sürümü artar, UCS-2'de segment sayısı artabilir.
-- **Doğrulama:** Doğrulanmadı — henüz uygulanmadı (T-044).
+- **Doğrulama:** T-044'te D-106–D-109 biçimiyle uygulandı; doğrulama o kayıtlarda.
 
 ## D-083: Analytics: normalize analytics_db, llm_call başına token_completed, model başına yapılandırılabilir fiyat, özet/liste/prompt sürümü raporları
 
@@ -1882,6 +1886,80 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Runner'da testcontainers imaj çekimi süreyi uzatır. Repoda henüz remote yok; iş akışı push edilene kadar GitHub'da koşturulamaz.
 - **Doğrulama:** Kısmen, 2026-10-31'de (T-038): `.github/workflows/test.yml` YAML olarak ayrıştırıldı; GitHub runner'da koşturulmadı (repoda remote yok), `setup-go`'nun Go 1.27.0'ı kabul ettiği doğrulanmadı.
 - **Uygulama notu (T-038):** push ve pull_request tetikleyicileri, `permissions: contents: read`, ref başına concurrency grubu, 45 dk zaman aşımı. `actions/checkout@v4`, `actions/setup-go@v5` (`go.mod`), `pnpm/action-setup@v4` (pnpm 12.8.1, `web/Dockerfile`'daki `PNPM_VERSION` ile aynı; `web/package.json`'da `packageManager` yok), `actions/setup-node@v4` (Node 24, pnpm cache), sonra `pnpm -C web install --frozen-lockfile` ve `make test`. Gizli bilgi kullanılmaz.
+
+## D-106: Ayrı redirect servisi; imzalı kısa link intake'te toplu oluşturulur
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-082 tıklamayı Analytics'e yazdırıyor ve linke HMAC imzalı bir token koyuyordu. T-044 incelemesinde Analytics'te teslimat bazında veri (kanal, dil, saat dilimi) ve kampanyanın `cta_url`'i olmadığı, `delivery_id` + `campaign_id` + HMAC taşıyan bir token'ın ~54 karakter tuttuğu ve SMS'e sığmadığı görüldü. Kullanıcı tıklamanın ayrı bir redirect servisinde, imzalı kısa URL üretimine dayalı karşılanmasını istedi.
+- **Karar:**
+  - Yeni Go servisi **redirect**: kendi `redirect_db`'si ve sahibi tek rolü (D-019 deseni, initdb'de açılır), `cmd/redirect` (D-021); D-018'deki dört servise beşincisi eklenir, goose migration'ları; host portu 8085 yalnız geliştirme içindir.
+  - Kod 10 base62 karakterdir: 6 karakter rastgele kimlik + 4 karakter HMAC etiketi (`REDIRECT_SIGNING_KEY`). Etiketi tutmayan kod veritabanına gitmeden reddedilir.
+  - Notification intake teslimat satırlarını yazarken batch başına `POST /links` çağırır; `delivery_id` idempotency anahtarıdır, yeniden deneme aynı kodu döndürür. İstek kanal, dil, saat dilimi, kampanya ve hedef URL'yi (`cta_url` + `utm_campaign`, D-071) taşır; Notification kodu teslimat satırında saklar (notification_db migration'ı). Redirect servisi kapalıysa batch yeniden denenir; gönderim anında ağ çağrısı yoktur.
+  - Link `TRACKING_BASE_URL` (varsayılan `http://localhost:8080`) + `/r/` + koddur. E-postanın CTA düğmesi ve SMS aynı teslimat linkini kullanır.
+  - `GET /r/{kod}` tıklamayı yazar ve linkte saklı hedefe 302 döner; hedef linkin kendisinden değil kayıttan gelir, açık yönlendirme yoktur. Bilinmeyen veya imzası tutmayan kod sayılmaz ve `CAMPAIGN_CTA_URL`'e 302 olur. nginx `/r/`'yi redirect servisine yönlendirir; servis hata verir veya kapalıysa `error_page` ile `CAMPAIGN_CTA_URL`'e 302 yapar.
+  - `POST /links` yalnız compose iç ağındadır (Customer gibi); nginx yalnız `GET /r/`'yi açar, servisler arası kimlik doğrulama yoktur.
+- **Alternatifler:**
+  - Notification'ın `/r/` ucu — reddedildi: kullanıcı ayrı servis istedi; gönderim servisi dışarıdan gelen trafiği karşılamamalı.
+  - Analytics ucu ve teslimat başına `delivery_sent` olayı (D-082'ye en yakın) — reddedildi: teslimat başına olay, Analytics'e kod→teslimat eşlemesi.
+  - Notification'ın kodu yerelde HMAC ile türetmesi — reddedildi: gizli anahtar iki serviste ortak olur, eşleme olayla gider ve olay işlenmeden gelen tıklama kaybolur.
+  - Gönderim anında tek tek link — reddedildi: redirect servisi 100 msg/s'lik kritik yola girer.
+  - Geçersiz kodda 404 — reddedildi: yanlış kopyalanan SMS linki boş sayfa gösterirdi.
+  - Paylaşılan token ile koruma — reddedildi: bir gizli değer daha; ağ sınırı yeterli görüldü.
+- **Sonuçlar / bedel:** Intake redirect servisine bağımlı olur. Kampanyaya özel yedek sayfa bilinemez, yedek global `CAMPAIGN_CTA_URL`'dir. 6 karakterlik rastgele kimlik + 4 karakter etiketle tahmin edilerek geçerli kod bulmak pratik değildir ama kriptografik bir bağlama da değildir. Bir servis, bir veritabanı ve compose girdisi daha.
+- **Uygulama notu (T-044, kullanıcı onayladı):** `cmd/redirect`, `internal/redirect/{code,store,api,boot,rtest}`. Ortam değişkenleri: `REDIRECT_DB_PASSWORD`, `REDIRECT_HOST_PORT`, `REDIRECT_SIGNING_KEY` (en az 16 bayt; geliştirme yer tutucusu `.env.example`'da), `TRACKING_BASE_URL`, Notification için `REDIRECT_URL`; `CAMPAIGN_CTA_URL` redirect ve web'e de verilir. `POST /links` istek başına en çok 1000 link alır, kod çakışmasında 5 tura kadar yeni kod çeker. Tıklama yanıtı `Cache-Control: no-store` ve `Referrer-Policy: no-referrer` taşır; yalnız GET yönlendirilir. Redirect'in veritabanı hatası 5xx değil yedek sayfaya 302 ile cevaplanır; nginx `error_page` yalnız servise ulaşılamadığında devreye girer. nginx: `nginx.conf` imajda `/etc/nginx/templates/default.conf.template` olur, `NGINX_ENVSUBST_FILTER=CAMPAIGN_` ile yalnız `${CAMPAIGN_CTA_URL}` yerleştirilir; `/r/` GET ve HEAD dışını 403'ler, `proxy_intercept_errors on`, `error_page 404 405 500 502 503 504` → `return 302 ${CAMPAIGN_CTA_URL}`. Notification: `00003_delivery_link_code.sql` (`delivery.link_code`, boş olabilir, CHECK'li), intake teslimat kimliklerini UUIDv7 olarak önceden üretir ve batch başına bir `POST /links` çağrısıyla kodları aynı işlemde yazar; 5xx/429/ağ hatası batch'i geri alıp yeniden teslim ettirir, 4xx Malformed olarak sonlandırılır. Intake redirect çağrısı sırasında kampanya satır kilidini tutar; kara deliğe düşen bir redirect büyük kampanyanın batch'lerini zaman aşımı (5–10 sn) kadar sıraya sokar (kullanıcı kabul etti). Makefile `API_SPEC_SERVICES`'e `redirect` eklendi.
+- **Doğrulama:** 2026-10-31'de (T-044): `internal/redirect/api` (`TestCreateLinksIsIdempotentOnTheDelivery`, `TestCreateLinksDrawsANewCodeOnACollision`, `TestClickRedirectsAndRecordsOnceAsFirst`, `TestUnknownAndBadCodesAreNotCounted`, `TestClosedDatabaseStillRedirects`), `internal/redirect/code` birim testleri, Notification `TestIntake_EveryDeliveryGetsTheLinkOfItsBatchRequest`, `TestIntake_RedirectDownDelaysTheBatchAndNothingIsHalfWritten`, `TestIntake_RejectedLinkRequestIsTerminatedNotRetried`, `TestIntake_DuplicateBatchDoesNotAskForLinksAgain`; nginx şablonu tek başına bir konteynerde denendi (upstream yokken `/r/x` yedeğe 302, POST 403). `TestSampleBriefDeliversEndToEnd` 46 teslimatın hepsinde doğrulanan bir link buldu. Canlı (2026-10-31, Proposal mock modunda, redirect_db mevcut volume'de init SQL'iyle elle açıldı): 598 kişilik test kampanyasında her teslimatın `link_code`'u var; e-postanın düğmesi ve SMS'in sonu `http://localhost:8080/r/<10 karakter>`; tıklama 302 ile `https://shop.example.com/?utm_campaign=<kampanya>`'ya gitti, geçersiz kod `https://shop.example.com/`'a. `make test` geçti: 55 Go paketi, web 28 dosya / 321 test.
+
+## D-107: redirect_db şeması: link, click, outbox; tıklama evt.redirect.clicked.v1 ile yayınlanır
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-106 redirect servisine kendi veritabanını verdi. Tıklamaların Analytics'e nasıl ulaşacağı ve kişisel verinin saklanıp saklanmayacağı açıktı (kodlama kuralı 7).
+- **Karar:**
+  - `link(code PK, delivery_id UNIQUE, campaign_id, channel, language, timezone, target_url, created_at)`.
+  - `click(id UUIDv7 PK, code FK → link, clicked_at, first bool)`; IP ve User-Agent saklanmaz.
+  - Platform `outbox` tablosu (D-054). Her tıklama aynı işlemde bir `click` satırı ve bir `evt.redirect.clicked.v1` olayı yazar: teslimat, kampanya, kanal, dil, saat dilimi, `clicked_at`, `first`. Teslimatın ilk tıklaması `first = true`'dur.
+- **Alternatifler:**
+  - Yalnız link üzerinde sayaç — reddedildi: tıklama zaman serisi kaybolur, olay yeniden üretilemez.
+  - UA saklamak — reddedildi: kişisel veriye yakın, saklama gerekçesi zayıf.
+  - Analytics'in redirect API'sinden çekmesi — reddedildi: rapor redirect servisine bağımlı olurdu, zaman serisi ve önbellek zorlaşırdı.
+- **Sonuçlar / bedel:** Tıklama başına bir satır ve bir olay. Bot ve önizleme istekleri ayırt edilemez (D-108).
+- **Uygulama notu (T-044, kullanıcı onayladı):** Listede olmayan iki ek kabul edildi: ilk tıklama kontrolünün okuduğu FK indeksi `click_code_idx` (`click(code)`) ve olayda `click_id` (tıklama satırının UUIDv7'si; Analytics olay kimliğinden bağımsız idempotent olsun diye). Olay verisi `{click_id, delivery_id, campaign_id, channel, language, timezone, clicked_at, first}`, korelasyon kimliği kampanya. Tıklama işlemi link satırını `FOR UPDATE` kilitler; eşzamanlı tıklamalarda tek `first = true` olur. Metrik `redirect_clicks_total{result=first|repeat|invalid_code|unknown_code|error}`.
+- **Doğrulama:** 2026-10-31'de (T-044): `TestFirstClickIsUniqueUnderConcurrency`, `TestNoPersonalDataIsStored`, `TestClickMetricsCountOutcomes`, store migration testleri. Canlı: bir e-posta linkine iki, bir SMS linkine bir tıklama `click`'te `email first=t/f`, `sms first=t` olarak yazıldı.
+
+## D-108: CTR Analytics'te: completed olayına dil/saat dilimi kırılımı, tıklama tabloları ve serisi, bot ayıklaması yok
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-082 CTR'yi tekil tıklayan / gönderilen olarak, dil ve saat dilimi kırılımıyla tanımladı ve bot isteklerini User-Agent kuralıyla ayıklıyordu. Analytics'te payda için kırılımlı gönderim sayıları yoktu; D-097/D-099 başarı metriklerinin kampanya özetine ve genel bakışa ekleneceğini öngördü.
+- **Karar:**
+  - `notification.completed` olayına (kanal, dil, saat dilimi) başına `sent` sayıları geriye uyumlu bir alan olarak eklenir; kırılımlı CTR kampanya bitince kesinleşir, öncesinde tıklamalar canlı görünür.
+  - Analytics migration'ı: `campaign_click` (kampanya, kanal, dil, saat dilimi: tekil, toplam), `campaign_sent_locale` (aynı kırılımla `sent`) ve tıklama zamanıyla indeksli bir tıklama olayı tablosu. Olaylar `evt.redirect.clicked.v1`'den idempotent işlenir. `/overview/series` tıklama serisini de döndürür.
+  - Arayüz: kampanya analitiğinde "Başarı metrikleri" bölümü (kanal, dil, saat dilimi kırılımlı CTR, tekil ve toplam tıklama) ve genel bakışta bir CTR kutusu; T-037'nin `sections` yapısına oturur. Ayrı sayfa yoktur.
+  - Bot ve önizleme ayıklaması yapılmaz; her GET tıklama sayılır.
+  - Demoda tıklama yalnız elle oluşur (mailpit ve SMS gelen kutusundaki linkler); mock provider tıklama simüle etmez.
+- **Alternatifler:**
+  - Link sayısını payda almak — reddedildi: atlanan ve başarısız teslimatlar da sayılırdı.
+  - HEAD + UA listesiyle ayıklama (D-082) — reddedildi: kullanıcı ayıklama istemedi.
+  - Mock provider'ın tıklama simülasyonu — reddedildi: kullanıcı elle tıklamayı seçti.
+  - Ayrı "Başarı metrikleri" sayfası — reddedildi: yeni rota, seçici ve endpoint gerektirirdi.
+  - Seri olmadan yalnız toplam tablo — reddedildi: genel bakışta tıklama zaman serisi olmazdı.
+- **Sonuçlar / bedel:** E-posta güvenlik tarayıcıları ve link önizlemeleri CTR'yi şişirebilir. Demoda CTR birkaç elle tıklamayla sınırlıdır. Analytics'te iki tablo, bir olay tablosu ve bir seri sorgusu daha.
+- **Uygulama notu (T-044, kullanıcı onayladı):** `notification.completed` olayına `sent_by_locale: [{channel, language, timezone, sent}]` eklendi (boş değil, yalnız `sent` > 0 dilimler). Analytics `00003_clicks.sql`: `campaign_sent_locale`, `campaign_click` (`unique_clicks`, `total_clicks`), `click_event` (`click_event_clicked_at_idx`), FK yok; tıklama `processed_event` + `click_event` üzerinde `ON CONFLICT (click_id) DO NOTHING` ile idempotent, sayaçlar yalnız eklemede artar. API eklemeleri: `GET /campaigns/{id}/summary` → `clicks {sent, unique_clicks, total_clicks, ctr, by_channel[], by_locale[]}`; `GET /overview` → `clicks {sent, unique_clicks, total_clicks, ctr, by_channel[]}`; `GET /overview/series` → `clicks [{start, channel, unique_clicks, total_clicks}]`. CTR dört ondalıklı, gönderim yoksa 0. Genel bakışta pay ve payda `[from, to)` aralığında tamamlanan kampanyalardan gelir; seri tıklama zamanına göredir, toplam ile serinin toplamı farklı olabilir. Kampanya tamamlanmadan `sent` ve `ctr` 0'dır, tıklamalar canlı görünür; yalnız tıklaması olan kampanya 404 değil 200 döner.
+- **Arayüz notu (T-044, kullanıcı onayladı):** `features/dashboard/components/CampaignClicks.vue` kampanya analitiğinde `sections` ile "Başarı metrikleri" bölümüdür: tamamlanan kampanyada CTR, tekil ve toplam tıklama, kanal başına CTR ve kanal/dil/saat dilimi tablosu; tamamlanmamışta CTR yerine canlı tıklama sayıları ve CTR'nin kampanya bitince kesinleşeceği notu, tabloda gönderilen ve CTR "—". Genel bakışta CTR kutusu (gönderim yoksa "—", %0 değil) ve ikinci bir zaman serisi grafiği kanal başına yalnız tekil tıklamayı çizer; toplam tıklama kutunun notundadır. Tamamlanmamış kampanyanın tıklamaları yalnız durum değişince yenilenir, yoklama yoktur.
+- **Doğrulama:** 2026-10-31'de (T-044): `TestCompletedStoresSentByLocale`, `TestClicksAreCountedOnceAndLive`, `TestCampaignClickThroughRate`, `TestOverviewClicksAndSeries`; e2e'de 2 e-posta (biri iki kez), 1 SMS ve bilinmeyen bir kodla tekil 3 / toplam 4, CTR 0,0652 (e-posta 0,0606, SMS 0,0769), `/overview` aynı. Web: `campaigns.spec.ts`, `overview.spec.ts`, `series.spec.ts` yeni testleri. Canlı: test kampanyası tamamlanınca özet 598 gönderilen, tekil 2, toplam 3, CTR %0,3 (e-posta 484'te 1, SMS 114'te 1) ve dil/saat dilimi tablosunu gösterdi; genel bakışta CTR kutusu ve "Kanal başına tekil tıklama" grafiği (E-posta 1, SMS 1) göründü.
+
+## D-109: SMS izleme linki metnin sonuna eklenir; bütçe 160 − link uzunluğu
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** LLM entegrasyonu
+- **Bağlam:** D-082 SMS'e kodla yaklaşık 25 karakterlik bir link eklenmesini ve metin bütçesinin buna göre küçülmesini istiyordu. D-106'nın linki `TRACKING_BASE_URL` + `/r/` + 10 karakterdir; varsayılan `http://localhost:8080` ile 34 karakter tutar.
+- **Karar:** Notification SMS'i çizerken linki metnin sonuna bir boşlukla ekler. Modelin metin bütçesi `160 − (link uzunluğu + 1)`'dir (varsayılanla 125); Proposal ve Notification bunu açılışta `TRACKING_BASE_URL`'den hesaplar, `content` prompt'u ve doğrulayıcı bu sayıyı kullanır. Gönderimde ölçüm (karakter, GSM-7 / UCS-2, segment) link dahil son metin üzerinden yapılır. Modelin yazdığı metinde URL yasağı sürer (D-071).
+- **Alternatifler:**
+  - Sabit 25 karakter ayırmak — reddedildi: kısa bir alan adı varsayar; localhost demoda link sığmazdı.
+- **Sonuçlar / bedel:** Metin bütçesi ortama göre değişir; daha uzun bir `TRACKING_BASE_URL` metne kalan yeri azaltır. UCS-2 metinde link de 70 birimlik segmentlere sayılır.
+- **Uygulama notu (T-044, kullanıcı onayladı):** `content.SMSBudget(base)` = 160 − (len(base) + 3 + 10 + 1), varsayılanla 125; `content.LoadConfig` bütçe 40'ın altına düşerse hata verir. `CheckSMS` ve `BuildSMS` bütçeyi parametre alır; `contentgen.WithSMSBudget`. `content` prompt'u 2.0.0 → 2.1.0: SMS kuralına linkin metinden sonra eklendiği ve `limits.sms_max_chars`'ın bunu zaten hesaba kattığı cümlesi eklendi. Bu değişiklikten önce onaylanmış ve bütçeyi aşan bir SMS linksiz gönderilir, log'a uyarı düşer; `link_code`'u olmayan teslimat eskisi gibi gider. Proposal varyantta saklanan segment, kodlama ve maliyet tahminini aynı uzunlukta bir yer tutucu linkle ölçer (kullanıcı istedi), onay ekranı gönderimle aynı sayıyı gösterir.
+- **Doğrulama:** 2026-10-31'de (T-044): `content/tracking_test.go`, `TestPlaceholderLinkHasTheLengthOfARealLink`, `TestBuildSMSMeasuresTheTextWithItsLink` (40 karakterlik UCS-2 metin tek başına 1, linkle 2 segment), `TestGenerateUsesTheSMSBudget`, `TestGenerateMeasuresTheSMSWithTheTrackingLink`, `TestEveryCannedSMSFitsTheTrackingBudget`, sender `prepare_test.go`; e2e'de her SMS 160 içinde. Canlı: mock provider'a giden SMS metni ad + metin + boşluk + `http://localhost:8080/r/bw8hNj5kRo`.
 
 ---
 

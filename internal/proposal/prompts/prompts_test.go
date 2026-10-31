@@ -645,7 +645,7 @@ func TestLoadErrors(t *testing.T) {
 func TestContentPackage(t *testing.T) {
 	t.Parallel()
 	c := Content()
-	if c.ID() != "content@2.0.0" || c.Model != "claude-sonnet-5-5" || c.Effort != "low" || len(c.Tools) != 0 || c.OutputSchema == nil || c.RequiresDSL != "" {
+	if c.ID() != "content@2.1.0" || c.Model != "claude-sonnet-5-5" || c.Effort != "low" || len(c.Tools) != 0 || c.OutputSchema == nil || c.RequiresDSL != "" {
 		t.Errorf("content = %s model %s effort %s tools %d schema %v", c.ID(), c.Model, c.Effort, len(c.Tools), c.OutputSchema != nil)
 	}
 	if strings.HasSuffix(c.System, "\n") || strings.Contains(c.System, "\r") {

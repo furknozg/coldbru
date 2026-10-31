@@ -170,9 +170,14 @@ func TestCampaignSummaryShapes(t *testing.T) {
 		srv := serve(t, &fakeSource{report: CampaignReport{
 			CompletedAt: &at, SMSSegments: 6, DeliveryCostUSD: "0.242000", LLM: llm,
 			Deliveries: []DeliveryCount{{Channel: "email", Status: "sent", Count: 2}, {Channel: "sms", Status: "sent", Count: 3}},
+			Clicks: CampaignClicks{
+				Sent: 5, UniqueClicks: 2, TotalClicks: 3, CTR: 0.4,
+				ByChannel: []ChannelClicks{{Channel: "email", Sent: 2, UniqueClicks: 1, TotalClicks: 1, CTR: 0.5}, {Channel: "sms", Sent: 3, UniqueClicks: 1, TotalClicks: 2, CTR: 0.3333}},
+				ByLocale:  []LocaleClicks{{Channel: "email", Language: "tr", Timezone: "Europe/Istanbul", Sent: 2, UniqueClicks: 1, TotalClicks: 1, CTR: 0.5}},
+			},
 		}})
 		resp, body := get(t, srv, "/campaigns/"+id+"/summary")
-		want := `{"campaign_id":"` + id + `","completed_at":"2026-10-29T09:00:00Z","deliveries":[{"channel":"email","status":"sent","count":2},{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"delivery_cost_usd":"0.242000","llm":{"calls":3,"cost_usd":"0.01000000","tokens":{"input":10,"output":20,"cache_read":30,"cache_creation":40},"by_purpose":[{"purpose":"content","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}]}}`
+		want := `{"campaign_id":"` + id + `","completed_at":"2026-10-29T09:00:00Z","deliveries":[{"channel":"email","status":"sent","count":2},{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"delivery_cost_usd":"0.242000","llm":{"calls":3,"cost_usd":"0.01000000","tokens":{"input":10,"output":20,"cache_read":30,"cache_creation":40},"by_purpose":[{"purpose":"content","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}]},"clicks":{"sent":5,"unique_clicks":2,"total_clicks":3,"ctr":0.4,"by_channel":[{"channel":"email","sent":2,"unique_clicks":1,"total_clicks":1,"ctr":0.5},{"channel":"sms","sent":3,"unique_clicks":1,"total_clicks":2,"ctr":0.3333}],"by_locale":[{"channel":"email","language":"tr","timezone":"Europe/Istanbul","sent":2,"unique_clicks":1,"total_clicks":1,"ctr":0.5}]}}`
 		if resp.StatusCode != 200 || strings.TrimSpace(string(body)) != want {
 			t.Errorf("status %d, body %s\nwant %s", resp.StatusCode, body, want)
 		}
@@ -310,10 +315,11 @@ func TestOverviewShape(t *testing.T) {
 			ByPurpose: []PurposeUsage{{Purpose: "content", Calls: 3, CostUSD: "0.01000000", InputTokens: 10, OutputTokens: 20}},
 			ByModel:   []ModelUsage{{Model: "claude-sonnet-5-5", Calls: 3, CostUSD: "0.01000000", InputTokens: 10, OutputTokens: 20}},
 		},
+		Clicks: OverviewClicks{Sent: 3, UniqueClicks: 1, TotalClicks: 2, CTR: 0.3333, ByChannel: []ChannelClicks{{Channel: "sms", Sent: 3, UniqueClicks: 1, TotalClicks: 2, CTR: 0.3333}}},
 	}}
 	srv := serve(t, src)
 	resp, body := get(t, srv, "/overview?from=2026-10-01T00:00:00Z")
-	want := `{"from":"2026-10-01T00:00:00Z","to":null,"campaigns_completed":2,"deliveries":[{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"delivery_cost_usd":"0.242000","llm":{"calls":3,"cost_usd":"0.01000000","tokens":{"input":10,"output":20,"cache_read":30,"cache_creation":40},"by_purpose":[{"purpose":"content","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}],"by_model":[{"model":"claude-sonnet-5-5","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}]}}`
+	want := `{"from":"2026-10-01T00:00:00Z","to":null,"campaigns_completed":2,"deliveries":[{"channel":"sms","status":"sent","count":3}],"sms_segments":6,"delivery_cost_usd":"0.242000","llm":{"calls":3,"cost_usd":"0.01000000","tokens":{"input":10,"output":20,"cache_read":30,"cache_creation":40},"by_purpose":[{"purpose":"content","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}],"by_model":[{"model":"claude-sonnet-5-5","calls":3,"cost_usd":"0.01000000","input_tokens":10,"output_tokens":20}]},"clicks":{"sent":3,"unique_clicks":1,"total_clicks":2,"ctr":0.3333,"by_channel":[{"channel":"sms","sent":3,"unique_clicks":1,"total_clicks":2,"ctr":0.3333}]}}`
 	if resp.StatusCode != 200 || strings.TrimSpace(string(body)) != want {
 		t.Errorf("status %d, body %s\nwant %s", resp.StatusCode, body, want)
 	}
@@ -385,6 +391,7 @@ func TestSeriesShapes(t *testing.T) {
 		delivSeries: OverviewSeries{
 			From: d1, To: d2.Add(24 * time.Hour), Bucket: "day", Buckets: []time.Time{d1, d2},
 			Points: []OverviewSeriesPoint{{Start: d2, Channel: "sms", Status: "sent", Count: 4}},
+			Clicks: []ClickSeriesPoint{{Start: d1, Channel: "email", UniqueClicks: 2, TotalClicks: 3}},
 		},
 	})
 	const rng = "?from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&bucket=day"
@@ -394,7 +401,7 @@ func TestSeriesShapes(t *testing.T) {
 		t.Errorf("llm series = %s\nwant %s", body, want)
 	}
 	_, body = get(t, srv, "/overview/series"+rng)
-	want = `{"from":"2026-10-01T00:00:00Z","to":"2026-10-03T00:00:00Z","bucket":"day","buckets":["2026-10-01T00:00:00Z","2026-10-02T00:00:00Z"],"points":[{"start":"2026-10-02T00:00:00Z","channel":"sms","status":"sent","count":4}]}`
+	want = `{"from":"2026-10-01T00:00:00Z","to":"2026-10-03T00:00:00Z","bucket":"day","buckets":["2026-10-01T00:00:00Z","2026-10-02T00:00:00Z"],"points":[{"start":"2026-10-02T00:00:00Z","channel":"sms","status":"sent","count":4}],"clicks":[{"start":"2026-10-01T00:00:00Z","channel":"email","unique_clicks":2,"total_clicks":3}]}`
 	if strings.TrimSpace(string(body)) != want {
 		t.Errorf("overview series = %s\nwant %s", body, want)
 	}

@@ -1,4 +1,4 @@
--- Service DB (proposal / notification / analytics): same pattern as 01_customer_db.sql (D-019),
+-- Service DB (proposal / notification / analytics / redirect): same pattern as 01_customer_db.sql (D-019),
 -- plus a schema named after the service, owned by the service role (D-048).
 -- Run as superuser on the default DB, once per service:  -v svc=<name> -v db_password=<secret>
 -- No tables here: they come from the service's own goose migrations (D-020).

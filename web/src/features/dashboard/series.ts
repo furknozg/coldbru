@@ -102,3 +102,14 @@ export function llmCallsLine(series: LlmSeries): SeriesLine {
 }
 
 export const sumOf = (line: SeriesLine) => line.values.reduce((sum, v) => sum + v, 0)
+
+/** Unique clicks per bucket, one line per channel; buckets are the time of the click (D-108). */
+export function clickLines(series: OverviewSeries): SeriesLine[] {
+  return pivot(
+    series.buckets,
+    series.clicks,
+    CHANNEL_KEYS,
+    (p) => p.channel,
+    (p) => p.unique_clicks,
+  )
+}

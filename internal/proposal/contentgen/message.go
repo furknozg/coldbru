@@ -50,7 +50,7 @@ func (g *Generator) userMessage(req flow.ContentRequest, sl slot, attempt int, p
 		Language: req.Language, Channel: req.Channel, Brief: req.Brief, ContextNotes: req.ContextNotes,
 		Audience:   audienceSummary{Count: req.Audience.Count, LanguageCount: languageCount(req)},
 		Plan:       planSummary{Mode: string(req.Plan.Mode), Primary: string(req.Plan.Primary)},
-		Recipients: req.Recipients, MaxFirstNameLength: sl.maxName, Limits: content.DefaultLimits(),
+		Recipients: req.Recipients, MaxFirstNameLength: sl.maxName, Limits: content.NewLimits(g.smsBudget),
 		RejectionReason: req.RejectionReason,
 	}
 	if attempt > 1 {
