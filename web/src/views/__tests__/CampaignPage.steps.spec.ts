@@ -278,7 +278,8 @@ describe('steps in the chat', () => {
     expect(email.querySelector('b')).toBeNull()
     expect(email.textContent).toContain('$0,006')
     expect(hasButton('Onayla', sms)).toBe(true)
-    expect(hasButton('Düzenle', sms)).toBe(false)
+    // Both texts are edited in their card (D-119).
+    expect(hasButton('Düzenle', sms)).toBe(true)
     expect(hasButton('Düzenle', email)).toBe(true)
   })
 
@@ -328,7 +329,8 @@ describe('steps in the chat', () => {
     expect(tr!.textContent).toContain('09:30')
     expect(tr!.textContent).toContain('Pazar sabahı')
     expect(en!.textContent).toContain('Hemen gönder')
-    expect(hasButton('Düzenle', tr!)).toBe(false)
+    // A draft slot of the open step is edited in the card (D-119).
+    expect(hasButton('Düzenle', tr!)).toBe(true)
   })
 
   it('shows the cost summary under the content step', async () => {
@@ -663,6 +665,272 @@ describe('editing', () => {
     )
     expect(email().querySelector('form')).not.toBeNull()
     expect(document.body.querySelectorAll('[role="alert"]')).toHaveLength(1)
+  })
+
+  /** A schedule step with one draft slot, under three approved steps. */
+  function scheduleStep(variant: Partial<Parameters<typeof variantOf>[0]>) {
+    const steps = flowUpTo('schedule')
+    steps[3]!.variants = [
+      variantOf({ id: 'vt', step_id: 'step-schedule', kind: 'schedule', ...variant }),
+    ]
+    return steps
+  }
+  /** The browser-local text of an instant, as the form shows it next to the slot's time. */
+  const localText = (iso: string) =>
+    new Intl.DateTimeFormat('tr-TR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }).format(new Date(iso))
+  const scheduleForm = () => openStep()!.querySelector<HTMLFormElement>('form')!
+  const dayButton = (day: string) =>
+    scheduleForm().querySelector<HTMLButtonElement>(
+      `[data-slot="calendar-trigger"][data-value="${day}"]`,
+    )!
+  const timeField = () => scheduleForm().querySelector<HTMLInputElement>('input[name="time"]')!
+  const immediatelyBox = () =>
+    scheduleForm().querySelector<HTMLInputElement>('input[name="immediately"]')!
+  async function submit(form: HTMLFormElement) {
+    form.dispatchEvent(new Event('submit', { cancelable: true }))
+    await flushPromises()
+  }
+
+  it('edits a schedule slot in its own time zone and sends the offset of that zone', async () => {
+    // Europe/London is on BST (+01:00) in September 2026 and on GMT (+00:00) from 25 October.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-20T09:00:00Z') })
+    await open(
+      viewOf({
+        steps: scheduleStep({
+          language: 'en',
+          timezone: 'Europe/London',
+          content: { send_at: '2026-10-22T09:00:00+01:00', rationale: 'Morning in London' },
+        }),
+      }),
+    )
+    vi.mocked(proposal.editVariant).mockResolvedValue(variantOf())
+
+    await button('Düzenle', openStep()!).trigger('click')
+    await flushPromises()
+    expect(scheduleForm().getAttribute('aria-label')).toBe('Zamanlamayı düzenle')
+    expect(scheduleForm().textContent).toContain('Saat (Europe/London)')
+
+    // The same wall clock on a GMT day: the offset follows the zone, not the browser.
+    await new DOMWrapper(dayButton('2026-10-28')).trigger('click')
+    await new DOMWrapper(timeField()).setValue('10:00')
+    expect(scheduleForm().querySelector('[data-in-zone]')!.textContent).toContain('10:00')
+    expect(scheduleForm().querySelector('[data-local]')!.textContent).toBe(
+      `Senin saatinle: ${localText('2026-10-28T10:00:00Z')}`,
+    )
+    await submit(scheduleForm())
+    expect(proposal.editVariant).toHaveBeenLastCalledWith('vt', {
+      send_at: '2026-10-28T10:00:00+00:00',
+      rationale: 'Morning in London',
+    })
+    expect(openStep()!.querySelector('form')).toBeNull()
+
+    // And on a BST day the same wall clock goes out as +01:00.
+    await button('Düzenle', openStep()!).trigger('click')
+    await flushPromises()
+    await new DOMWrapper(dayButton('2026-10-24')).trigger('click')
+    await new DOMWrapper(timeField()).setValue('10:00')
+    await submit(scheduleForm())
+    expect(proposal.editVariant).toHaveBeenLastCalledWith('vt', {
+      send_at: '2026-10-24T10:00:00+01:00',
+      rationale: 'Morning in London',
+    })
+  })
+
+  it('edits an Istanbul slot as +03:00 and shows the problems the server returns', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-30T10:00:00Z') })
+    await open(
+      viewOf({
+        steps: scheduleStep({
+          language: 'tr',
+          timezone: 'Europe/Istanbul',
+          content: { send_at: '2026-11-01T06:30:00Z', rationale: 'Pazar sabahı' },
+        }),
+      }),
+    )
+    vi.mocked(proposal.editVariant).mockRejectedValueOnce(
+      ApiError.from(422, {
+        code: 'invalid_content',
+        title: 'Invalid content',
+        detail: 'The content did not pass validation.',
+        problems: ['tr / Europe/Istanbul: send_at 2026-11-05T09:30:00+03:00 is later than ...'],
+      }),
+    )
+
+    await button('Düzenle', openStep()!).trigger('click')
+    await flushPromises()
+    await new DOMWrapper(dayButton('2026-11-05')).trigger('click')
+    await submit(scheduleForm())
+
+    expect(proposal.editVariant).toHaveBeenCalledWith('vt', {
+      send_at: '2026-11-05T09:30:00+03:00',
+      rationale: 'Pazar sabahı',
+    })
+    expect(scheduleForm().querySelector('[role="alert"]')!.textContent).toContain(
+      'send_at 2026-11-05T09:30:00+03:00 is later than',
+    )
+  })
+
+  it('sends send_at null when the slot is set to send immediately', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-30T10:00:00Z') })
+    await open(
+      viewOf({
+        steps: scheduleStep({
+          language: 'tr',
+          timezone: 'Europe/Istanbul',
+          content: { send_at: '2026-11-01T06:30:00Z', rationale: 'Pazar sabahı' },
+        }),
+      }),
+    )
+    vi.mocked(proposal.editVariant).mockResolvedValue(variantOf())
+
+    await button('Düzenle', openStep()!).trigger('click')
+    await flushPromises()
+    expect(immediatelyBox().checked).toBe(false)
+    await new DOMWrapper(immediatelyBox()).setValue(true)
+    // The calendar and the time field leave with the choice.
+    expect(scheduleForm().querySelector('[data-slot="calendar"]')).toBeNull()
+    expect(scheduleForm().querySelector('input[name="time"]')).toBeNull()
+    await submit(scheduleForm())
+
+    expect(proposal.editVariant).toHaveBeenCalledWith('vt', {
+      send_at: null,
+      rationale: 'Pazar sabahı',
+    })
+  })
+
+  it('prefills the form from the slot', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-30T10:00:00Z') })
+    const steps = flowUpTo('schedule')
+    steps[3]!.variants = [
+      variantOf({
+        id: 'v1',
+        step_id: 'step-schedule',
+        kind: 'schedule',
+        language: 'tr',
+        timezone: 'Europe/Istanbul',
+        content: { send_at: '2026-11-01T06:30:00Z', rationale: 'Pazar sabahı' },
+      }),
+      variantOf({
+        id: 'v2',
+        step_id: 'step-schedule',
+        kind: 'schedule',
+        language: 'en',
+        timezone: 'Europe/London',
+        content: { send_at: null, rationale: 'Hemen gitsin' },
+      }),
+    ]
+    await open(viewOf({ steps }))
+    const [en, tr] = [...openStep()!.querySelectorAll('article')] as [HTMLElement, HTMLElement]
+
+    // A timed slot: the day is selected in the calendar, the time is the wall clock of the zone.
+    await button('Düzenle', tr).trigger('click')
+    await flushPromises()
+    const trForm = tr.querySelector('form')!
+    expect(trForm.querySelector<HTMLInputElement>('input[name="immediately"]')!.checked).toBe(false)
+    expect(trForm.querySelector<HTMLInputElement>('input[name="time"]')!.value).toBe('09:30')
+    const selected = trForm.querySelector('[data-slot="calendar-trigger"][data-selected]')!
+    expect(selected.getAttribute('data-value')).toBe('2026-11-01')
+    expect(trForm.querySelector('[data-in-zone]')!.textContent).toContain('09:30')
+    expect(trForm.querySelector('[data-local]')!.textContent).toBe(
+      `Senin saatinle: ${localText('2026-11-01T06:30:00Z')}`,
+    )
+    // Days outside now + 30 days are not offered.
+    expect(
+      trForm
+        .querySelector('[data-slot="calendar-trigger"][data-value="2026-10-29"]')!
+        .getAttribute('data-disabled'),
+    ).not.toBeNull()
+    await button('Vazgeç', trForm).trigger('click')
+
+    // An immediate slot: the box is checked, and the fields come back when it is unchecked.
+    await button('Düzenle', en).trigger('click')
+    await flushPromises()
+    const enForm = en.querySelector('form')!
+    expect(enForm.querySelector<HTMLInputElement>('input[name="immediately"]')!.checked).toBe(true)
+    expect(enForm.querySelector('input[name="time"]')).toBeNull()
+    await new DOMWrapper(enForm.querySelector('input[name="immediately"]')!).setValue(false)
+    expect(enForm.querySelector<HTMLInputElement>('input[name="time"]')!.value).toBe('11:00')
+    expect(proposal.editVariant).not.toHaveBeenCalled()
+  })
+
+  it('edits an SMS variant and shows the server problems', async () => {
+    await open(viewOf({ steps: contentSteps() }))
+    const sms = () => openStep()!.querySelectorAll('article')[1]!
+    expect(sms().getAttribute('aria-label')).toBe('Türkçe · SMS')
+
+    await button('Düzenle', sms()).trigger('click')
+    await flushPromises()
+    const form = () => sms().querySelector('form')!
+    expect(form().getAttribute('aria-label')).toBe("SMS'i düzenle")
+    const field = () =>
+      new DOMWrapper(form().querySelector<HTMLTextAreaElement>('textarea[name="text"]')!)
+    expect((field().element as HTMLTextAreaElement).value).toBe(
+      'Merhaba {{first_name}}, %30 indirim <b>seni</b> bekliyor',
+    )
+    expect(form().querySelector('[data-length]')!.textContent).toContain('Yaklaşık 56 karakter')
+
+    // Too long for the budget: the server says so, the form stays open with the text.
+    vi.mocked(proposal.editVariant).mockRejectedValueOnce(
+      ApiError.from(422, {
+        code: 'invalid_content',
+        title: 'Invalid content',
+        detail: 'The content did not pass validation.',
+        problems: [
+          'sms.text renders to 171 characters with the longest first name; the budget is 160',
+        ],
+      }),
+    )
+    await field().setValue(`  ${'x'.repeat(150)} {{first_name}} `)
+    expect(form().querySelector('[data-length]')!.textContent).toContain('Yaklaşık 168 karakter')
+    await submit(form())
+    expect(proposal.editVariant).toHaveBeenLastCalledWith('vs', {
+      text: `${'x'.repeat(150)} {{first_name}}`,
+    })
+    expect(form().querySelector('[role="alert"]')!.textContent).toContain(
+      'sms.text renders to 171 characters',
+    )
+
+    // A text the server takes closes the form.
+    vi.mocked(proposal.editVariant).mockResolvedValueOnce(variantOf())
+    await field().setValue('Merhaba {{first_name}}, %30 indirim seni bekliyor')
+    await submit(form())
+    expect(proposal.editVariant).toHaveBeenLastCalledWith('vs', {
+      text: 'Merhaba {{first_name}}, %30 indirim seni bekliyor',
+    })
+    expect(sms().querySelector('form')).toBeNull()
+  })
+
+  it('does not offer editing for an approved variant or outside the open step', async () => {
+    // An approved slot in the open schedule step has no actions at all.
+    const steps = scheduleStep({
+      language: 'tr',
+      timezone: 'Europe/Istanbul',
+      status: 'approved',
+      content: { send_at: '2026-11-01T06:30:00Z', rationale: 'Pazar sabahı' },
+    })
+    await open(viewOf({ steps }))
+    const card = openStep()!.querySelector('article')!
+    expect(hasButton('Düzenle', card)).toBe(false)
+    expect(hasButton('Onayla', card)).toBe(false)
+    wrapper!.unmount()
+    document.body.innerHTML = ''
+
+    // An SMS draft of an approved content step, under the open schedule step: read only.
+    const later = flowUpTo('schedule')
+    later[2]!.variants = contentSteps()[2]!.variants
+    await open(viewOf({ steps: later }))
+    await expand('step-content')
+    const content = accordion('step-content')!
+    expect(content.textContent).toContain('Merhaba {{first_name}}')
+    expect(hasButton('Düzenle', content)).toBe(false)
+    expect(hasButton('Düzenle', openStep()!)).toBe(false)
   })
 
   it('can leave the edit form without sending anything', async () => {

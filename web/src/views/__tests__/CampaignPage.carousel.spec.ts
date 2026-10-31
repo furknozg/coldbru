@@ -450,8 +450,8 @@ describe('schedule step carousel (D-095)', () => {
     expect(shownIn('schedule')).toHaveLength(1)
     expect(countOf('schedule')).toBe('3')
     expect(badgeOf('schedule')!.getAttribute('aria-label')).toBe('3 onay kaldı')
-    // Schedule slots have no edit button.
-    expect(slidesOf('schedule')[0]!.textContent).not.toContain('Düzenle')
+    // A draft schedule slot is edited in its slide (D-119).
+    expect(slidesOf('schedule')[0]!.textContent).toContain('Düzenle')
   })
 
   it('moves with the arrows and on to the next waiting slot after an approval, wrapping around', async () => {

@@ -121,6 +121,8 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-115 | Prompt değerlendirmesi yalnız Go içi `make eval`: elle yazılmış ~12 vaka, ayrı hedef ve CI adımı; promptfoo ve `make eval-live` kapsam dışı | Test ve kapsam | Kabul edildi |
 | D-116 | Sipariş kalemi ve ürün alanları segment filtrelerine girmez | LLM entegrasyonu | Kabul edildi |
 | D-117 | Üretimi başarısız olan adımın akordiyonu kendiliğinden açılır | Takip ve altyapı | Kabul edildi |
+| D-118 | README Türkçe; kısa mimari özeti metin + mermaid; bonuslardan yalnız yapılanlar; T-036 README'den önce | Test ve kapsam | Kabul edildi |
+| D-119 | Sohbette zamanlama yuvası ve SMS metni düzenlenir; saat seçici yuvanın saat diliminde, shadcn-vue takvim + saat alanı, "hemen gönder" seçeneği | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -2079,6 +2081,44 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Başarısız bir adım sohbette yer kaplar.
 - **Uygulama notu (T-039):** `StepBlock.vue` `failed = step.failed && !step.generating`, `expanded = chosen ?? failed`; `chosen` adım durumu veya başarısızlık durumu değişince sıfırlanır, böylece yeniden üretim akordiyonu kapatır, yeni bir başarısızlık yeniden açar.
 - **Doğrulama:** 2026-10-31'de: `make test` geçti (335 Vitest testi). `CampaignPage.steps.spec.ts` "opens a step whose generation failed by itself, and keeps it closed once the reader folds it (D-117)" ve "keeps an open step that did not fail folded, generating or not (D-112, D-117)"; "shows why a generation failed and regenerates the step" güncellendi. Canlıda başarısız adım üretilmedi (anthropic modda kampanya açılmaz), testle doğrulandı.
+
+## D-118: README Türkçe; kısa mimari özeti metin + mermaid; bonuslardan yalnız yapılanlar; T-036 README'den önce
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** T-040 README'yi istiyor: kurulum, `docker compose up`, `make test`, kısa mimari özeti ve yetişmeyenler. T-036'nın bir kısmı (zamanlama adımında dil başına saat seçici) yapılmamıştı; zamanlama arayüzde salt okunurdu.
+- **Karar:**
+  - README Türkçe yazılır; kod, komut ve kütüphane adları orijinal kalır.
+  - Mimari özeti kısa paragraflar ve tek bir mermaid diyagramıdır (servisler, NATS olayları, akış); ayrıntı `docs/domain-model.md` ve DECISIONS.md'ye bağlanır.
+  - Bonus bölümünde yalnız yapılanlar listelenir.
+  - README'den önce T-036 tamamlanır; README yazılırken zamanlama düzenlemesi yapılmış olarak anlatılır.
+- **Alternatifler:**
+  - İngilizce veya iki dilli README — reddedildi: case metni, DECISIONS.md ve arayüz Türkçe.
+  - Yalnız metin — reddedildi: mimari bir bakışta görünmezdi.
+  - Bonuslar için durum tablosu (A/B'nin yapılmadığı dahil) — reddedildi: kullanıcı yalnız yapılanları istedi.
+  - T-036'yı yetişmeyenlere yazmak — reddedildi: kullanıcı önce tamamlanmasını istedi.
+- **Sonuçlar / bedel:** README yabancı okuyucuya kapalıdır. Mermaid diyagramı kodla elle senkron tutulur. A/B varyantı yapılmadığı README'de açıkça yazmaz; insanın seçtiği varyantlar A/B ile karıştırılabilir. README T-036'yı bekler.
+- **Doğrulama:** Doğrulanmadı.
+
+## D-119: Sohbette zamanlama yuvası ve SMS metni düzenlenir; saat seçici yuvanın saat diliminde, shadcn-vue takvim + saat alanı, "hemen gönder" seçeneği
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** T-036 dil başına zaman seçici istiyordu (D-009, D-076). Arayüzde zamanlama salt okunurdu; SMS varyantı da düzenlenemiyordu (`VariantCard.vue` yalnız kanal planını ve e-postayı düzenliyordu). Proposal'ın `POST /variants/{id}/edit` ucu zamanlama (`send_at`, `rationale`) ve metin düzenlemesini zaten doğruluyor (`flow.buildEdit`).
+- **Karar:**
+  - Açık adımdaki taslak zamanlama yuvası ve SMS varyantı, kanal planı ve e-posta gibi kartta düzenlenir; API değişmez, doğrulama sunucudadır ve sorunlar kartta gösterilir.
+  - Saat seçici yuvanın saat diliminde çalışır: Europe/London yuvasına girilen 10:00 Londra saatidir ve sunucuya o dilimin ofsetiyle RFC 3339 gider; yanında tarayıcının saatiyle karşılığı gösterilir.
+  - Bileşen shadcn-vue `calendar` (kopyalanır; `reka-ui` ve `@internationalized/date` zaten bağımlılık) + saat alanıdır; yeni npm bağımlılığı yoktur.
+  - Formda "Hemen gönder" seçeneği vardır (`send_at: null`).
+  - SMS düzenlemesi tek metin alanıdır; karakter, kodlama ve segment ölçümü sunucudan gelir (D-028, D-109).
+- **Alternatifler:**
+  - Yalnız zamanlama — reddedildi: SMS metni yalnız reddedip yeniden üretmekle değişirdi.
+  - Tarayıcının saat dilimi — reddedildi: yuvanın yerel saatiyle planlanan zamanlamada kafa karıştırırdı.
+  - Yerel `datetime-local` girdisi — reddedildi: tarayıcılar arasında görünüm farkı, uygulamanın stiliyle uyumsuz.
+  - Yalnız gelecek zaman — reddedildi: ajanın önerdiği "hemen" yuvası düzenlenince geri alınamazdı.
+- **Sonuçlar / bedel:** İki yeni form ve kopyalanan bir shadcn bileşeninin bakımı. Kullanıcı yuvanın saatini kendi saatine çevirmek için yanındaki karşılığa bakar.
+- **Uygulama notu (T-036):** `components/ui/calendar` `range-calendar`'dan kopyalandı (tek seçim, gün ve ok düğmelerinde `type="button"`). `features/campaigns/schedule.ts` yuvanın IANA diliminde tarih + saati `@internationalized/date` ile o anın ofsetiyle RFC 3339'a çevirir. `ScheduleEditForm.vue` takvimi kart içinde açar (açılır pencere yok), günleri yuvanın diliminde bugün … bugün + 30 gün ile sınırlar (sunucunun `MinSendDelay`/`MaxSendDelay` kuralı; 5 dakika alt sınırı sunucuda); gerekçe değişmeden geri gönderilir. `SmsEditForm.vue` `{text}` gönderir, yaklaşık karakter sayısı gösterir. Saat dilimi olmayan yuvada `UTC` varsayılır.
+- **Doğrulama:** 2026-10-31'de: `make test` geçti (55 Go paketi, 29 dosya / 344 Vitest testi). `schedule.spec.ts` "writes the offset of the slot zone at that instant, daylight saving included" (Londra Temmuz +01:00 / Ocak +00:00, İstanbul +03:00, New York −05:00); `CampaignPage.steps.spec.ts` "edits a schedule slot in its own time zone and sends the offset of that zone", "edits an Istanbul slot as +03:00 and shows the problems the server returns", "sends send_at null when the slot is set to send immediately", "prefills the form from the slot", "edits an SMS variant and shows the server problems", "does not offer editing for an approved variant or outside the open step". Canlı (mock LLM ile açılan `[T-036]` kampanyası): "Hemen gönder" yuvası düzenlenip 4 Kasım 10:30 seçildi, sunucuda `2026-11-04T10:30:00+03:00` olarak kaydedildi. SMS düzenlemesi canlıda denenmedi (taslak SMS yoktu), testle doğrulandı.
 
 ---
 

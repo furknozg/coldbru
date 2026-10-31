@@ -17,13 +17,15 @@ import PlanBody from './PlanBody.vue'
 import PlanEditForm from './PlanEditForm.vue'
 import RejectDialog from './RejectDialog.vue'
 import ScheduleBody from './ScheduleBody.vue'
+import ScheduleEditForm from './ScheduleEditForm.vue'
+import SmsEditForm from './SmsEditForm.vue'
 
 /**
  * One proposal of a step, and the only card of the chat (D-091): what the model (or the marketer's
  * edit) produced, its state and, while it is a draft in the open step, the actions: approve, reject
- * with a reason, and edit where the step allows it (channel plan and email text; the audience is
- * not edited, D-096; SMS and schedule editing arrive with T-036). Nothing inside it is a box of its own. A rejected variant is
- * not a card; its step lists it in the accordion. The card fades in once, when it is added; a
+ * with a reason, and edit where the step allows it (channel plan, email, SMS text and the send time
+ * of a schedule slot, D-119; the audience is not edited, D-096). Nothing inside it is a box of its
+ * own. A rejected variant is not a card; its step lists it in the accordion. The card fades in once, when it is added; a
  * status change or an edit keeps the same card (D-112).
  */
 const props = defineProps<{
@@ -43,7 +45,10 @@ const editProblem = shallowRef<Problem | null>(null)
 const rejectProblem = shallowRef<Problem | null>(null)
 
 const isEmail = computed(() => props.kind === 'content' && props.variant.channel === 'email')
-const editable = computed(() => props.kind === 'channel_plan' || isEmail.value)
+const isSms = computed(() => props.kind === 'content' && props.variant.channel === 'sms')
+const editable = computed(
+  () => props.kind === 'channel_plan' || props.kind === 'schedule' || isEmail.value || isSms.value,
+)
 
 const title = computed(() => {
   const slot = labels.slot({
@@ -122,6 +127,22 @@ function openReject() {
     />
     <EmailEditForm
       v-else-if="editing && isEmail"
+      :variant="variant"
+      :busy="isBusy(`edit:${variant.id}`)"
+      :problem="editProblem"
+      @save="save"
+      @cancel="editing = false"
+    />
+    <SmsEditForm
+      v-else-if="editing && isSms"
+      :variant="variant"
+      :busy="isBusy(`edit:${variant.id}`)"
+      :problem="editProblem"
+      @save="save"
+      @cancel="editing = false"
+    />
+    <ScheduleEditForm
+      v-else-if="editing && kind === 'schedule'"
       :variant="variant"
       :busy="isBusy(`edit:${variant.id}`)"
       :problem="editProblem"

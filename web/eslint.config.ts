@@ -44,9 +44,9 @@ export default defineConfigWithVueTs(
   },
 
   {
-    // Same for the range calendar: its heading slot is typed `any` by the CLI.
+    // Same for the calendars: their heading slot is typed `any` by the CLI.
     name: 'app/shadcn-range-calendar',
-    files: ['src/components/ui/range-calendar/**/*.vue'],
+    files: ['src/components/ui/range-calendar/**/*.vue', 'src/components/ui/calendar/**/*.vue'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },
 
