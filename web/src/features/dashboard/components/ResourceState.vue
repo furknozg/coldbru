@@ -4,9 +4,13 @@ import { useI18n } from 'vue-i18n'
 
 import { toProblem } from '@/features/campaigns/problem'
 
+import MetricSkeleton from './MetricSkeleton.vue'
+
 /**
- * The three states every dashboard block shares, as plain lines (D-091): loading, failed with a
- * retry, and nothing to show. The default slot is the block itself and renders once `ready`.
+ * The three states every dashboard block shares (D-091, D-111): loading as a skeleton of the block
+ * (the `loading` slot, or a row of tiles), failed as a plain line with a retry, and nothing to
+ * show as a plain line. The default slot is the block itself: it renders once `ready`, fades in,
+ * and stays in place while a refetch is on its way.
  */
 const props = defineProps<{
   loading: boolean
@@ -28,9 +32,13 @@ const message = computed(() => (props.error ? toProblem(props.error, t).message 
       {{ t('common.retry') }}
     </button>
   </p>
-  <p v-else-if="loading && !ready" role="status" class="text-muted-foreground text-sm">
-    {{ t('common.loading') }}
-  </p>
+  <slot v-else-if="loading && !ready" name="loading"><MetricSkeleton /></slot>
   <p v-else-if="ready && empty" class="text-muted-foreground text-sm">{{ empty }}</p>
-  <slot v-else-if="ready" />
+  <div
+    v-else-if="ready"
+    class="flex flex-col gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+    data-slot="resource"
+  >
+    <slot />
+  </div>
 </template>

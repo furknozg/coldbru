@@ -20,7 +20,8 @@ import { APP_MENU, type MenuLink } from '@/features/dashboard/menu'
  * The one left column of the app (D-099, D-100), the same on the dashboard and in the chat: the
  * logo and a `+` for a new campaign, then the entries of `APP_MENU` in order, "Genel bakış", the
  * campaign list and the "Analitikler" group. The page that is open is highlighted and the groups
- * that lead to it are unfolded.
+ * that lead to it are unfolded. The column is as tall as its content: the aside around it scrolls
+ * (D-110), so unfolded groups never squeeze each other or scroll inside.
  */
 const emit = defineEmits<{ navigate: [] }>()
 
@@ -70,7 +71,7 @@ const linkClass =
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col gap-3 p-3">
+  <div class="flex flex-col gap-3 p-3">
     <div class="flex items-center justify-between gap-2">
       <RouterLink :to="{ name: 'dashboard' }" :aria-label="t('app.home')" @click="emit('navigate')">
         <img src="/logo.png" :alt="t('app.logoAlt')" class="h-12 w-auto" />
@@ -86,7 +87,7 @@ const linkClass =
       </Button>
     </div>
 
-    <nav class="flex min-h-0 flex-1 flex-col gap-0.5" :aria-label="t('dashboard.menu.label')">
+    <nav class="flex flex-col gap-0.5" :aria-label="t('dashboard.menu.label')">
       <template v-for="entry in APP_MENU" :key="entry.id">
         <RouterLink
           v-if="entry.kind === 'link'"
@@ -99,8 +100,8 @@ const linkClass =
           <component :is="entry.icon" class="text-caramel size-4" aria-hidden="true" />
           {{ t(entry.label) }}
         </RouterLink>
-        <!-- flex: 0 1 auto: folded it is only as tall as its trigger, unfolded it grows to its content
-             and, in a short sidebar, shrinks and scrolls inside, so the entries around it stay visible. -->
+        <!-- Folded it is only as tall as its trigger, unfolded it grows to its content; the aside
+             around the sidebar is what scrolls (D-110). -->
         <CampaignList
           v-else-if="entry.kind === 'campaigns'"
           :items="items"
@@ -110,7 +111,6 @@ const linkClass =
           :has-more="hasMore"
           :error="error"
           :data-menu="entry.id"
-          class="min-h-0 flex-initial overflow-y-auto"
           @navigate="emit('navigate')"
           @load-more="loadMore()"
           @retry="load()"

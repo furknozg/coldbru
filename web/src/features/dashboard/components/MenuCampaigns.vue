@@ -19,7 +19,7 @@ import DashboardCampaignGroups from './DashboardCampaignGroups.vue'
  * A menu item that unfolds into campaigns (D-100): "Kampanya analitiği" lists the sending and
  * completed ones split by status, "Canlı gönderim" the sending and scheduled ones. A row opens the
  * section page of that campaign; the open one is highlighted and its group is unfolded. Loading,
- * failure and emptiness are plain lines.
+ * failure and emptiness are plain lines. The list grows with its rows; the aside scrolls (D-110).
  */
 const props = defineProps<{
   link: MenuLink & Required<Pick<MenuLink, 'campaigns'>>
@@ -56,7 +56,7 @@ const route = computed(() => props.link.route)
         </span>
       </AccordionTrigger>
       <AccordionContent>
-        <div class="max-h-72 overflow-y-auto pl-6">
+        <div class="pl-6">
           <p
             v-if="loading && items.length === 0"
             role="status"

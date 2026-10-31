@@ -8,7 +8,7 @@ import { overviewOf } from '@/features/dashboard/__tests__/fixtures'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
 import { ApiError } from '@/api/errors'
 
-import { freezeToday, legend, mockDashboardApi, settle, utc } from './harness'
+import { cardTitles, chart, freezeToday, legend, mockDashboardApi, settle, utc } from './harness'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
@@ -62,6 +62,38 @@ describe('Genel bakış', () => {
     expect(wrapper.get('[data-stat="cache"]').text()).toContain('okuma 300.000 · yazma 50.000')
   })
 
+  it('shows skeletons with spinning chart areas while the figures and the series load, and keeps the old figures during a refetch (D-111)', async () => {
+    let resolve!: (value: ReturnType<typeof overviewOf>) => void
+    vi.mocked(analytics.getOverview).mockReturnValue(
+      new Promise((r) => {
+        resolve = r
+      }),
+    )
+    const { wrapper } = await open()
+
+    const skeletons = wrapper.findAll('main [data-testid="metric-skeleton"]')
+    expect(skeletons.length).toBeGreaterThan(0)
+    expect(main(wrapper).findAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(main(wrapper).findAll('[data-slot="chart-spinner"]').length).toBeGreaterThan(0)
+    expect(wrapper.find('main [data-stat]').exists()).toBe(false)
+    // The series came back already: its charts are there, in cards, with the spinner gone.
+    expect(wrapper.findAll('main figure').length).toBeGreaterThan(0)
+
+    resolve(overviewOf())
+    await settle()
+    expect(stat(wrapper, 'sent').value).toBe('1.200')
+    expect(
+      wrapper.get('[data-stat="sent"]').element.closest('[data-slot="metric-card"]'),
+    ).not.toBeNull()
+
+    // A new range: the old figures stay in place until the new ones arrive, no skeleton.
+    vi.mocked(analytics.getOverview).mockReturnValue(new Promise(() => {}))
+    await button(wrapper, 'Son 7 gün').trigger('click')
+    await settle()
+    expect(stat(wrapper, 'sent').value).toBe('1.200')
+    expect(wrapper.find('main [data-testid="metric-skeleton"]').exists()).toBe(false)
+  })
+
   it('shows the CTR as a tile next to the others, with unique and total clicks', async () => {
     const { wrapper } = await open()
 
@@ -83,15 +115,47 @@ describe('Genel bakış', () => {
   it('draws the unique clicks of both channels as a second series over the same buckets', async () => {
     const { wrapper } = await open()
 
-    const chart = wrapper
-      .findAll('figure')
-      .find((f) => f.find('figcaption').text().startsWith('Kanal başına tekil tıklama'))!
-    expect(chart.get('figcaption').text()).toBe('Kanal başına tekil tıklama · son 90 gün')
-    expect(chart.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
-    expect(chart.get('[data-testid="line"]').attributes('data-series')).toBe('2')
+    const clicks = chart(wrapper, 'Kanal başına tekil tıklama · son 90 gün')
+    expect(clicks.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
+    expect(clicks.get('[data-testid="line"]').attributes('data-series')).toBe('2')
     // 4 + 3 unique e-mail clicks and 2 SMS clicks; the total clicks are not drawn.
-    expect(chart.get('[role="img"]').attributes('aria-label')).toContain('E-posta: 7, SMS: 2')
-    expect(chart.findAll('li').map((li) => li.text())).toEqual(['E-posta', 'SMS'])
+    expect(clicks.get('[role="img"]').attributes('aria-label')).toContain('E-posta: 7, SMS: 2')
+    expect(clicks.findAll('li').map((li) => li.text())).toEqual(['E-posta', 'SMS'])
+  })
+
+  it('titles every card, and a chart has its title as the card heading only, not as a caption too', async () => {
+    const { wrapper } = await open()
+
+    expect(cardTitles(main(wrapper))).toEqual([
+      'Genel metrikler',
+      'Teslimat dağılımı',
+      'Kanal başına gönderilen teslimat · son 90 gün',
+      'Kanal başına tekil tıklama · son 90 gün',
+    ])
+    const captions = main(wrapper)
+      .findAll('figcaption')
+      .map((c) => c.text())
+    expect(captions).toEqual(['Kanala göre teslimat', 'Duruma göre teslimat'])
+    expect(
+      main(wrapper)
+        .findAll('h3')
+        .map((h) => h.text()),
+    ).toEqual(cardTitles(main(wrapper)))
+  })
+
+  it('drops the 90-day note from the series titles when the range has a start', async () => {
+    const { wrapper } = await open('/?from=2026-10-24&to=2026-10-30')
+    expect(cardTitles(main(wrapper)).slice(2)).toEqual([
+      'Kanal başına gönderilen teslimat',
+      'Kanal başına tekil tıklama',
+    ])
+  })
+
+  it('scrolls the page inside the dashboard frame, which contains its overscroll', async () => {
+    const { wrapper } = await open()
+    const frame = main(wrapper).get(':scope > div')
+    expect(frame.classes()).toContain('overflow-y-auto')
+    expect(frame.classes()).toContain('overscroll-contain')
   })
 
   it('draws no box around a figure and has the create card as its only card', async () => {
@@ -117,14 +181,12 @@ describe('Genel bakış', () => {
   it('draws the sent deliveries of both channels over the buckets of the series', async () => {
     const { wrapper } = await open()
 
-    const chart = wrapper
-      .findAll('figure')
-      .find((f) => f.find('figcaption').text().startsWith('Kanal başına'))!
-    expect(chart.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
-    expect(chart.get('[data-testid="line"]').attributes('data-series')).toBe('2')
+    const sent = chart(wrapper, 'Kanal başına gönderilen teslimat · son 90 gün')
+    expect(sent.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
+    expect(sent.get('[data-testid="line"]').attributes('data-series')).toBe('2')
     // Zero-filled: 15 e-mails (10 + 5) and 6 SMS over three days, the failed ones not counted.
-    expect(chart.get('[role="img"]').attributes('aria-label')).toContain('E-posta: 15, SMS: 6')
-    expect(chart.findAll('li').map((li) => li.text())).toEqual(['E-posta', 'SMS'])
+    expect(sent.get('[role="img"]').attributes('aria-label')).toContain('E-posta: 15, SMS: 6')
+    expect(sent.findAll('li').map((li) => li.text())).toEqual(['E-posta', 'SMS'])
   })
 
   it('says what is wrong in a plain line when the overview fails, and retries', async () => {
@@ -145,10 +207,7 @@ describe('Genel bakış', () => {
   it('shows empty pies as text when nothing was delivered', async () => {
     vi.mocked(analytics.getOverview).mockResolvedValue(overviewOf({ deliveries: [] }))
     const { wrapper } = await open()
-    const pie = wrapper
-      .findAll('figure')
-      .find((f) => f.find('figcaption').text() === 'Duruma göre teslimat')!
-    expect(pie.text()).toContain('Gösterilecek veri yok')
+    expect(chart(wrapper, 'Duruma göre teslimat').text()).toContain('Gösterilecek veri yok')
   })
 })
 

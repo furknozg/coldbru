@@ -23,7 +23,8 @@ import ScheduleBody from './ScheduleBody.vue'
  * edit) produced, its state and, while it is a draft in the open step, the actions: approve, reject
  * with a reason, and edit where the step allows it (channel plan and email text; the audience is
  * not edited, D-096; SMS and schedule editing arrive with T-036). Nothing inside it is a box of its own. A rejected variant is
- * not a card; its step lists it in the accordion.
+ * not a card; its step lists it in the accordion. The card fades in once, when it is added; a
+ * status change or an edit keeps the same card (D-112).
  */
 const props = defineProps<{
   variant: VariantView
@@ -99,7 +100,7 @@ function openReject() {
 
 <template>
   <article
-    class="flex flex-col gap-3 rounded-xl border p-3"
+    class="flex flex-col gap-3 rounded-xl border p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
     data-slot="card"
     :aria-label="title"
     :data-variant-status="variant.status"

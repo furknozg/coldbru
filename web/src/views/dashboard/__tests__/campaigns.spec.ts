@@ -10,7 +10,7 @@ import { resetToasts } from '@/features/campaigns/composables/useToasts'
 import CampaignSummary from '@/features/dashboard/components/CampaignSummary.vue'
 import { reportOf } from '@/features/dashboard/__tests__/fixtures'
 
-import { legend, mockDashboardApi, settle } from './harness'
+import { cardTitles, legend, mockDashboardApi, settle } from './harness'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
@@ -185,6 +185,59 @@ describe('Kampanya analitiği', () => {
       ['E-posta', 'İngilizce', 'Europe/London', '30', '3', '4', '%10'],
       ['SMS', 'Türkçe', 'Europe/Istanbul', '50', '5', '7', '%10'],
     ])
+  })
+
+  it('renders the success metrics first, before the delivery figures and the LLM block, each group a card (D-111)', async () => {
+    const { wrapper } = await open()
+
+    const clicks = wrapper.get('main [data-section="clicks"]')
+    const delivery = wrapper.get('main [data-stat="deliveryCost"]')
+    const llm = wrapper.get('main [data-row="purpose"]')
+    const before = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(before(clicks.element, delivery.element)).toBe(true)
+    expect(before(delivery.element, llm.element)).toBe(true)
+    // Each group is one card, and no card holds another.
+    expect(clicks.attributes('data-slot')).toBe('metric-card')
+    expect(delivery.element.closest('[data-slot="metric-card"]')).not.toBeNull()
+    expect(llm.element.closest('[data-slot="metric-card"]')).not.toBeNull()
+    for (const card of wrapper.findAll('main [data-slot="metric-card"]')) {
+      expect(card.find('[data-slot="metric-card"]').exists()).toBe(false)
+    }
+  })
+
+  it('titles every card of the report', async () => {
+    const { wrapper } = await open()
+    const main = wrapper.get('main')
+
+    expect(cardTitles(main)).toEqual([
+      'Başarı metrikleri',
+      'Maliyet ve kullanım',
+      'Teslimat dağılımı',
+      'Amaca göre LLM kullanımı',
+    ])
+    expect(main.findAll('h3').map((h) => h.text())).toEqual(cardTitles(main))
+  })
+
+  it('shows a skeleton of the report, not a line of text, while it loads (D-111)', async () => {
+    let resolve!: (report: ReturnType<typeof reportOf>) => void
+    vi.mocked(analytics.getCampaignSummary).mockReturnValue(
+      new Promise((r) => {
+        resolve = r
+      }),
+    )
+    const { wrapper } = await open()
+
+    const status = wrapper.get('main [role="status"]')
+    expect(status.findAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+    expect(status.findAll('[data-slot="chart-spinner"]').length).toBeGreaterThan(0)
+    expect(status.find('.sr-only').text()).toBe('Yükleniyor…')
+    expect(wrapper.find('main [data-stat]').exists()).toBe(false)
+
+    resolve(reportOf())
+    await settle()
+    expect(wrapper.find('main [data-testid="metric-skeleton"]').exists()).toBe(false)
+    expect(wrapper.get('main [data-stat="deliveryCost"] dd').text()).toBe('$12,50')
   })
 
   it('shows live click counts and no CTR before the campaign completes', async () => {

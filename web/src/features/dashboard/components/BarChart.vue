@@ -12,8 +12,11 @@ import { tooltipHtml } from '../chart'
  * One value per category as columns (D-097): the prompt versions with their repair rate or mean
  * latency. Columns are at most 24px wide with a 4px rounded top. The exact value is in the
  * tooltip and in the label above the column; the table next to the chart holds every figure.
+ * Like the time series chart, it draws no caption: `title` names it in the summary and the card
+ * around it shows the same text as its heading (D-111).
  */
 const props = defineProps<{
+  /** What the columns show; the heading of the card it sits in. */
   title: string
   /** Name of what the columns measure, for the tooltip and the summary. */
   measure: string
@@ -62,8 +65,7 @@ const plotStyle = {
 </script>
 
 <template>
-  <figure class="flex min-w-0 flex-col gap-2">
-    <figcaption class="text-muted-foreground text-xs font-medium">{{ title }}</figcaption>
+  <figure class="flex min-w-0 flex-col gap-2" :aria-label="title">
     <p v-if="!hasValues" class="text-muted-foreground text-xs">{{ t('chart.noData') }}</p>
     <ChartContainer
       v-else

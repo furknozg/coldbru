@@ -286,6 +286,8 @@
       "schedule": "Zamanlama"
     },
     "overview": {
+      "metrics": "Genel metrikler",
+      "distribution": "Teslimat dağılımı",
       "byChannel": "Kanala göre teslimat",
       "byStatus": "Duruma göre teslimat",
       "series": "Kanal başına gönderilen teslimat",
@@ -310,6 +312,8 @@
       "unknown": "—"
     },
     "llm": {
+      "usage": "LLM kullanımı",
+      "costSplit": "Maliyet dağılımı",
       "costByPurpose": "Amaca göre maliyet",
       "costByModel": "Modele göre maliyet",
       "versions": "Prompt sürümleri",
@@ -326,7 +330,6 @@
       "noVersions": "Bu aralıkta LLM çağrısı yok.",
       "measure": "Grafiğin ölçüsü",
       "versionChart": "Prompt sürümü başına",
-      "overTime": "Zaman içinde",
       "split": "Maliyet kırılımı",
       "byPurpose": "Amaca göre",
       "byModel": "Modele göre",
@@ -341,6 +344,7 @@
       "noReport": "Analytics bu kampanya için henüz veri toplamadı.",
       "completedAt": "Tamamlandı:",
       "notCompleted": "Henüz tamamlanmadı",
+      "costUsage": "Maliyet ve kullanım",
       "llmByPurpose": "Amaca göre LLM kullanımı",
       "notStarted": "Analitik, kampanyanın gönderimi başladıktan sonra görünür.",
       "noneStarted": "Gönderimi başlamış veya tamamlanmış kampanya yok."
@@ -358,6 +362,7 @@
       },
       "progress": "{finished} / {total} teslimat sonuçlandı",
       "progressLabel": "Gönderim ilerlemesi",
+      "deliveries": "Teslimatlar",
       "counts": "Kanal ve duruma göre teslimat sayıları",
       "channel": "Kanal"
     }

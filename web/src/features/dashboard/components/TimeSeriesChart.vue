@@ -14,9 +14,12 @@ import type { SeriesLine } from '../series'
  * `buckets` are the UTC starts of every bucket and each series has one value per bucket, so the
  * x axis is the bucket index and the labels are formatted in the viewer's time zone. The legend
  * is real text; hovering shows every series of the bucket. A chart without any value is a line of
- * text instead, never an empty plot.
+ * text instead, never an empty plot. The chart draws no caption of its own: `title` names it in
+ * the summary for assistive technology, and the card around it shows the same text as its
+ * heading (D-111), so the title is never on the screen twice.
  */
 const props = defineProps<{
+  /** What the chart shows; the heading of the card it sits in. */
   title: string
   buckets: readonly string[]
   bucket: 'hour' | 'day'
@@ -92,8 +95,7 @@ const plotStyle = {
 </script>
 
 <template>
-  <figure class="flex min-w-0 flex-col gap-2">
-    <figcaption class="text-muted-foreground text-xs font-medium">{{ title }}</figcaption>
+  <figure class="flex min-w-0 flex-col gap-2" :aria-label="title">
     <p v-if="!hasValues" class="text-muted-foreground text-xs">{{ t('chart.noData') }}</p>
     <template v-else>
       <ChartContainer

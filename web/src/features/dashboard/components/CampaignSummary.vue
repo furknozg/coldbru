@@ -7,18 +7,24 @@ import { LazyDistributionPie } from '@/components/LazyDistributionPie'
 
 import { channelSlices, purposeSlices, statusSlices, totalTokens } from '../overview'
 import { PURPOSES, toNumber } from '../series'
+import MetricCard from './MetricCard.vue'
 import StatList from './StatList.vue'
 
 /**
  * What Analytics knows of one campaign (D-083, D-097): when it completed, the cost of its
  * deliveries and of its model calls, how the deliveries ended and which step the model spent on.
- * Later metric blocks (T-044) are added as `sections`: each is rendered under its title with the
- * report as its only prop, so this component does not change when a block is added.
+ * Later metric blocks (T-044) are added as `sections`: each is a card under its title with the
+ * report as its only prop, so this component does not change when a block is added. A section
+ * with `position: 'start'` comes before the built-in blocks, which is where the success metrics
+ * go (D-111); the rest follow them. Every group is one card under its own title, none inside
+ * another.
  */
 export interface SummarySection {
   key: string
   title: string
   component: Component
+  /** Before the delivery and LLM blocks, or after them (the default). */
+  position?: 'start' | 'end'
 }
 
 const props = withDefaults(
@@ -29,6 +35,9 @@ const props = withDefaults(
 )
 
 const { t, n, d } = useI18n()
+
+const leading = computed(() => props.sections.filter((s) => s.position === 'start'))
+const trailing = computed(() => props.sections.filter((s) => s.position !== 'start'))
 
 const stats = computed(() => {
   const { report } = props
@@ -71,7 +80,9 @@ const purposeRows = computed(() =>
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div
+    class="flex flex-col gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+  >
     <p class="text-muted-foreground text-sm" data-testid="completed-at">
       <template v-if="completedAt">
         {{ t('dashboard.campaign.completedAt') }}
@@ -80,27 +91,33 @@ const purposeRows = computed(() =>
       <template v-else>{{ t('dashboard.campaign.notCompleted') }}</template>
     </p>
 
-    <StatList :items="stats" />
-
-    <div v-if="completedAt" class="grid gap-6 md:grid-cols-2">
-      <LazyDistributionPie
-        :title="t('dashboard.overview.byChannel')"
-        :slices="channelSlices(report.deliveries, channelLabel)"
-      />
-      <LazyDistributionPie
-        :title="t('dashboard.overview.byStatus')"
-        :slices="statusSlices(report.deliveries, statusLabel)"
-      />
-    </div>
-
-    <section
-      v-if="report.llm.by_purpose.length"
-      class="flex flex-col gap-3"
-      :aria-label="t('dashboard.campaign.llmByPurpose')"
+    <MetricCard
+      v-for="section in leading"
+      :key="section.key"
+      :title="section.title"
+      :data-section="section.key"
     >
-      <h3 class="text-espresso text-base font-semibold">
-        {{ t('dashboard.campaign.llmByPurpose') }}
-      </h3>
+      <component :is="section.component" :report="report" />
+    </MetricCard>
+
+    <MetricCard :title="t('dashboard.campaign.costUsage')">
+      <StatList :items="stats" />
+    </MetricCard>
+
+    <MetricCard v-if="completedAt" :title="t('dashboard.overview.distribution')">
+      <div class="grid gap-6 md:grid-cols-2">
+        <LazyDistributionPie
+          :title="t('dashboard.overview.byChannel')"
+          :slices="channelSlices(report.deliveries, channelLabel)"
+        />
+        <LazyDistributionPie
+          :title="t('dashboard.overview.byStatus')"
+          :slices="statusSlices(report.deliveries, statusLabel)"
+        />
+      </div>
+    </MetricCard>
+
+    <MetricCard v-if="report.llm.by_purpose.length" :title="t('dashboard.campaign.llmByPurpose')">
       <div class="grid items-start gap-6 md:grid-cols-2">
         <LazyDistributionPie
           :title="t('dashboard.llm.costByPurpose')"
@@ -148,17 +165,15 @@ const purposeRows = computed(() =>
           </tbody>
         </table>
       </div>
-    </section>
+    </MetricCard>
 
-    <section
-      v-for="section in sections"
+    <MetricCard
+      v-for="section in trailing"
       :key="section.key"
-      class="flex flex-col gap-3"
+      :title="section.title"
       :data-section="section.key"
-      :aria-label="section.title"
     >
-      <h3 class="text-espresso text-base font-semibold">{{ section.title }}</h3>
       <component :is="section.component" :report="report" />
-    </section>
+    </MetricCard>
   </div>
 </template>

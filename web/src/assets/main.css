@@ -132,6 +132,18 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /*
+   * The document never scrolls: the app shell fills the viewport and the menu, the dashboard page
+   * and the chat each scroll inside it. Hiding the overflow and refusing overscroll here keeps a
+   * scroll that reaches the end of an inner area from moving the whole app (the elastic bounce
+   * on macOS) or chaining to the page.
+   */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
     @apply font-sans;

@@ -8,6 +8,8 @@ import { modelColors, purposeColor } from '@/features/dashboard/chart'
 import DashboardPage from '@/features/dashboard/components/DashboardPage.vue'
 import DateRangeFilter from '@/features/dashboard/components/DateRangeFilter.vue'
 import { LazyBarChart, LazyTimeSeriesChart } from '@/features/dashboard/components/LazyCharts'
+import MetricCard from '@/features/dashboard/components/MetricCard.vue'
+import MetricSkeleton from '@/features/dashboard/components/MetricSkeleton.vue'
 import PromptVersionTable from '@/features/dashboard/components/PromptVersionTable.vue'
 import ResourceState from '@/features/dashboard/components/ResourceState.vue'
 import SegmentedToggle from '@/features/dashboard/components/SegmentedToggle.vue'
@@ -26,7 +28,10 @@ import { useResource } from '@/features/dashboard/useResource'
 /**
  * `/analytics/llm` (D-097): what the model calls cost and how well the prompts do over the chosen
  * range. Figures and pies come from `/overview`, the table and its chart from `/llm-usage`, the
- * charts over time from `/llm-usage/series`; all follow the date filter in the URL.
+ * charts over time from `/llm-usage/series`; all follow the date filter in the URL. Each group
+ * (figures, pies, the versions table, its chart, each chart over time) is one card under its own
+ * title and loads as a skeleton of itself (D-111). The charts over time say in their title when
+ * they draw the last 90 days instead of the chosen range.
  */
 const { t, n } = useI18n()
 const { range, preset, apiRange, series, select, selectPreset } = useDateRange()
@@ -110,7 +115,11 @@ const callLines = computed(() => {
     ? [{ ...llmCallsLine(s), label: t('dashboard.stat.llmCalls'), color: 'var(--chart-1)' }]
     : []
 })
-const windowNote = computed(() => (range.value.from ? '' : ` · ${t('dashboard.range.last90')}`))
+// "Tümü" and a range without a start draw the last 90 days, which the chart titles say.
+const overTime = (title: string) =>
+  range.value.from ? title : `${title} · ${t('dashboard.range.last90')}`
+const costTitle = computed(() => overTime(t('dashboard.llm.costOverTime')))
+const callsTitle = computed(() => overTime(t('dashboard.llm.callsOverTime')))
 </script>
 
 <template>
@@ -125,34 +134,41 @@ const windowNote = computed(() => (range.value.from ? '' : ` · ${t('dashboard.r
       :ready="Boolean(llm)"
       @retry="overview.reload()"
     >
+      <template #loading><MetricSkeleton :tiles="5" :charts="1" /></template>
       <template v-if="llm">
-        <StatList :items="stats" />
-        <div class="grid gap-6 md:grid-cols-2">
-          <LazyDistributionPie
-            :title="t('dashboard.llm.costByPurpose')"
-            format="usd"
-            :slices="purposeSlices(llm.by_purpose, purposeLabel)"
-          />
-          <LazyDistributionPie
-            :title="t('dashboard.llm.costByModel')"
-            format="usd"
-            :slices="modelSlices(llm.by_model, t('chart.other'))"
-          />
-        </div>
+        <MetricCard :title="t('dashboard.llm.usage')">
+          <StatList :items="stats" />
+        </MetricCard>
+        <MetricCard :title="t('dashboard.llm.costSplit')">
+          <div class="grid gap-6 md:grid-cols-2">
+            <LazyDistributionPie
+              :title="t('dashboard.llm.costByPurpose')"
+              format="usd"
+              :slices="purposeSlices(llm.by_purpose, purposeLabel)"
+            />
+            <LazyDistributionPie
+              :title="t('dashboard.llm.costByModel')"
+              format="usd"
+              :slices="modelSlices(llm.by_model, t('chart.other'))"
+            />
+          </div>
+        </MetricCard>
       </template>
     </ResourceState>
 
-    <section class="flex flex-col gap-3" :aria-label="t('dashboard.llm.versions')">
-      <h3 class="text-espresso text-base font-semibold">{{ t('dashboard.llm.versions') }}</h3>
-      <ResourceState
-        :loading="versions.loading.value"
-        :error="versions.error.value"
-        :ready="Boolean(versions.data.value)"
-        :empty="versions.data.value?.length === 0 ? t('dashboard.llm.noVersions') : undefined"
-        @retry="versions.reload()"
-      >
-        <template v-if="versions.data.value">
+    <ResourceState
+      :loading="versions.loading.value"
+      :error="versions.error.value"
+      :ready="Boolean(versions.data.value)"
+      :empty="versions.data.value?.length === 0 ? t('dashboard.llm.noVersions') : undefined"
+      @retry="versions.reload()"
+    >
+      <template #loading><MetricSkeleton :tiles="0" :rows="4" :charts="1" /></template>
+      <template v-if="versions.data.value">
+        <MetricCard :title="t('dashboard.llm.versions')">
           <PromptVersionTable :rows="versions.data.value" />
+        </MetricCard>
+        <MetricCard :title="t('dashboard.llm.versionChart')">
           <SegmentedToggle
             v-model="measure"
             :label="t('dashboard.llm.measure')"
@@ -164,40 +180,40 @@ const windowNote = computed(() => (range.value.from ? '' : ` · ${t('dashboard.r
             :bars="bars"
             :format-value="formatBar"
           />
-        </template>
-      </ResourceState>
-    </section>
+        </MetricCard>
+      </template>
+    </ResourceState>
 
-    <section class="flex flex-col gap-3" :aria-label="t('dashboard.llm.overTime')">
-      <h3 class="text-espresso text-base font-semibold">
-        {{ t('dashboard.llm.overTime') }}{{ windowNote }}
-      </h3>
-      <ResourceState
-        :loading="over.loading.value"
-        :error="over.error.value"
-        :ready="Boolean(over.data.value)"
-        @retry="over.reload()"
-      >
-        <template v-if="over.data.value">
+    <ResourceState
+      :loading="over.loading.value"
+      :error="over.error.value"
+      :ready="Boolean(over.data.value)"
+      @retry="over.reload()"
+    >
+      <template #loading><MetricSkeleton :tiles="0" :charts="2" /></template>
+      <template v-if="over.data.value">
+        <MetricCard :title="costTitle">
           <SegmentedToggle v-model="split" :label="t('dashboard.llm.split')" :options="splits" />
           <LazyTimeSeriesChart
-            :title="t('dashboard.llm.costOverTime')"
+            :title="costTitle"
             :buckets="over.data.value.buckets"
             :bucket="over.data.value.bucket"
             :series="costLines"
             kind="area"
             format="usd"
           />
+        </MetricCard>
+        <MetricCard :title="callsTitle">
           <LazyTimeSeriesChart
-            :title="t('dashboard.llm.callsOverTime')"
+            :title="callsTitle"
             :buckets="over.data.value.buckets"
             :bucket="over.data.value.bucket"
             :series="callLines"
             kind="line"
             format="int"
           />
-        </template>
-      </ResourceState>
-    </section>
+        </MetricCard>
+      </template>
+    </ResourceState>
   </DashboardPage>
 </template>

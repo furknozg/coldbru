@@ -39,12 +39,35 @@ export function freezeToday(now = new Date(2026, 9, 30, 15, 20)) {
 export const utc = (year: number, month: number, day: number) =>
   new Date(year, month - 1, day).toISOString().replace(/\.000Z$/, 'Z')
 
-/** The legend of the pie under `title`, as [label, value, share] rows. */
-export function legend(
-  root: { findAll: (selector: string) => DOMWrapper<Element>[] },
-  title: string,
-) {
-  const figure = root.findAll('figure').find((f) => f.find('figcaption').text() === title)
+type Root = { findAll: (selector: string) => DOMWrapper<Element>[] }
+
+/** The title of every metric card under `root`, in order; a card without one gives ''. */
+export const cardTitles = (root: Root) =>
+  root.findAll('[data-slot="metric-card"]').map((card) => card.find('h3').text())
+
+/** The metric card titled `title`. */
+export function card(root: Root, title: string) {
+  const found = root.findAll('[data-slot="metric-card"]').find((c) => c.find('h3').text() === title)
+  if (!found) throw new Error(`no card titled ${title}`)
+  return found
+}
+
+/**
+ * The chart titled `title`: a pie by its caption, a time series or bar chart by its label (its
+ * title is the heading of the card around it, not a caption of its own).
+ */
+export function chart(root: Root, title: string) {
+  const figure = root.findAll('figure').find((f) => {
+    const caption = f.find('figcaption')
+    return (caption.exists() && caption.text() === title) || f.attributes('aria-label') === title
+  })
   if (!figure) throw new Error(`no chart titled ${title}`)
-  return figure.findAll('li').map((li) => li.findAll('span').map((span) => span.text()))
+  return figure
+}
+
+/** The legend of the pie under `title`, as [label, value, share] rows. */
+export function legend(root: Root, title: string) {
+  return chart(root, title)
+    .findAll('li')
+    .map((li) => li.findAll('span').map((span) => span.text()))
 }
