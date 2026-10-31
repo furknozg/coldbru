@@ -19,6 +19,7 @@ import CampaignRow from './CampaignRow.vue'
 /**
  * The loaded campaigns (D-091): one accordion, "Kampanyalar", with a sub-accordion per status. A
  * status without a campaign has no group; the group of the open campaign and the drafts start open.
+ * It has no height cap and no scroll of its own: the aside around the sidebar scrolls (D-110).
  */
 const props = defineProps<{
   items: readonly CampaignInfo[]

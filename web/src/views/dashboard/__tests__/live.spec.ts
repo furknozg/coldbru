@@ -5,7 +5,7 @@ import * as proposal from '@/api/proposal/service'
 import { FakeEventSource, infoOf, mountApp } from '@/__tests__/helpers'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
 
-import { mockDashboardApi, settle } from './harness'
+import { cardTitles, mockDashboardApi, settle } from './harness'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
@@ -94,6 +94,17 @@ describe('Canlı gönderim', () => {
     expect(bar(wrapper).attributes('aria-valuenow')).toBe('50')
     expect(wrapper.get('main').text()).toContain('100 / 200 teslimat sonuçlandı')
     expect(wrapper.get('main').text()).toContain('%50')
+  })
+
+  it('titles the progress card and the table card', async () => {
+    const { wrapper } = await open()
+    FakeEventSource.last.emit('snapshot', snapshot())
+    await settle()
+
+    expect(cardTitles(wrapper.get('main'))).toEqual(['Gönderim ilerlemesi', 'Teslimatlar'])
+    expect(wrapper.get('[role="progressbar"]').element.closest('[data-slot="metric-card"]')).toBe(
+      wrapper.findAll('main [data-slot="metric-card"]')[0]!.element,
+    )
   })
 
   it('follows every new snapshot', async () => {

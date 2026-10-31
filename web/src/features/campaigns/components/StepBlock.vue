@@ -20,12 +20,14 @@ import VariantCard from './VariantCard.vue'
 import VariantCarousel from './VariantCarousel.vue'
 
 /**
- * One step in the chat (D-091). One accordion holds the step's events and actions: open while the
- * step is open, closed once it is approved. The variants are the only cards: the drafts of the open
+ * One step in the chat (D-091). One accordion holds the step's events and actions. It starts
+ * folded whatever the step's state (D-112); once the reader unfolds or folds it, that choice holds
+ * until the step's status changes. The variants are the only cards: the drafts of the open
  * step with their actions, and, once the step is approved, only the approved ones. Rejected and
  * replaced variants are listed in the accordion. The text step's cards sit in one carousel per
  * channel and the schedule step's in one (D-095), each with a count of the slots still waiting for
- * an approval while the step is open.
+ * an approval while the step is open. The block fades in once, when it is added to the chat
+ * (D-112); later updates of the step do not replay it.
  */
 const props = defineProps<{
   step: StepView
@@ -41,9 +43,9 @@ const labels = useLabels()
 const drafting = computed(() => props.campaignStatus === 'drafting')
 const isOpen = computed(() => props.step.status === 'open')
 
-/** What the reader chose; until then the step's own state decides. */
+/** What the reader chose; until then the accordion is folded (D-112). */
 const chosen = shallowRef<boolean | null>(null)
-const expanded = computed(() => chosen.value ?? isOpen.value)
+const expanded = computed(() => chosen.value ?? false)
 watch(
   () => props.step.status,
   () => {
@@ -76,7 +78,7 @@ const title = computed(() =>
 <template>
   <li
     :id="`step-${step.id}`"
-    class="flex min-w-0 flex-col gap-3"
+    class="flex min-w-0 flex-col gap-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
     data-kind="step"
     :data-step-id="step.id"
     :data-step-status="step.status"

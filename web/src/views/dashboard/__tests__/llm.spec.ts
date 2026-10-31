@@ -5,7 +5,7 @@ import { FakeEventSource, mountApp } from '@/__tests__/helpers'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
 import { llmSeriesOf, overviewOf } from '@/features/dashboard/__tests__/fixtures'
 
-import { freezeToday, legend, mockDashboardApi, settle, utc } from './harness'
+import { cardTitles, chart, freezeToday, legend, mockDashboardApi, settle, utc } from './harness'
 
 vi.mock('@/api/proposal/service')
 vi.mock('@/api/analytics/service')
@@ -34,8 +34,6 @@ async function open(path = '/analytics/llm') {
   return mounted
 }
 
-const chart = (w: NonNullable<typeof wrapper>, title: string) =>
-  w.findAll('figure').find((f) => f.find('figcaption').text() === title)!
 const toggle = (w: NonNullable<typeof wrapper>, text: string) =>
   w.findAll('main button').find((b) => b.text() === text)!
 
@@ -140,7 +138,7 @@ describe('LLM analitiği', () => {
   it('stacks the cost over time by purpose, switches to the model, and draws the calls as a line', async () => {
     const { wrapper } = await open()
 
-    const area = chart(wrapper, 'LLM maliyeti')
+    const area = chart(wrapper, 'LLM maliyeti · Son 90 gün')
     expect(area.get('[data-testid="area"]').attributes('data-series')).toBe('5')
     expect(area.findAll('li').map((li) => li.text())).toEqual([
       'Ön eleme',
@@ -155,14 +153,14 @@ describe('LLM analitiği', () => {
 
     await toggle(wrapper, 'Modele göre').trigger('click')
     await settle()
-    const byModel = chart(wrapper, 'LLM maliyeti')
+    const byModel = chart(wrapper, 'LLM maliyeti · Son 90 gün')
     expect(byModel.get('[data-testid="area"]').attributes('data-series')).toBe('2')
     expect(byModel.findAll('li').map((li) => li.text())).toEqual([
       'claude-haiku-5-5',
       'claude-sonnet-5-5',
     ])
 
-    const calls = chart(wrapper, 'LLM çağrıları')
+    const calls = chart(wrapper, 'LLM çağrıları · Son 90 gün')
     expect(calls.get('[data-testid="line"]').attributes('data-series')).toBe('1')
     expect(calls.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
     expect(calls.get('[role="img"]').attributes('aria-label')).toContain('LLM çağrısı: 11')
@@ -170,9 +168,40 @@ describe('LLM analitiği', () => {
     expect(calls.find('li').exists()).toBe(false)
   })
 
-  it('names the 90-day window when the range has no start', async () => {
+  it('names the 90-day window in the titles of the charts over time when the range has no start', async () => {
     const { wrapper } = await open()
-    expect(wrapper.text()).toContain('Zaman içinde · Son 90 gün')
+    expect(cardTitles(wrapper.get('main')).slice(-2)).toEqual([
+      'LLM maliyeti · Son 90 gün',
+      'LLM çağrıları · Son 90 gün',
+    ])
+    wrapper.unmount()
+
+    const ranged = await open('/analytics/llm?from=2026-10-24&to=2026-10-30')
+    expect(cardTitles(ranged.wrapper.get('main')).slice(-2)).toEqual([
+      'LLM maliyeti',
+      'LLM çağrıları',
+    ])
+  })
+
+  it('titles every card and has no heading outside the cards, so none is shown twice', async () => {
+    const { wrapper } = await open()
+    const main = wrapper.get('main')
+
+    expect(cardTitles(main)).toEqual([
+      'LLM kullanımı',
+      'Maliyet dağılımı',
+      'Prompt sürümleri',
+      'Prompt sürümü başına',
+      'LLM maliyeti · Son 90 gün',
+      'LLM çağrıları · Son 90 gün',
+    ])
+    // Every h3 is a card title; the pies keep their captions, the other charts have none.
+    expect(main.findAll('h3').map((h) => h.text())).toEqual(cardTitles(main))
+    expect(main.findAll('figcaption').map((c) => c.text())).toEqual([
+      'Amaca göre maliyet',
+      'Modele göre maliyet',
+    ])
+    expect(main.text()).not.toContain('Zaman içinde')
   })
 
   it('draws a chart without any value as one line of text', async () => {
@@ -189,8 +218,9 @@ describe('LLM analitiği', () => {
       }),
     )
     const { wrapper } = await open()
-    expect(chart(wrapper, 'LLM maliyeti').text()).toContain('Gösterilecek veri yok')
-    expect(chart(wrapper, 'LLM maliyeti').find('[data-testid="area"]').exists()).toBe(false)
+    const cost = chart(wrapper, 'LLM maliyeti · Son 90 gün')
+    expect(cost.text()).toContain('Gösterilecek veri yok')
+    expect(cost.find('[data-testid="area"]').exists()).toBe(false)
     expect(chart(wrapper, 'Amaca göre maliyet').text()).toContain('Gösterilecek veri yok')
   })
 })

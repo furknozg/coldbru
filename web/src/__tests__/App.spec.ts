@@ -5,6 +5,9 @@ import * as analytics from '@/api/analytics/service'
 import * as proposal from '@/api/proposal/service'
 import { resetToasts } from '@/features/campaigns/composables/useToasts'
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { FakeEventSource, infoOf, mountApp, viewOf } from './helpers'
 import { setViewportWide } from './setup'
 
@@ -122,18 +125,63 @@ describe('campaign list', () => {
     expect(groups(wrapper)).toHaveLength(3)
   })
 
-  it('sizes the "Kampanyalar" block to its content, so "Analitikler" sits right below it when folded', async () => {
+  it('scrolls the whole menu in the aside: the sidebar, the nav and the lists have no scroll or height cap of their own (D-110)', async () => {
     vi.mocked(proposal.listCampaigns).mockResolvedValue(campaigns)
     const { wrapper } = await open()
 
-    // Not flex-1: a folded accordion must not keep the free height of the sidebar. It may shrink and
-    // scroll (flex: 0 1 auto), so the menu entries around it stay on screen.
+    const aside = wrapper.get('aside')
+    expect(aside.classes()).toContain('overflow-y-auto')
+    // The sidebar grows with its content; nothing inside squeezes or scrolls.
+    const sidebar = aside.get(':scope > div')
+    for (const el of [sidebar, aside.get('nav')]) {
+      expect(el.classes()).not.toContain('overflow-y-auto')
+      expect(el.classes()).not.toContain('overflow-y-scroll')
+      expect(el.classes()).not.toContain('h-full')
+      expect(el.classes()).not.toContain('min-h-0')
+      expect(el.classes()).not.toContain('flex-1')
+    }
     const section = wrapper.get('aside nav > section[data-menu="campaigns"]')
-    expect(section.classes()).toContain('flex-initial')
     expect(section.classes()).not.toContain('flex-1')
-    expect(section.classes()).toContain('overflow-y-auto')
+    expect(section.classes()).not.toContain('flex-initial')
+    expect(section.classes()).not.toContain('min-h-0')
+    expect(section.classes()).not.toContain('overflow-y-auto')
     expect(section.get('[data-slot="accordion"]').classes()).not.toContain('flex-1')
-    expect(section.get('[data-slot="accordion"]').classes()).not.toContain('shrink-0')
+    expect(
+      [...aside.element.querySelectorAll('*')].some((el) =>
+        [...el.classList].some((c) => /^(max-h-|overflow-y-)/.test(c)),
+      ),
+    ).toBe(false)
+  })
+
+  it('scrolls the drawer content the same way on a narrow screen (D-110)', async () => {
+    setViewportWide(false)
+    const { wrapper } = await open()
+    await wrapper.get('header button').trigger('click')
+    await flushPromises()
+
+    const drawer = document.body.querySelector<HTMLElement>('[data-slot="sheet-content"]')!
+    expect(drawer.classList.contains('overflow-y-auto')).toBe(true)
+    expect(drawer.classList.contains('overscroll-contain')).toBe(true)
+    const sidebar = drawer.querySelector<HTMLElement>('nav')!.parentElement!
+    expect(sidebar.classList.contains('overflow-y-auto')).toBe(false)
+    expect(sidebar.classList.contains('h-full')).toBe(false)
+  })
+
+  it('never scrolls the document: html and body are capped and refuse overscroll, the inner areas contain theirs', async () => {
+    // The stylesheet as text: jsdom computes no layout, so the rule is read where it is written.
+    const css = readFileSync(resolve('src/assets/main.css'), 'utf8')
+    const base = css.slice(css.indexOf('@layer base'))
+    expect(base).toMatch(
+      /html,\s*body\s*\{[^}]*height: 100%;[^}]*overflow: hidden;[^}]*overscroll-behavior: none;/,
+    )
+
+    vi.mocked(proposal.getCampaign).mockResolvedValue(viewOf({ id: 'c1' }))
+    const { wrapper } = await open('/campaigns/c1')
+    await flushPromises()
+    expect(wrapper.get('aside').classes()).toContain('overscroll-contain')
+    const chat = wrapper.get('main ol').element.parentElement!
+    expect(chat.classList.contains('overflow-y-auto')).toBe(true)
+    expect(chat.classList.contains('overscroll-contain')).toBe(true)
   })
 
   it('groups the campaigns by status in a fixed order and hides the empty groups', async () => {

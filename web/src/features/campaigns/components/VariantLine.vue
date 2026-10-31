@@ -7,7 +7,7 @@ import type { StepKind, VariantView } from '../types'
 
 /**
  * A variant that is not a card (D-091): rejected or replaced, listed in its step's accordion as one
- * line with its state in words.
+ * line with its state in words. It fades in once, when it is added (D-112).
  */
 const props = defineProps<{ variant: VariantView; kind: StepKind }>()
 
@@ -25,7 +25,10 @@ const title = computed(
 </script>
 
 <template>
-  <li class="flex flex-wrap items-baseline gap-x-2 text-xs" :data-variant-status="variant.status">
+  <li
+    class="flex flex-wrap items-baseline gap-x-2 text-xs motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+    :data-variant-status="variant.status"
+  >
     <span class="break-words">{{ title }}</span>
     <span class="text-muted-foreground">{{ t(`variant.status.${variant.status}`) }}</span>
   </li>

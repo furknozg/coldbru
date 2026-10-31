@@ -51,6 +51,13 @@ const kinds = () =>
     .map((li) => li.attributes('data-kind'))
     .filter((kind) => kind !== 'campaignActions')
 const timeline = () => wrapper!.get('ol[aria-label="Kampanya sohbeti"]')
+/** Unfolds the accordion of a step; every step's starts folded (D-112). */
+async function expand(stepId: string) {
+  await wrapper!
+    .get(`li[data-step-id="${stepId}"] [data-slot="accordion-trigger"]`)
+    .trigger('click')
+  await flushPromises()
+}
 /** The kinds of the events inside one step's accordion. */
 const stepEvents = (stepId: string) =>
   wrapper!
@@ -94,7 +101,8 @@ describe('timeline', () => {
     await flushPromises()
 
     expect(kinds()).toEqual(['brief', 'screen', 'step'])
-    // The open step's accordion is unfolded and holds the events, oldest first.
+    // The open step's accordion holds the events, oldest first, once unfolded (D-112).
+    await expand('s1')
     expect(stepEvents('s1')).toEqual(['stepOpened', 'generationStarted', 'variantCreated'])
     const text = timeline().text()
     expect(text.indexOf('İstanbul için %30 indirim hatırlatması')).toBeLessThan(
@@ -146,6 +154,7 @@ describe('timeline', () => {
     expect(user[2]!.find('.whitespace-pre-wrap').exists()).toBe(true)
     expect(user[2]!.find('br').exists()).toBe(false)
     // The rejected variant itself is listed, without a card, in the accordion of its step.
+    await expand('s3')
     const listed = wrapper!.get('li[data-step-id="s3"] [data-variant-status="rejected"]')
     expect(listed.element.tagName).toBe('LI')
     expect(listed.findAll('span').map((el) => el.text())).toEqual(['Türkçe · SMS', 'Reddedildi'])
@@ -329,6 +338,7 @@ describe('timeline', () => {
     })
     await settle()
 
+    await expand('s1')
     expect(stepEvents('s1').filter((k) => k === 'stepOpened')).toHaveLength(1)
   })
 
@@ -336,6 +346,8 @@ describe('timeline', () => {
     const content = stepOf('content', { id: 's3' })
     vi.mocked(proposal.getCampaign).mockResolvedValue(viewOf({ steps: [content] }))
     await open()
+    // The streaming lines are inside the step's accordion, folded until unfolded (D-112).
+    await expand('s3')
     const es = FakeEventSource.last
     const sms = { language: 'tr', channel: 'sms' }
     const email = { language: 'tr', channel: 'email' }

@@ -8,6 +8,8 @@ import { LazyDistributionPie } from '@/components/LazyDistributionPie'
 import DashboardPage from '@/features/dashboard/components/DashboardPage.vue'
 import DateRangeFilter from '@/features/dashboard/components/DateRangeFilter.vue'
 import { LazyTimeSeriesChart } from '@/features/dashboard/components/LazyCharts'
+import MetricCard from '@/features/dashboard/components/MetricCard.vue'
+import MetricSkeleton from '@/features/dashboard/components/MetricSkeleton.vue'
 import ResourceState from '@/features/dashboard/components/ResourceState.vue'
 import StatList from '@/features/dashboard/components/StatList.vue'
 import { channelColor } from '@/features/dashboard/chart'
@@ -25,7 +27,9 @@ import { useResource } from '@/features/dashboard/useResource'
 /**
  * `/` (D-097): the entry of the app. One card leads to the chat for a new campaign; below it the
  * figures of the chosen date range, how the deliveries and the LLM spend split, and the deliveries
- * over time. The three requests follow the date filter in the URL.
+ * over time. The three requests follow the date filter in the URL. Each group of figures is one
+ * card under its own title and loads as a skeleton of itself (D-111); a chart's title is the
+ * title of its card, shown once.
  */
 const { t, n } = useI18n()
 const { range, preset, apiRange, series, select, selectPreset } = useDateRange()
@@ -152,18 +156,23 @@ const clickSeriesTitle = computed(() =>
       :ready="Boolean(overview.data.value)"
       @retry="overview.reload()"
     >
+      <template #loading><MetricSkeleton :tiles="9" :charts="1" /></template>
       <template v-if="overview.data.value">
-        <StatList :items="stats" />
-        <div class="grid gap-6 md:grid-cols-2">
-          <LazyDistributionPie
-            :title="t('dashboard.overview.byChannel')"
-            :slices="channelSlices(overview.data.value.deliveries, channelLabel)"
-          />
-          <LazyDistributionPie
-            :title="t('dashboard.overview.byStatus')"
-            :slices="statusSlices(overview.data.value.deliveries, statusLabel)"
-          />
-        </div>
+        <MetricCard :title="t('dashboard.overview.metrics')">
+          <StatList :items="stats" />
+        </MetricCard>
+        <MetricCard :title="t('dashboard.overview.distribution')">
+          <div class="grid gap-6 md:grid-cols-2">
+            <LazyDistributionPie
+              :title="t('dashboard.overview.byChannel')"
+              :slices="channelSlices(overview.data.value.deliveries, channelLabel)"
+            />
+            <LazyDistributionPie
+              :title="t('dashboard.overview.byStatus')"
+              :slices="statusSlices(overview.data.value.deliveries, statusLabel)"
+            />
+          </div>
+        </MetricCard>
       </template>
     </ResourceState>
 
@@ -173,24 +182,29 @@ const clickSeriesTitle = computed(() =>
       :ready="Boolean(deliveries.data.value)"
       @retry="deliveries.reload()"
     >
-      <LazyTimeSeriesChart
-        v-if="deliveries.data.value"
-        :title="seriesTitle"
-        :buckets="deliveries.data.value.buckets"
-        :bucket="deliveries.data.value.bucket"
-        :series="lines"
-        kind="line"
-        format="int"
-      />
-      <LazyTimeSeriesChart
-        v-if="deliveries.data.value"
-        :title="clickSeriesTitle"
-        :buckets="deliveries.data.value.buckets"
-        :bucket="deliveries.data.value.bucket"
-        :series="clickChartLines"
-        kind="line"
-        format="int"
-      />
+      <template #loading><MetricSkeleton :tiles="0" :charts="2" /></template>
+      <template v-if="deliveries.data.value">
+        <MetricCard :title="seriesTitle">
+          <LazyTimeSeriesChart
+            :title="seriesTitle"
+            :buckets="deliveries.data.value.buckets"
+            :bucket="deliveries.data.value.bucket"
+            :series="lines"
+            kind="line"
+            format="int"
+          />
+        </MetricCard>
+        <MetricCard :title="clickSeriesTitle">
+          <LazyTimeSeriesChart
+            :title="clickSeriesTitle"
+            :buckets="deliveries.data.value.buckets"
+            :bucket="deliveries.data.value.bucket"
+            :series="clickChartLines"
+            kind="line"
+            format="int"
+          />
+        </MetricCard>
+      </template>
     </ResourceState>
   </DashboardPage>
 </template>

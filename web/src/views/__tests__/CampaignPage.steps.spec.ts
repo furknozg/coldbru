@@ -169,8 +169,8 @@ describe('steps in the chat', () => {
     const block = openStep()!
     expect(chat().contains(block)).toBe(true)
     expect(words(trigger('step-audience'))).toBe('Kitle Açık')
-    // The open step's accordion is unfolded.
-    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('true')
+    // The open step's accordion starts folded too (D-112).
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
     // The rule is not shown (D-096): no query text, only the count and the pies.
     expect(block.querySelector('pre')).toBeNull()
     expect(block.textContent).not.toContain(audienceContent.dsl)
@@ -718,6 +718,7 @@ describe('questions of the agent', () => {
     await flushPromises()
 
     expect(proposal.answerQuestion).toHaveBeenCalledWith('q1', 'Herkes')
+    await expand('step-audience')
     expect(openStep()!.textContent).toContain('Üretiliyor…')
   })
 
@@ -821,6 +822,8 @@ describe('failure and recovery actions', () => {
       viewOf({ steps: flowUpTo('content', { generating: true }) }),
     )
 
+    // The failure and its action are in the step's accordion, folded until unfolded (D-112).
+    await expand('step-content')
     expect(openStep()!.textContent).toContain('Üretim başarısız oldu.')
     expect(openStep()!.textContent).toContain('Model 3 denemede geçerli çıktı vermedi')
     await button('Yeniden üret', openStep()!).trigger('click')
@@ -926,7 +929,26 @@ describe('failure and recovery actions', () => {
 })
 
 describe('chat behaviour', () => {
-  it('lets the reader fold the open step and unfold an approved one, and keeps the choice', async () => {
+  it('starts with the open step folded and unfolds it on a click (D-112)', async () => {
+    const steps = flowUpTo('audience')
+    steps[0]!.variants = [audienceDraft()]
+    await open(viewOf({ steps }))
+
+    const block = openStep()!
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
+    // Folded: the events are not drawn, the proposal card still is.
+    expect(block.textContent).not.toContain('Kitle adımı açıldı')
+    expect(block.querySelector('article[data-slot="card"]')).not.toBeNull()
+
+    await expand('step-audience')
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('true')
+    expect(block.textContent).toContain('Kitle adımı açıldı')
+
+    await expand('step-audience')
+    expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('lets the reader unfold the open step and an approved one, and keeps the choice', async () => {
     const steps = flowUpTo('channel_plan')
     steps[0]!.variants = [
       variantOf({
@@ -938,19 +960,20 @@ describe('chat behaviour', () => {
       }),
     ]
     await open(viewOf({ steps }))
+    // Both start folded (D-112).
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
-    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('true')
+    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('false')
 
     await expand('step-audience')
     await expand('step-channel_plan')
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('true')
-    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('false')
+    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('true')
 
     // A refetch (any event) does not undo what the reader chose.
     FakeEventSource.last.emit('snapshot', viewOf({ steps }))
     await flushPromises()
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('true')
-    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('false')
+    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('true')
   })
 
   it('shows a step that opens later inline, with the previous one folded', async () => {
@@ -1114,7 +1137,7 @@ describe('plain chat (D-091)', () => {
     expect(boxes(line)).toEqual([])
   })
 
-  it('gives each step exactly one accordion, open for the open step and folded for the approved ones', async () => {
+  it('gives each step exactly one accordion, folded for the open step and the approved ones alike', async () => {
     const steps = flowUpTo('channel_plan')
     await open(viewOf({ steps }))
 
@@ -1128,9 +1151,10 @@ describe('plain chat (D-091)', () => {
       expect(block.querySelectorAll('[data-slot="accordion-item"]')).toHaveLength(1)
     }
     expect(trigger('step-audience').getAttribute('aria-expanded')).toBe('false')
-    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('true')
+    expect(trigger('step-channel_plan').getAttribute('aria-expanded')).toBe('false')
     // The events are in the accordion, not beside it.
     expect(chat().querySelectorAll(':scope > li[data-kind="stepOpened"]')).toHaveLength(0)
+    await expand('step-channel_plan')
     expect(openStep()!.querySelector('[data-slot="accordion"]')!.textContent).toContain(
       'Kanal planı adımı açıldı',
     )
@@ -1143,6 +1167,7 @@ describe('plain chat (D-091)', () => {
     })
     await open(viewOf({ steps }))
 
+    await expand('step-content')
     const inside = openStep()!.querySelector('[data-slot="accordion"]')!
     expect(inside.textContent).toContain('Üretim başarısız oldu.')
     expect(inside.textContent).toContain('Model geçerli çıktı vermedi')
@@ -1152,6 +1177,7 @@ describe('plain chat (D-091)', () => {
 
   it('writes the streaming text inside the step accordion, as a plain line', async () => {
     await open(viewOf({ steps: flowUpTo('content') }))
+    await expand('step-content')
 
     FakeEventSource.last.emit('content_delta', {
       at: '2026-10-30T10:00:02Z',

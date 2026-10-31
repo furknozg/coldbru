@@ -94,7 +94,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-088 | Ajan araçları: soru sorma (cevapla yeniden üretim, adım başına 2), adım özetleri, ön elemede başlık; chat_message tablosu, campaign.title; ajan metni markdown | LLM entegrasyonu | Kabul edildi |
 | D-089 | Sohbet ağırlıklı arayüz: sade sol menü (+ ikonu, arama/filtre yok), adımlar sohbette akordiyon, e-posta önizleme ucu ve önizlemede düzenleme | Takip ve altyapı | Kabul edildi; liste görünümü ve sohbet kart/akordiyon yerleşimi yerini aldı → D-091 |
 | D-090 | E-posta önizleme ucu: `POST /variants/{id}/preview` kaydedilmemiş içerikle, dile göre sabit örnek ad, sandbox iframe; önizlemede alan formu, soru kartında seçenek düğmeleri | Takip ve altyapı | Kabul edildi |
-| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi; LLM rozeti yerini aldı → D-094; mesaj hizası → D-101 |
+| D-091 | Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda | Takip ve altyapı | Kabul edildi; LLM rozeti yerini aldı → D-094; mesaj hizası → D-101; açık adım akordiyonu → D-112 |
 | D-092 | Kitle ve plan dağılımları shadcn-vue chart pasta grafikleriyle; sayılar lejantta, tablolar kalkar | Takip ve altyapı | Kabul edildi |
 | D-093 | Metin varyantları tek yatay kaydırıcıda (shadcn-vue carousel); onaydan sonra sıradaki bekleyen slayt, köşede kalan yuva sayısı | Takip ve altyapı | Kabul edildi; tek kaydırıcı yerini aldı → D-095 |
 | D-094 | Masaüstünde üst başlık yok, LLM modu rozeti arayüzden kalktı; mobil üst çubukta menü ve logo | Takip ve altyapı | Kabul edildi |
@@ -103,7 +103,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-097 | Analitik dashboard'u uygulamanın girişi: sol akordiyon menü, tarih aralığı filtresi, Analytics'te `/overview` ve seri uçları, zaman indeksleri | Takip ve altyapı | Kabul edildi; ayrı dashboard kenar çubuğu yerini aldı → D-099 |
 | D-098 | `make test-go` paket paralelliğini `-p 2` ile sınırlar (`GO_TEST_P` ile değişir); `TestNATSScheduling` zamanı sunucu saatiyle ölçer | Test ve kapsam | Kabul edildi |
 | D-099 | Uygulamada tek kenar çubuğu: Genel bakış, Kampanyalar, Analitikler (Kampanya analitiği, LLM analitiği, Canlı gönderim) | Takip ve altyapı | Kabul edildi; içerik alanı seçicisi yerini aldı → D-100 |
-| D-100 | Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon | Takip ve altyapı | Kabul edildi |
+| D-100 | Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon | Takip ve altyapı | Kabul edildi; kenar çubuğu kaydırması yerini aldı → D-110 |
 | D-101 | Sohbette kullanıcının gönderdiği mesajlar sağa hizalı | Takip ve altyapı | Kabul edildi |
 | D-102 | Örnek brief için tek süreçte servisler arası uçtan uca Go testi | Test ve kapsam | Kabul edildi |
 | D-103 | Sender, MOCK_SEED'li gerçek mockprovider handler'ına karşı test edilir | Test ve kapsam | Kabul edildi |
@@ -113,6 +113,9 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-107 | redirect_db şeması: link, click, outbox; tıklama evt.redirect.clicked.v1 ile yayınlanır | Takip ve altyapı | Kabul edildi |
 | D-108 | CTR Analytics'te: completed olayına dil/saat dilimi kırılımı, tıklama tabloları ve serisi, bot ayıklaması yok | Takip ve altyapı | Kabul edildi |
 | D-109 | SMS izleme linki metnin sonuna eklenir; bütçe 160 − link uzunluğu | LLM entegrasyonu | Kabul edildi |
+| D-110 | Kenar çubuğunda tek kaydırma alanı en dıştaki aside | Takip ve altyapı | Kabul edildi |
+| D-111 | Dashboard'da kartlı metrik grupları, önce başarı metrikleri, yükleme iskeletleri ve hareket tercihine uyan animasyonlar | Takip ve altyapı | Kabul edildi |
+| D-112 | Sohbette adım akordiyonları varsayılan kapalı, mesajlar fade-in ile gelir | Takip ve altyapı | Kabul edildi |
 
 ---
 
@@ -1652,7 +1655,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-091: Sade sohbet: kenar çubuğunda durum gruplu akordiyon, satırda başlık ve tarih; sohbette yalnız varyantlar kart, adım olayları ve eylemleri adım başına akordiyon; iptal sohbet çubuğunda
 
-- **Durum:** Kabul edildi · 2026-10-30; LLM modu rozeti yerini aldı → D-094 · 2026-10-30; mesajların sola hizalı olması yerini aldı → D-101 · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; LLM modu rozeti yerini aldı → D-094 · 2026-10-30; mesajların sola hizalı olması yerini aldı → D-101 · 2026-10-30; açık adımın akordiyonunun açık gelmesi yerini aldı → D-112 · 2026-10-31
 - **Alan:** Takip ve altyapı
 - **Bağlam:** T-045'i gören kullanıcı arayüzün daha da sadeleşmesini istedi: kenar çubuğundaki kampanyalar akordiyonla açılıp kapanmalı ve duruma göre alt akordiyonlarda ayrılmalı, satırlarda yalnız başlık ve satır içi tarih olmalı; sohbette mesaj ve varyantlar dışındaki olaylar ve eylemler akordiyonda durmalı, bu bileşenlerde ve ajan cevaplarında kart kullanılmamalı, iç içe kart olmamalı. D-089 adımları onay kartında akordiyon olarak gösteriyordu (T-047).
 - **Karar:**
@@ -1812,7 +1815,7 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 
 ## D-100: Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon
 
-- **Durum:** Kabul edildi · 2026-10-30
+- **Durum:** Kabul edildi · 2026-10-30; kenar çubuğunun kaydırması yerini aldı → D-110 · 2026-10-31
 - **Alan:** Takip ve altyapı
 - **Bağlam:** D-099 Analitikler alt öğelerini düz bağlantı yaptı ve kampanya seçimini içerik alanına koydu. Kullanıcı açılır listelerin alt öğeler dahil kenar çubuğunda olmasını istedi (T-037).
 - **Karar:**
@@ -1960,6 +1963,51 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 - **Sonuçlar / bedel:** Metin bütçesi ortama göre değişir; daha uzun bir `TRACKING_BASE_URL` metne kalan yeri azaltır. UCS-2 metinde link de 70 birimlik segmentlere sayılır.
 - **Uygulama notu (T-044, kullanıcı onayladı):** `content.SMSBudget(base)` = 160 − (len(base) + 3 + 10 + 1), varsayılanla 125; `content.LoadConfig` bütçe 40'ın altına düşerse hata verir. `CheckSMS` ve `BuildSMS` bütçeyi parametre alır; `contentgen.WithSMSBudget`. `content` prompt'u 2.0.0 → 2.1.0: SMS kuralına linkin metinden sonra eklendiği ve `limits.sms_max_chars`'ın bunu zaten hesaba kattığı cümlesi eklendi. Bu değişiklikten önce onaylanmış ve bütçeyi aşan bir SMS linksiz gönderilir, log'a uyarı düşer; `link_code`'u olmayan teslimat eskisi gibi gider. Proposal varyantta saklanan segment, kodlama ve maliyet tahminini aynı uzunlukta bir yer tutucu linkle ölçer (kullanıcı istedi), onay ekranı gönderimle aynı sayıyı gösterir.
 - **Doğrulama:** 2026-10-31'de (T-044): `content/tracking_test.go`, `TestPlaceholderLinkHasTheLengthOfARealLink`, `TestBuildSMSMeasuresTheTextWithItsLink` (40 karakterlik UCS-2 metin tek başına 1, linkle 2 segment), `TestGenerateUsesTheSMSBudget`, `TestGenerateMeasuresTheSMSWithTheTrackingLink`, `TestEveryCannedSMSFitsTheTrackingBudget`, sender `prepare_test.go`; e2e'de her SMS 160 içinde. Canlı: mock provider'a giden SMS metni ad + metin + boşluk + `http://localhost:8080/r/bw8hNj5kRo`.
+
+## D-110: Kenar çubuğunda tek kaydırma alanı en dıştaki aside
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-100'ün uygulamasında kenar çubuğu `h-full` içinde esnek bir sütundu; Kampanyalar listesi kısa çubukta küçülüp kendi içinde kaydırıyordu. Birkaç grup açılınca gruplar aynı yüksekliği paylaşıp birbirini sıkıştırıyordu. Kullanıcı kaydırmanın en üstteki aside bileşeninden olmasını istedi (T-050).
+- **Karar:** Masaüstünde `AppShell.vue`'deki `<aside>` ve mobilde çekmecenin içeriği tek dikey kaydırma alanıdır. `AppSidebar.vue` ve içindeki listeler (Kampanyalar, analitik alt grupları) kendi içinde kaydırmaz, içerikleri kadar uzar.
+- **Alternatifler:**
+  - Aside kaydırır, kampanya listesi ayrıca bir yükseklik tavanıyla sınırlanır — reddedildi: iç içe iki kaydırma kalırdı.
+  - D-100 uygulamasındaki iç kaydırma — reddedildi: açılan gruplar birbirini sıkıştırıyordu.
+- **Sonuçlar / bedel:** Uzun bir kampanya listesi açıkken Analitikler grubu aşağıda kalır, ona ulaşmak için kaydırmak gerekir.
+- **Uygulama notu (T-050):** `AppShell.vue`'de `<aside>` ve mobil `SheetContent` `overflow-y-auto`; `AppSidebar.vue` kökünden `h-full min-h-0` ve kullanıcının denediği `overflow-y-scroll`, nav'dan `min-h-0 flex-1`, `CampaignList`'ten `overflow-y-auto` kalktı; `MenuCampaigns.vue`'deki `max-h-72 overflow-y-auto` sarmalayıcısı kalktı.
+- **Doğrulama:** 2026-10-31'de: `make test` geçti (55 Go paketi, 28 dosya / 326 Vitest testi). `App.spec.ts` "scrolls the whole menu in the aside…" ve "scrolls the drawer content the same way on a narrow screen". Canlı: aside `overflow-y: auto` (scrollHeight 1271 / clientHeight 768), aside içinde başka kaydırma alanı yok; 375 px'te çekmece `overflow-y: auto`.
+
+## D-111: Dashboard'da kartlı metrik grupları, önce başarı metrikleri, yükleme iskeletleri ve hareket tercihine uyan animasyonlar
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-108 CTR bölümünü kampanya özetinin sonuna `sections` olarak ekledi. Kullanıcı başarı metriklerinin kampanya analitiğinde ilk görünmesini, önemli metrik gruplarının kartlarla sarılmasını, grafiklerin yatay iç boşluğunun üst ve orta bölümlerle hizalanmasını, dashboard'larda yükleme iskeletleri ve yükleme animasyonları (grafikte dönen gösterge vb.) istedi (T-051).
+- **Karar:**
+  - Kampanya analitiğinde başarı metrikleri (D-108 tıklama bölümü) özetin ilk bölümüdür; teslimat ve LLM bölümleri altında gelir.
+  - Genel bakış, kampanya analitiği, LLM analitiği ve canlı gönderimde önemli metrik grupları (sayı kutuları, grafik ve tablo grupları) kartlara sarılır; grafiklere kartın içinde, başlık ve sayı kutularıyla aynı hizada yatay iç boşluk verilir. Kart içinde kart yoktur.
+  - Veri gelene kadar metin satırı ("Yükleniyor") yerine sayfanın düzenini taklit eden shadcn-vue `Skeleton` iskeletleri, grafik alanlarında dönen bir yükleme göstergesi gösterilir. Yeniden yükleme sırasında eski veri yerinde kalır.
+  - Animasyonlar mevcut `tw-animate-css` ve Tailwind sınıflarıyla yapılır, yeni bağımlılık yoktur; `motion-safe:` ile azaltılmış hareket tercihinde kapanır.
+- **Alternatifler:**
+  - Kartlar yalnız kampanya analitiğinde — reddedildi: sayfalar arasında stil farkı olurdu.
+  - Animasyonları her zaman oynatmak — reddedildi: hareket hassasiyeti olanlar için erişilebilirlik bedeli.
+- **Sonuçlar / bedel:** Dashboard testleri ve yükleme durumunu metinle arayan testler değişir. İskelet gerçek düzenden farklıysa yüklenince sayfa kayar.
+- **Uygulama notu (T-051):** Yeni `MetricCard.vue` (`data-slot="metric-card"`, `rounded-xl border bg-card p-4`; grafiklerin yatay boşluğu bu iç boşluktan gelir) ve `MetricSkeleton.vue` (`role="status"`, sayı kutusu/grafik/satır iskeletleri, grafik kutusunda `LoaderCircleIcon` `motion-safe:animate-spin`). `ResourceState` yüklemede iskelet gösterir, yeniden yüklemede eski veriyi tutar, hazır içerik `motion-safe:animate-in fade-in` ile gelir. `ChartPlaceholder` dönen gösterge. `SummarySection` isteğe bağlı `position: 'start' | 'end'` alır (varsayılan `end`); tıklama bölümü `start`. Tamamlanma satırı bağlam olarak en üstte kalır. Kullanıcının ikinci isteğiyle (aynı gün): dashboard'daki her kartın başlığı vardır (yalnız iskelet kartları başlıksızdır); `TimeSeriesChart` ve `BarChart` başlığı figcaption yerine kart başlığında gösterir (grafikte `aria-label` kalır), LLM sayfasındaki kart dışı "Prompt sürümleri" ve "Zaman içinde" başlıkları kart başlığına taşındı. Belge hiç kaydırmaz: `main.css`'te `html, body { height: 100%; overflow: hidden; overscroll-behavior: none }`; aside, `DashboardPage`, `ChatStream`, çekmece ve `StreamLine` kutusu `overscroll-contain`. Bu hata yerleşik tarayıcıda yeniden üretilemedi (belge yüksekliği her rotada ekran kadardı); macOS elastik kaydırmasının iç alanlardan sayfaya geçmesi varsayıldı.
+- **Doğrulama:** 2026-10-31'de: `make test` geçti. `campaigns.spec.ts` "renders the success metrics first…" ve "shows a skeleton of the report…", `overview.spec.ts` "shows skeletons with spinning chart areas…", `ChartPlaceholder.spec.ts` "spins while the chart loads…". Canlı: kampanya analitiğinde ilk kart "Başarı metrikleri", 4 kart; genel bakışta sayı kutuları, pastalar ve seriler kartlarda, grafikler başlıkla hizalı. İskelet canlıda yerel ağ hızı yüzünden görülmedi, testle doğrulandı. Başlıklar ve kaydırma: 333 Vitest testi geçti; `overview.spec.ts` "titles every card…", "scrolls the page inside the dashboard frame…", `llm.spec.ts` "titles every card and has no heading outside the cards…", `campaigns.spec.ts` "titles every card of the report", `live.spec.ts` "titles the progress card and the table card", `App.spec.ts` "never scrolls the document…". Canlı: üç sayfada her kartın başlığı var; html ve body `overflow: hidden`, `overscroll-behavior: none`.
+
+## D-112: Sohbette adım akordiyonları varsayılan kapalı, mesajlar fade-in ile gelir
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Takip ve altyapı
+- **Bağlam:** D-091 her adımın olay ve eylemlerini o adımın akordiyonuna koydu; açık adımın akordiyonu açık geliyordu. Kullanıcı sohbette eylem akordiyonunun varsayılan olarak kapalı olmasını ve sohbet mesajlarının fade-in ile gelmesini istedi (T-051).
+- **Karar:**
+  - Her adımın akordiyonu (`StepBlock.vue`), adım açık olsa da kapalı gelir; okuyucu açarsa adımın durumu değişene kadar açık kalır. Onay ve red düğmeleri varyant kartlarında kaldığı için akış değişmez. Sondaki "Kampanya eylemleri" akordiyonu (`FinalActions.vue`) eskisi gibi kendiliğinden açılır.
+  - Sohbete eklenen mesaj, olay satırı ve varyant kartı kısa bir fade-in ile görünür (`motion-safe:`, D-111).
+- **Alternatifler:**
+  - Yalnız "Kampanya eylemleri" kapalı — reddedildi: kullanıcının kastettiği adım akordiyonlarıydı.
+  - İkisi de kapalı — reddedildi: başarısız bir onay dikkat çekmezdi.
+- **Sonuçlar / bedel:** Açık adımın üretim ve hata olayları bir tık arkadadır.
+- **Uygulama notu (T-051):** `StepBlock.vue` `expanded = chosen ?? false`; `ChatMessage`, `SystemLine`, `StreamLine`, `VariantLine`, `VariantCard` ve adım satırı `motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300`; anahtarlar sabit olduğu için SSE güncellemesi animasyonu yeniden oynatmaz.
+- **Doğrulama:** 2026-10-31'de: `make test` geçti. `CampaignPage.steps.spec.ts` "starts with the open step folded and unfolds it on a click"; adım akordiyonunu açık bekleyen testler önce açacak şekilde güncellendi. Canlı: taslak bir kampanyada üç adımın (iki onaylı, bir açık) akordiyonu `aria-expanded="false"`.
 
 ---
 

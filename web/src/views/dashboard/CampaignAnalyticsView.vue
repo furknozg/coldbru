@@ -11,12 +11,14 @@ import CampaignSummary, {
   type SummarySection,
 } from '@/features/dashboard/components/CampaignSummary.vue'
 import DashboardPage from '@/features/dashboard/components/DashboardPage.vue'
+import MetricSkeleton from '@/features/dashboard/components/MetricSkeleton.vue'
 import { ANALYTICS_STATUSES } from '@/features/dashboard/live'
 
 /**
  * `/analytics/campaigns/:id?` (D-100): the campaign is picked in the menu (sending and completed ones); the page shows its Analytics report with a link to its chat. A campaign Analytics has not
  * heard of yet (no model call, nothing completed) has no report, which is said in a line and is no
- * error.
+ * error. Until the report is there the page is a skeleton of it (D-111); a refetch keeps the old
+ * report in place.
  */
 const { t } = useI18n()
 const route = useRoute()
@@ -38,9 +40,14 @@ const analytics = useCampaignAnalytics(
   () => campaign.value?.status,
 )
 
-/** Metric blocks (D-108); the summary renders each under its title. */
+/** Metric blocks (D-108); the success metrics come first in the summary (D-111). */
 const sections = computed<readonly SummarySection[]>(() => [
-  { key: 'clicks', title: t('dashboard.click.title'), component: CampaignClicks },
+  {
+    key: 'clicks',
+    title: t('dashboard.click.title'),
+    component: CampaignClicks,
+    position: 'start',
+  },
 ])
 </script>
 
@@ -69,13 +76,11 @@ const sections = computed<readonly SummarySection[]>(() => [
       >
         {{ t('analytics.failed') }}
       </p>
-      <p
+      <MetricSkeleton
         v-else-if="waiting || (analytics.loading.value && !analytics.report.value)"
-        role="status"
-        class="text-muted-foreground text-sm"
-      >
-        {{ t('common.loading') }}
-      </p>
+        :tiles="5"
+        :charts="2"
+      />
       <p v-else-if="!analytics.report.value" class="text-muted-foreground text-sm">
         {{ t('dashboard.campaign.noReport') }}
       </p>

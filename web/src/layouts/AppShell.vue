@@ -19,6 +19,9 @@ import AppSidebar from './AppSidebar.vue'
  * Two columns (D-089, D-099): the one menu on the left, the routed page beside it. The menu is the
  * same on every route; it shares the campaign list that is loaded once here. Below 1024px the
  * menu moves into a drawer opened from the top bar, whose logo leads to the dashboard (D-094).
+ * The aside (and, in the drawer, its content) is the one vertical scroll area of the menu (D-110):
+ * the sidebar inside grows with its content and never scrolls by itself. Both contain their
+ * overscroll, so reaching the end of the menu never moves the document (`main.css`).
  */
 const { t } = useI18n()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -32,7 +35,11 @@ onMounted(() => void list.load())
 
 <template>
   <div class="bg-background text-foreground flex h-dvh">
-    <aside v-if="isDesktop" class="w-72 shrink-0 border-r" :aria-label="t('dashboard.menu.label')">
+    <aside
+      v-if="isDesktop"
+      class="w-72 shrink-0 overflow-y-auto overscroll-contain border-r"
+      :aria-label="t('dashboard.menu.label')"
+    >
       <AppSidebar />
     </aside>
 
@@ -56,7 +63,7 @@ onMounted(() => void list.load())
     </div>
 
     <Sheet v-if="!isDesktop" v-model:open="menuOpen">
-      <SheetContent side="left" class="p-0">
+      <SheetContent side="left" class="overflow-y-auto overscroll-contain p-0">
         <SheetHeader class="sr-only">
           <SheetTitle>{{ t('dashboard.menu.label') }}</SheetTitle>
           <SheetDescription>{{ t('dashboard.menu.drawerDescription') }}</SheetDescription>

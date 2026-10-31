@@ -12,7 +12,8 @@ import type { TimelineItem } from '../timeline'
  * the marketer wrote is right-aligned as a whole, label row and text (D-101); the agent's stays
  * on the left. The
  * marketer's text is drawn literally; the agent's (`item.markdown`) as sanitised markdown (D-088).
- * A question that still waits for an answer shows its suggested answers as buttons (D-090).
+ * A question that still waits for an answer shows its suggested answers as buttons (D-090). The
+ * line fades in once, when it is added (D-112).
  */
 const props = defineProps<{
   item: TimelineItem
@@ -30,7 +31,7 @@ async function choose(option: string) {
 
 <template>
   <li
-    class="flex min-w-0 flex-col gap-0.5 text-sm"
+    class="flex min-w-0 flex-col gap-0.5 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
     :class="item.author === 'user' ? 'items-end text-right' : ''"
     :data-kind="item.kind"
     :data-author="item.author"
