@@ -658,3 +658,34 @@ func TestSummariesOfPlanScheduleAndContent(t *testing.T) {
 		t.Errorf("stored content carries the summary: %s", gen.Content)
 	}
 }
+
+// The mock reads the SMS limit from the request like the real model does, so with the tracking link's
+// room taken out (D-109) every canned SMS still passes the validators at the first attempt.
+func TestEveryCannedSMSFitsTheTrackingBudget(t *testing.T) {
+	t.Parallel()
+	budget := content.SMSBudget(content.DefaultTrackingBaseURL)
+	price, err := content.ParseMoney("0.04")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := contentgen.New(newMock(), content.Prices{SMSSegment: price, Email: price}, contentgen.WithSMSBudget(budget))
+	for _, c := range append(mock.Cases(), mock.Default()) {
+		for _, lang := range []string{"tr", "en"} {
+			for _, maxName := range []int{0, 9, 30} {
+				ctx, col := collect(t.Context())
+				raw, err := g.Generate(ctx, flow.ContentRequest{
+					Language: lang, Channel: "sms", Brief: c.Brief, Recipients: 33,
+					Audience: flow.AudienceContent{Count: 46, MaxFirstNameLength: maxName},
+					Plan:     flow.PlanContent{Mode: llm.ModePrimaryFallback, Primary: llm.ChannelEmail},
+				}, nil)
+				if err != nil {
+					t.Fatalf("%s %s maxName %d: %v", c.Name, lang, maxName, err)
+				}
+				var sms content.SMSContent
+				if err := json.Unmarshal(raw.Content, &sms); err != nil || sms.RenderedLength > budget || len(col.Records()) != 1 {
+					t.Errorf("%s %s maxName %d: rendered %d (budget %d), %d attempts, %v", c.Name, lang, maxName, sms.RenderedLength, budget, len(col.Records()), err)
+				}
+			}
+		}
+	}
+}

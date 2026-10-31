@@ -49,7 +49,7 @@ func TestFitSMS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, fit := fitSMS(tt.template, tt.first)
+			got, fit := fitSMS(tt.template, tt.first, content.SMSMaxChars)
 			if fit != tt.wantFit {
 				t.Fatalf("fit = %s, want %s (text %q)", fit, tt.wantFit, got)
 			}
@@ -67,17 +67,17 @@ func TestFitSMSBoundaryWithTheRealName(t *testing.T) {
 	t.Parallel()
 	// 160 characters with the name in: untouched.
 	tpl := "{{first_name}}" + strings.Repeat("x", 157)
-	text, fit := fitSMS(tpl, "Ada")
+	text, fit := fitSMS(tpl, "Ada", content.SMSMaxChars)
 	if fit != nameFull || runes(text) != 160 || !strings.HasPrefix(text, "Ada") {
 		t.Fatalf("160 characters: fit = %s, length = %d", fit, runes(text))
 	}
 	// 161: the name loses its last character, the text is exactly 160.
-	text, fit = fitSMS("{{first_name}}"+strings.Repeat("x", 158), "Ada")
+	text, fit = fitSMS("{{first_name}}"+strings.Repeat("x", 158), "Ada", content.SMSMaxChars)
 	if fit != nameShortened || runes(text) != 160 || !strings.HasPrefix(text, "Ad"+"x") {
 		t.Fatalf("161 characters: fit = %s, length = %d, text = %.8q", fit, runes(text), text)
 	}
 	// Room for no character of the name: dropped, and the text is the template without it.
-	text, fit = fitSMS("{{first_name}}"+strings.Repeat("x", 160), "Ada")
+	text, fit = fitSMS("{{first_name}}"+strings.Repeat("x", 160), "Ada", content.SMSMaxChars)
 	if fit != nameDropped || text != strings.Repeat("x", 160) {
 		t.Fatalf("no room: fit = %s, length = %d", fit, runes(text))
 	}
@@ -89,7 +89,7 @@ func TestFitSMSTurkishCharactersCountAsCharacters(t *testing.T) {
 	// characters, so a name of such letters is cut at a character boundary and stays valid UTF-8.
 	name := "İşığıÇağlar"
 	tpl := "{{first_name}}" + strings.Repeat("x", 154) // room for 6 characters of the name
-	text, fit := fitSMS(tpl, name)
+	text, fit := fitSMS(tpl, name, content.SMSMaxChars)
 	if fit != nameShortened {
 		t.Fatalf("fit = %s, want shortened", fit)
 	}
@@ -109,7 +109,7 @@ func TestFitSMSEmojiNameIsOneCharacterEach(t *testing.T) {
 	t.Parallel()
 	// An emoji is one character for the limit (two UTF-16 units) and is never cut in half.
 	tpl := "{{first_name}}" + strings.Repeat("x", 158)
-	text, fit := fitSMS(tpl, "😀😀😀")
+	text, fit := fitSMS(tpl, "😀😀😀", content.SMSMaxChars)
 	if fit != nameShortened || !utf8.ValidString(text) || runes(text) != 160 || !strings.HasPrefix(text, "😀😀x") {
 		t.Errorf("fit = %s, valid = %v, length = %d", fit, utf8.ValidString(text), runes(text))
 	}
@@ -119,7 +119,7 @@ func TestFitSMSTrimsSpaceAfterTheCut(t *testing.T) {
 	t.Parallel()
 	// "Ali Veli" cut to 4 characters is "Ali " and must not leave a dangling space before the text.
 	tpl := "{{first_name}}!" + strings.Repeat("x", 155) // 160 - base(156) = room for 4
-	text, fit := fitSMS(tpl, "Ali Veli")
+	text, fit := fitSMS(tpl, "Ali Veli", content.SMSMaxChars)
 	if fit != nameShortened || !strings.HasPrefix(text, "Ali!") {
 		t.Errorf("fit = %s, text = %.10q, want shortened with Ali!", fit, text)
 	}
@@ -133,7 +133,7 @@ func TestFitSMSDroppedNameLeavesCleanText(t *testing.T) {
 		{"Merhaba {{first_name}}! " + strings.Repeat("a", 150), "Merhaba! " + strings.Repeat("a", 150)},
 		{strings.Repeat("a", 158) + " {{first_name}}.", strings.Repeat("a", 158) + "."},
 	} {
-		text, fit := fitSMS(tt.tpl, "Abdurrahman Cemalettin")
+		text, fit := fitSMS(tt.tpl, "Abdurrahman Cemalettin", content.SMSMaxChars)
 		if fit != nameDropped || text != tt.want {
 			t.Errorf("fitSMS(%.30q...) = %.40q (%s), want %.40q dropped", tt.tpl, text, fit, tt.want)
 		}
@@ -143,7 +143,7 @@ func TestFitSMSDroppedNameLeavesCleanText(t *testing.T) {
 func TestFitSMSTemplateTooLongStaysTooLong(t *testing.T) {
 	t.Parallel()
 	// Text that is over 160 without the name is not repaired; the caller refuses to send it.
-	text, fit := fitSMS("Merhaba {{first_name}} "+strings.Repeat("a", 200), "Ada")
+	text, fit := fitSMS("Merhaba {{first_name}} "+strings.Repeat("a", 200), "Ada", content.SMSMaxChars)
 	if fit != nameDropped || runes(text) <= content.SMSMaxChars {
 		t.Errorf("fit = %s, length = %d, want dropped and still too long", fit, runes(text))
 	}

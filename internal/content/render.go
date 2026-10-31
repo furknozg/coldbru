@@ -14,6 +14,9 @@ type RenderOptions struct {
 	CTAURL string
 	// CampaignID becomes utm_campaign on the button link.
 	CampaignID string
+	// TrackingURL, when set, is the button link instead of CTAURL: the delivery's short link
+	// (D-106), which redirects to the campaign's CTAURL. Previews leave it empty.
+	TrackingURL string
 	// Language selects the footer text: "tr", else English.
 	Language string
 }
@@ -68,9 +71,12 @@ func RenderSMS(text, firstName string) string { return Expand(text, firstName) }
 // html/template, which escapes them, so neither the model's text nor a name can add markup. The plain-text alternative is
 // made from the same blocks.
 func RenderEmail(e Email, o RenderOptions, firstName string) (Rendered, error) {
-	link, err := CTAURL(o.CTAURL, o.CampaignID)
-	if err != nil {
-		return Rendered{}, fmt.Errorf("content: render email: %w", err)
+	link := o.TrackingURL
+	if link == "" {
+		var err error
+		if link, err = CTAURL(o.CTAURL, o.CampaignID); err != nil {
+			return Rendered{}, fmt.Errorf("content: render email: %w", err)
+		}
 	}
 	d := emailData{
 		Lang:       "en",

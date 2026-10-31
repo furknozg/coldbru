@@ -25,6 +25,7 @@ type Delivery struct {
 	LastError         pgtype.Text
 	SentAt            pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+	LinkCode          pgtype.Text
 }
 
 type LocaleSchedule struct {

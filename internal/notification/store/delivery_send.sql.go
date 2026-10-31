@@ -59,7 +59,7 @@ func (q *Queries) ClaimDelivery(ctx context.Context, arg ClaimDeliveryParams) (C
 
 const listSendDeliveries = `-- name: ListSendDeliveries :many
 
-SELECT d.id, d.campaign_id, d.customer_id, d.channel, d.first_name, d.contact, d.status, d.attempts, d.lease_until,
+SELECT d.id, d.campaign_id, d.customer_id, d.channel, d.first_name, d.contact, d.status, d.attempts, d.lease_until, d.link_code,
        m.language, m.content, c.status AS campaign_status, c.cta_url
 FROM delivery d
 JOIN message m ON m.id = d.message_id
@@ -77,6 +77,7 @@ type ListSendDeliveriesRow struct {
 	Status         string
 	Attempts       int32
 	LeaseUntil     pgtype.Timestamptz
+	LinkCode       pgtype.Text
 	Language       string
 	Content        []byte
 	CampaignStatus string
@@ -87,7 +88,7 @@ type ListSendDeliveriesRow struct {
 // stale worker (a lease that ran out, a duplicate SEND message, a cancellation that won) changes
 // nothing and learns it from the row count.
 // The rows a batch of SEND messages points at: the delivery, the approved content of its message and
-// the campaign's status and button link. Ids that do not exist are simply absent from the result.
+// the campaign's status and button link, and the delivery's short link code (D-106). Ids that do not exist are simply absent from the result.
 func (q *Queries) ListSendDeliveries(ctx context.Context, ids []uuid.UUID) ([]ListSendDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, listSendDeliveries, ids)
 	if err != nil {
@@ -107,6 +108,7 @@ func (q *Queries) ListSendDeliveries(ctx context.Context, ids []uuid.UUID) ([]Li
 			&i.Status,
 			&i.Attempts,
 			&i.LeaseUntil,
+			&i.LinkCode,
 			&i.Language,
 			&i.Content,
 			&i.CampaignStatus,

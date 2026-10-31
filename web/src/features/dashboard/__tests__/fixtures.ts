@@ -57,6 +57,16 @@ export const overviewOf = (over: Partial<Overview> = {}): Overview => ({
       },
     ],
   },
+  clicks: {
+    sent: 1200,
+    unique_clicks: 150,
+    total_clicks: 210,
+    ctr: 0.125,
+    by_channel: [
+      { channel: 'email', sent: 800, unique_clicks: 120, total_clicks: 170, ctr: 0.15 },
+      { channel: 'sms', sent: 400, unique_clicks: 30, total_clicks: 40, ctr: 0.075 },
+    ],
+  },
   ...over,
 })
 
@@ -72,6 +82,11 @@ export const overviewSeriesOf = (): OverviewSeries => ({
     { start: DAYS[1]!, channel: 'sms', status: 'sent', count: 6 },
     { start: DAYS[2]!, channel: 'email', status: 'sent', count: 5 },
     { start: DAYS[2]!, channel: 'email', status: 'failed', count: 9 },
+  ],
+  clicks: [
+    { start: DAYS[1]!, channel: 'email', unique_clicks: 4, total_clicks: 6 },
+    { start: DAYS[2]!, channel: 'email', unique_clicks: 3, total_clicks: 3 },
+    { start: DAYS[2]!, channel: 'sms', unique_clicks: 2, total_clicks: 5 },
   ],
 })
 
@@ -151,6 +166,45 @@ export const reportOf = (over: Partial<CampaignReport> = {}): CampaignReport => 
         cost_usd: '0.00400000',
         input_tokens: 4900,
         output_tokens: 990,
+      },
+    ],
+  },
+  clicks: {
+    sent: 140,
+    unique_clicks: 20,
+    total_clicks: 31,
+    ctr: 0.1429,
+    by_channel: [
+      { channel: 'email', sent: 90, unique_clicks: 15, total_clicks: 24, ctr: 0.1667 },
+      { channel: 'sms', sent: 50, unique_clicks: 5, total_clicks: 7, ctr: 0.1 },
+    ],
+    by_locale: [
+      {
+        channel: 'email',
+        language: 'tr',
+        timezone: 'Europe/Istanbul',
+        sent: 60,
+        unique_clicks: 12,
+        total_clicks: 20,
+        ctr: 0.2,
+      },
+      {
+        channel: 'email',
+        language: 'en',
+        timezone: 'Europe/London',
+        sent: 30,
+        unique_clicks: 3,
+        total_clicks: 4,
+        ctr: 0.1,
+      },
+      {
+        channel: 'sms',
+        language: 'tr',
+        timezone: 'Europe/Istanbul',
+        sent: 50,
+        unique_clicks: 5,
+        total_clicks: 7,
+        ctr: 0.1,
       },
     ],
   },

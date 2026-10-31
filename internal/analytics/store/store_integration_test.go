@@ -68,9 +68,15 @@ func TestMigrations_Applied(t *testing.T) {
 		want []string
 	}{
 		{"tables", "SELECT tablename FROM pg_tables WHERE schemaname = 'analytics' ORDER BY tablename",
-			[]string{"campaign_delivery_count", "campaign_summary", "goose_db_version", "goose_platform_version", "llm_usage", "outbox", "processed_event"}},
+			[]string{"campaign_click", "campaign_delivery_count", "campaign_sent_locale", "campaign_summary", "click_event", "goose_db_version", "goose_platform_version", "llm_usage", "outbox", "processed_event"}},
 		{"nothing in public", "SELECT tablename FROM pg_tables WHERE schemaname = 'public'", nil},
-		{"service versions", "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id", []string{"1", "2"}},
+		{"service versions", "SELECT version_id::text FROM goose_db_version WHERE version_id > 0 ORDER BY version_id", []string{"1", "2", "3"}},
+		{"click_event indexes", "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'click_event' ORDER BY indexname",
+			[]string{"click_event_clicked_at_idx", "click_event_pkey"}},
+		{"click keys", `SELECT conname || ' ' || pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE conname IN ('campaign_click_pkey', 'campaign_sent_locale_pkey', 'click_event_pkey') ORDER BY conname`,
+			[]string{"campaign_click_pkey PRIMARY KEY (campaign_id, channel, language, timezone)",
+				"campaign_sent_locale_pkey PRIMARY KEY (campaign_id, channel, language, timezone)", "click_event_pkey PRIMARY KEY (click_id)"}},
 		{"llm_usage indexes", "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'llm_usage' ORDER BY indexname",
 			[]string{"llm_usage_campaign_id_idx", "llm_usage_created_at_idx", "llm_usage_pkey", "llm_usage_prompt_name_version_idx"}},
 		{"campaign_summary indexes", "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND tablename = 'campaign_summary' ORDER BY indexname",
@@ -117,6 +123,16 @@ func TestMigrations_DownThenUp(t *testing.T) {
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, store.Migrations())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Down of 00003 drops the click tables (D-108) and nothing older.
+	if _, err := provider.DownTo(t.Context(), 2); err != nil {
+		t.Fatalf("DownTo(2) error = %v", err)
+	}
+	if got := queryStrings(t, pool, "SELECT tablename FROM pg_tables WHERE schemaname = 'analytics' AND (tablename LIKE 'click%' OR tablename = 'campaign_click' OR tablename = 'campaign_sent_locale')"); len(got) != 0 {
+		t.Errorf("click tables after Down of 00003 = %v", got)
+	}
+	if got := queryStrings(t, pool, "SELECT indexname FROM pg_indexes WHERE schemaname = 'analytics' AND indexname = 'llm_usage_created_at_idx'"); len(got) != 1 {
+		t.Errorf("the time indexes of 00002 must stay after Down of 00003, got %v", got)
 	}
 	// Down of 00002 drops only the time indexes (D-097); the tables and the older indexes stay.
 	if _, err := provider.DownTo(t.Context(), 1); err != nil {
@@ -188,6 +204,27 @@ func TestConstraints(t *testing.T) {
 			return q.InsertDeliveryCount(ctx, p)
 		}
 	}
+	sentLocale := func(mutate func(*store.InsertSentLocaleParams)) func() error {
+		return func() error {
+			p := store.InsertSentLocaleParams{CampaignID: uuid.New(), Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul", Sent: 1}
+			if mutate != nil {
+				mutate(&p)
+			}
+			return q.InsertSentLocale(ctx, p)
+		}
+	}
+	clickEvent := func(mutate func(*store.InsertClickEventParams)) func() error {
+		return func() error {
+			p := store.InsertClickEventParams{
+				ClickID: uuid.New(), CampaignID: uuid.New(), Channel: "email", Language: "en", Timezone: "Europe/London", ClickedAt: at, First: true,
+			}
+			if mutate != nil {
+				mutate(&p)
+			}
+			_, err := q.InsertClickEvent(ctx, p)
+			return err
+		}
+	}
 	llm := func(mutate func(*store.InsertLLMUsageParams)) func() error {
 		return func() error {
 			p := usage(mutate)
@@ -215,6 +252,15 @@ func TestConstraints(t *testing.T) {
 		{"count unknown status", count(func(p *store.InsertDeliveryCountParams) { p.Status = "delivered" }), "campaign_delivery_count_status_check"},
 		{"count negative", count(func(p *store.InsertDeliveryCountParams) { p.Count = -1 }), "campaign_delivery_count_count_check"},
 		{"count zero ok", count(func(p *store.InsertDeliveryCountParams) { p.Count = 0 }), ""},
+		{"sent locale ok", sentLocale(nil), ""},
+		{"sent locale unknown channel", sentLocale(func(p *store.InsertSentLocaleParams) { p.Channel = "push" }), "campaign_sent_locale_channel_check"},
+		{"sent locale unknown language", sentLocale(func(p *store.InsertSentLocaleParams) { p.Language = "de" }), "campaign_sent_locale_language_check"},
+		{"sent locale blank timezone", sentLocale(func(p *store.InsertSentLocaleParams) { p.Timezone = " " }), "campaign_sent_locale_timezone_check"},
+		{"sent locale zero sent", sentLocale(func(p *store.InsertSentLocaleParams) { p.Sent = 0 }), "campaign_sent_locale_sent_check"},
+		{"click event ok", clickEvent(nil), ""},
+		{"click event unknown channel", clickEvent(func(p *store.InsertClickEventParams) { p.Channel = "push" }), "click_event_channel_check"},
+		{"click event unknown language", clickEvent(func(p *store.InsertClickEventParams) { p.Language = "fr" }), "click_event_language_check"},
+		{"click event blank timezone", clickEvent(func(p *store.InsertClickEventParams) { p.Timezone = "" }), "click_event_timezone_check"},
 		{"usage ok", llm(nil), ""},
 		{"usage every purpose ok", func() error {
 			for _, pu := range []string{"screen", "segment", "content", "channel_plan", "schedule"} {
@@ -278,6 +324,33 @@ func TestKeys(t *testing.T) {
 		tot, err := q.LLMTotalsOfCampaign(ctx, p.CampaignID)
 		if err != nil || tot.Calls != 1 || tot.CostUsd != "0.50000000" || tot.InputTokens != 10 {
 			t.Errorf("totals = %+v, %v: the first row must stand", tot, err)
+		}
+	})
+
+	t.Run("a click adds to the counters once per click id", func(t *testing.T) {
+		id := uuid.New()
+		click := store.InsertClickEventParams{
+			ClickID: uuid.New(), CampaignID: id, Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul",
+			ClickedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true}, First: true,
+		}
+		add := store.AddCampaignClickParams{CampaignID: id, Channel: "sms", Language: "tr", Timezone: "Europe/Istanbul"}
+		if n, err := q.InsertClickEvent(ctx, click); err != nil || n != 1 {
+			t.Fatalf("first insert = %d, %v", n, err)
+		}
+		add.First = true
+		if err := q.AddCampaignClick(ctx, add); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := q.InsertClickEvent(ctx, click); err != nil || n != 0 {
+			t.Fatalf("repeat insert = %d, %v, want 0 rows", n, err)
+		}
+		add.First = false
+		if err := q.AddCampaignClick(ctx, add); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := q.CampaignLocaleClicks(ctx, id)
+		if err != nil || len(rows) != 1 || rows[0].UniqueClicks != 1 || rows[0].TotalClicks != 2 || rows[0].Sent != 0 {
+			t.Errorf("clicks = %+v, %v; want 1 unique, 2 total, nothing sent yet", rows, err)
 		}
 	})
 

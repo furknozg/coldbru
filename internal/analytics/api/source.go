@@ -111,11 +111,17 @@ func (s *PoolSource) Campaign(ctx context.Context, id uuid.UUID) (CampaignReport
 		}
 	}
 
+	locales, err := q.CampaignLocaleClicks(ctx, id)
+	if err != nil {
+		return CampaignReport{}, fmt.Errorf("read campaign clicks: %w", err)
+	}
+	out.Clicks = campaignClicks(locales)
+
 	tot, err := q.LLMTotalsOfCampaign(ctx, id)
 	if err != nil {
 		return CampaignReport{}, fmt.Errorf("read llm totals: %w", err)
 	}
-	if !completed && tot.Calls == 0 {
+	if !completed && tot.Calls == 0 && len(locales) == 0 {
 		return CampaignReport{}, ErrNotFound
 	}
 	out.LLM = LLMSummary{
@@ -182,6 +188,12 @@ func (s *PoolSource) Overview(ctx context.Context, rg Range) (Overview, error) {
 	for _, c := range counts {
 		out.Deliveries = append(out.Deliveries, DeliveryCount{Channel: c.Channel, Status: c.Status, Count: c.Count})
 	}
+
+	clickRows, err := q.ClickOverviewByChannel(ctx, store.ClickOverviewByChannelParams{FromTs: from, ToTs: to})
+	if err != nil {
+		return Overview{}, fmt.Errorf("read click totals: %w", err)
+	}
+	out.Clicks = overviewClicks(clickRows)
 
 	tot, err := q.LLMOverviewTotals(ctx, store.LLMOverviewTotalsParams{FromTs: from, ToTs: to})
 	if err != nil {
@@ -260,7 +272,7 @@ func (s *PoolSource) OverviewSeries(ctx context.Context, sq SeriesQuery) (Overvi
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	q := s.q.WithTx(tx)
 
-	out := OverviewSeries{From: sq.From, To: sq.To, Bucket: sq.Bucket, Points: []OverviewSeriesPoint{}}
+	out := OverviewSeries{From: sq.From, To: sq.To, Bucket: sq.Bucket, Points: []OverviewSeriesPoint{}, Clicks: []ClickSeriesPoint{}}
 	if out.Buckets, err = bucketStarts(ctx, q, sq); err != nil {
 		return OverviewSeries{}, err
 	}
@@ -271,7 +283,72 @@ func (s *PoolSource) OverviewSeries(ctx context.Context, sq SeriesQuery) (Overvi
 	for _, r := range rows {
 		out.Points = append(out.Points, OverviewSeriesPoint{Start: r.BucketStart.Time.UTC(), Channel: r.Channel, Status: r.Status, Count: r.Count})
 	}
+	clicks, err := q.ClickSeries(ctx, store.ClickSeriesParams{Bucket: sq.Bucket, FromTs: tstz(&sq.From), ToTs: tstz(&sq.To)})
+	if err != nil {
+		return OverviewSeries{}, fmt.Errorf("read click series: %w", err)
+	}
+	for _, r := range clicks {
+		out.Clicks = append(out.Clicks, ClickSeriesPoint{
+			Start: r.BucketStart.Time.UTC(), Channel: r.Channel, UniqueClicks: r.UniqueClicks, TotalClicks: r.TotalClicks,
+		})
+	}
 	return out, nil
+}
+
+// campaignClicks builds the click report of a campaign from its per-slot rows.
+func campaignClicks(rows []store.CampaignLocaleClicksRow) CampaignClicks {
+	out := CampaignClicks{ByChannel: []ChannelClicks{}, ByLocale: []LocaleClicks{}}
+	byChannel := map[string]*ChannelClicks{}
+	var order []string
+	for _, r := range rows {
+		out.ByLocale = append(out.ByLocale, LocaleClicks{
+			Channel: r.Channel, Language: r.Language, Timezone: r.Timezone,
+			Sent: r.Sent, UniqueClicks: r.UniqueClicks, TotalClicks: r.TotalClicks, CTR: CTR(r.UniqueClicks, r.Sent),
+		})
+		c := byChannel[r.Channel]
+		if c == nil {
+			c = &ChannelClicks{Channel: r.Channel}
+			byChannel[r.Channel] = c
+			order = append(order, r.Channel)
+		}
+		c.Sent += r.Sent
+		c.UniqueClicks += r.UniqueClicks
+		c.TotalClicks += r.TotalClicks
+		out.Sent += r.Sent
+		out.UniqueClicks += r.UniqueClicks
+		out.TotalClicks += r.TotalClicks
+	}
+	for _, ch := range order { // rows are ordered by channel already
+		c := byChannel[ch]
+		c.CTR = CTR(c.UniqueClicks, c.Sent)
+		out.ByChannel = append(out.ByChannel, *c)
+	}
+	out.CTR = CTR(out.UniqueClicks, out.Sent)
+	return out
+}
+
+// overviewClicks builds the click report of an overview from its per-channel rows.
+func overviewClicks(rows []store.ClickOverviewByChannelRow) OverviewClicks {
+	out := OverviewClicks{ByChannel: []ChannelClicks{}}
+	for _, r := range rows {
+		out.ByChannel = append(out.ByChannel, ChannelClicks{
+			Channel: r.Channel, Sent: r.Sent, UniqueClicks: r.UniqueClicks, TotalClicks: r.TotalClicks, CTR: CTR(r.UniqueClicks, r.Sent),
+		})
+		out.Sent += r.Sent
+		out.UniqueClicks += r.UniqueClicks
+		out.TotalClicks += r.TotalClicks
+	}
+	out.CTR = CTR(out.UniqueClicks, out.Sent)
+	return out
+}
+
+// CTR is the click-through rate: unique clicks divided by sent deliveries, four decimals; 0 when
+// nothing was sent (D-108).
+func CTR(uniqueClicks, sent int64) float64 {
+	if sent <= 0 {
+		return 0
+	}
+	return round(float64(uniqueClicks)/float64(sent), 4)
 }
 
 // RepairRate is validation_failed / calls rounded to four decimals; 0 when there are no calls.

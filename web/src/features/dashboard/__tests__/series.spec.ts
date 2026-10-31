@@ -9,7 +9,15 @@ import {
   purposeSlices,
   statusSlices,
 } from '../overview'
-import { OTHER_KEY, deliveryLines, llmCallsLine, llmCostLines, modelKeys, pivot } from '../series'
+import {
+  OTHER_KEY,
+  clickLines,
+  deliveryLines,
+  llmCallsLine,
+  llmCostLines,
+  modelKeys,
+  pivot,
+} from '../series'
 
 const days = ['2026-10-28T00:00:00Z', '2026-10-29T00:00:00Z', '2026-10-30T00:00:00Z']
 
@@ -83,6 +91,11 @@ describe('delivery series', () => {
       { start: days[1]!, channel: 'sms', status: 'sent', count: 6 },
       { start: days[2]!, channel: 'email', status: 'sent', count: 5 },
     ],
+    clicks: [
+      { start: days[1]!, channel: 'email', unique_clicks: 4, total_clicks: 6 },
+      { start: days[2]!, channel: 'email', unique_clicks: 1, total_clicks: 1 },
+      { start: days[2]!, channel: 'sms', unique_clicks: 2, total_clicks: 5 },
+    ],
   }
 
   it('counts the sent deliveries of each channel per bucket, zero-filled', () => {
@@ -94,6 +107,13 @@ describe('delivery series', () => {
 
   it('can count another status', () => {
     expect(deliveryLines(series, 'failed')[0]).toEqual({ key: 'email', values: [0, 3, 0] })
+  })
+
+  it('counts the unique clicks of each channel per bucket, zero-filled (D-108)', () => {
+    expect(clickLines(series)).toEqual([
+      { key: 'email', values: [0, 4, 1] },
+      { key: 'sms', values: [0, 0, 2] },
+    ])
   })
 })
 

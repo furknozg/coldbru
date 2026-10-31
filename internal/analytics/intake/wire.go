@@ -2,7 +2,7 @@ package intake
 
 import "time"
 
-// Wire contract (D-035, D-080, D-083): the shapes below mirror the events other services publish,
+// Wire contract (D-035, D-080, D-083, D-108): the shapes below mirror the events other services publish,
 // field for field and with the same JSON names. Analytics does not import their packages;
 // contract tests in this package's _test files import them and fail when the two drift apart.
 // Unknown fields are ignored (D-060).
@@ -12,6 +12,7 @@ import "time"
 const (
 	EventTypeCompleted      = "notification.completed"
 	EventTypeTokenCompleted = "proposal.token_completed"
+	EventTypeClicked        = "redirect.clicked"
 	EventVersion            = 1
 )
 
@@ -31,13 +32,35 @@ type Count struct {
 	Count   int64  `json:"count"`
 }
 
-// CompletedData is the data of evt.notification.completed.v1.
+// LocaleCount is the number of deliveries sent in one channel to one (language, timezone) slot.
+type LocaleCount struct {
+	Channel  string `json:"channel"`
+	Language string `json:"language"`
+	Timezone string `json:"timezone"`
+	Sent     int64  `json:"sent"`
+}
+
+// CompletedData is the data of evt.notification.completed.v1. SentByLocale is absent in events
+// published before D-108 added it.
 type CompletedData struct {
-	CampaignID       string    `json:"campaign_id"`
-	CompletedAt      time.Time `json:"completed_at"`
-	Counts           []Count   `json:"counts"`
-	SMSSegments      int64     `json:"sms_segments"`
-	EstimatedCostUSD string    `json:"estimated_cost_usd"`
+	CampaignID       string        `json:"campaign_id"`
+	CompletedAt      time.Time     `json:"completed_at"`
+	Counts           []Count       `json:"counts"`
+	SMSSegments      int64         `json:"sms_segments"`
+	EstimatedCostUSD string        `json:"estimated_cost_usd"`
+	SentByLocale     []LocaleCount `json:"sent_by_locale"`
+}
+
+// ClickedData is the data of evt.redirect.clicked.v1 (D-107, D-108).
+type ClickedData struct {
+	ClickID    string    `json:"click_id"`
+	DeliveryID string    `json:"delivery_id"`
+	CampaignID string    `json:"campaign_id"`
+	Channel    string    `json:"channel"`
+	Language   string    `json:"language"`
+	Timezone   string    `json:"timezone"`
+	ClickedAt  time.Time `json:"clicked_at"`
+	First      bool      `json:"first"`
 }
 
 // TokenCounts are the token usage of one model call.

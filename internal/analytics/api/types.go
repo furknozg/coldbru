@@ -60,6 +60,57 @@ type LLMSummary struct {
 	ByPurpose []PurposeUsage `json:"by_purpose" validate:"required"`
 }
 
+// LocaleClicks is the sent count and the clicks of one channel in one (language, timezone) send slot.
+type LocaleClicks struct {
+	Channel  string `json:"channel" validate:"required" enums:"sms,email"`
+	Language string `json:"language" validate:"required" enums:"tr,en"`
+	Timezone string `json:"timezone" validate:"required" example:"Europe/Istanbul"`
+	// Sent is the number of deliveries sent to the slot, from the completed event; 0 until the
+	// campaign has completed.
+	Sent int64 `json:"sent" validate:"required" example:"320"`
+	// UniqueClicks is the number of deliveries clicked at least once (D-108).
+	UniqueClicks int64 `json:"unique_clicks" validate:"required" example:"41"`
+	// TotalClicks is the number of clicks, repeated ones included. Bots and link previews are not filtered.
+	TotalClicks int64 `json:"total_clicks" validate:"required" example:"57"`
+	// CTR is UniqueClicks divided by Sent, four decimals; 0 when Sent is 0.
+	CTR float64 `json:"ctr" validate:"required" example:"0.1281"`
+}
+
+// ChannelClicks is the sent count and the clicks of one channel.
+type ChannelClicks struct {
+	Channel      string  `json:"channel" validate:"required" enums:"sms,email"`
+	Sent         int64   `json:"sent" validate:"required"`
+	UniqueClicks int64   `json:"unique_clicks" validate:"required"`
+	TotalClicks  int64   `json:"total_clicks" validate:"required"`
+	CTR          float64 `json:"ctr" validate:"required" example:"0.1281"`
+}
+
+// CampaignClicks is the click-through report of a campaign (D-108). The clicks are live: they are
+// counted as they happen. Sent, and so CTR, comes from the completed event and is 0 until the
+// campaign has completed.
+type CampaignClicks struct {
+	Sent         int64   `json:"sent" validate:"required"`
+	UniqueClicks int64   `json:"unique_clicks" validate:"required"`
+	TotalClicks  int64   `json:"total_clicks" validate:"required"`
+	CTR          float64 `json:"ctr" validate:"required" example:"0.1281"`
+	// ByChannel has one entry per channel with sends or clicks, ordered by channel.
+	ByChannel []ChannelClicks `json:"by_channel" validate:"required"`
+	// ByLocale has one entry per (channel, language, timezone) with sends or clicks, ordered by
+	// channel, language and timezone.
+	ByLocale []LocaleClicks `json:"by_locale" validate:"required"`
+}
+
+// OverviewClicks is the click-through report of an Overview: the campaigns completed in the range
+// (the same ones as the delivery figures), their sent deliveries and the clicks on their links (D-108).
+type OverviewClicks struct {
+	Sent         int64   `json:"sent" validate:"required"`
+	UniqueClicks int64   `json:"unique_clicks" validate:"required"`
+	TotalClicks  int64   `json:"total_clicks" validate:"required"`
+	CTR          float64 `json:"ctr" validate:"required" example:"0.1281"`
+	// ByChannel has one entry per channel with sends or clicks, ordered by channel.
+	ByChannel []ChannelClicks `json:"by_channel" validate:"required"`
+}
+
 // CampaignReport is the response of GET /campaigns/{id}/summary. A campaign whose completed event
 // has not arrived yet (or that never completes) has completed_at null, no deliveries, zero SMS
 // segments and a zero delivery cost; its LLM usage is reported all the same.
@@ -72,6 +123,8 @@ type CampaignReport struct {
 	SMSSegments     int64           `json:"sms_segments" validate:"required" example:"2400"`
 	DeliveryCostUSD string          `json:"delivery_cost_usd" validate:"required" example:"96.000000"`
 	LLM             LLMSummary      `json:"llm" validate:"required"`
+	// Clicks is the click-through report (D-108).
+	Clicks CampaignClicks `json:"clicks" validate:"required"`
 }
 
 // PromptVersionUsage is the LLM usage of one prompt version across all campaigns.
@@ -117,7 +170,7 @@ type OverviewLLM struct {
 
 // Overview is the response of GET /overview: the dashboard's headline figures over a time range
 // (D-097). Delivery figures cover the campaigns whose completed_at is in the range, LLM figures
-// the calls whose created_at is in the range. T-044 adds the success metrics as further fields.
+// the calls whose created_at is in the range. Clicks are the success metrics (D-108).
 type Overview struct {
 	// From and To echo the range of the request (RFC 3339, UTC); null when that bound was omitted.
 	From *time.Time `json:"from" validate:"required" format:"date-time" extensions:"x-nullable"`
@@ -129,6 +182,8 @@ type Overview struct {
 	SMSSegments     int64           `json:"sms_segments" validate:"required" example:"2400"`
 	DeliveryCostUSD string          `json:"delivery_cost_usd" validate:"required" example:"96.000000"`
 	LLM             OverviewLLM     `json:"llm" validate:"required"`
+	// Clicks is the click-through report of the campaigns completed in the range (D-108).
+	Clicks OverviewClicks `json:"clicks" validate:"required"`
 }
 
 // LLMSeriesPoint is the LLM usage of one purpose and model within one bucket.
@@ -164,6 +219,16 @@ type OverviewSeriesPoint struct {
 	Count   int64     `json:"count" validate:"required" example:"1200"`
 }
 
+// ClickSeriesPoint is the clicks of one channel within one bucket.
+type ClickSeriesPoint struct {
+	// Start is the start of the bucket (UTC); one of the bucket starts of the response.
+	Start   time.Time `json:"start" validate:"required" format:"date-time"`
+	Channel string    `json:"channel" validate:"required" enums:"sms,email"`
+	// UniqueClicks counts the first clicks of a delivery, TotalClicks every click.
+	UniqueClicks int64 `json:"unique_clicks" validate:"required"`
+	TotalClicks  int64 `json:"total_clicks" validate:"required"`
+}
+
 // OverviewSeries is the response of GET /overview/series.
 type OverviewSeries struct {
 	From   time.Time `json:"from" validate:"required" format:"date-time"`
@@ -175,4 +240,7 @@ type OverviewSeries struct {
 	// bucket, channel, status. A bucket without a row has no deliveries: the client zero-fills it
 	// from Buckets.
 	Points []OverviewSeriesPoint `json:"points" validate:"required"`
+	// Clicks has one row per (bucket, channel) with at least one click, ordered by bucket and
+	// channel, bucketed by the click time (D-108). A bucket without a row has no clicks.
+	Clicks []ClickSeriesPoint `json:"clicks" validate:"required"`
 }

@@ -223,6 +223,10 @@ func (c *Checker) complete(ctx context.Context, id uuid.UUID) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("sum sms segments: %w", err)
 	}
+	locales, err := q.CountSentByLocale(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("count sent by locale: %w", err)
+	}
 	cleared, err := q.ClearDeliveryPII(ctx, id)
 	if err != nil {
 		return false, fmt.Errorf("clear delivery personal data: %w", err)
@@ -232,12 +236,17 @@ func (c *Checker) complete(ctx context.Context, id uuid.UUID) (bool, error) {
 	for _, r := range rows {
 		counts = append(counts, Count{Channel: r.Channel, Status: r.Status, Count: r.Total})
 	}
+	sentByLocale := make([]LocaleCount, 0, len(locales))
+	for _, l := range locales {
+		sentByLocale = append(sentByLocale, LocaleCount{Channel: l.Channel, Language: l.Language, Timezone: l.Timezone, Sent: l.Sent})
+	}
 	data := CompletedData{
 		CampaignID:       id.String(),
 		CompletedAt:      at.Time.UTC(),
 		Counts:           counts,
 		SMSSegments:      segments,
 		EstimatedCostUSD: Estimate(segments, counts, c.prices).String(),
+		SentByLocale:     sentByLocale,
 	}
 	env, err := events.New(EventTypeCompleted, EventVersion, EventProducer, id.String(), data)
 	if err != nil {

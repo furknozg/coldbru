@@ -16,6 +16,12 @@ RUN pnpm build
 
 # ---- serve ----------------------------------------------------------------
 FROM nginx:1.30.5-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# The nginx image's entrypoint renders /etc/nginx/templates/*.template into conf.d at start with
+# envsubst. NGINX_ENVSUBST_FILTER limits it to variables named CAMPAIGN_*, so nginx's own $variables are
+# left alone. CAMPAIGN_CTA_URL is where /r/ falls back to when the redirect service fails (D-106);
+# docker-compose.yml passes the stack's value, the default below keeps a standalone image working.
+ENV NGINX_ENVSUBST_FILTER=CAMPAIGN_ \
+    CAMPAIGN_CTA_URL=https://shop.example.com
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

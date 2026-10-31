@@ -18,7 +18,7 @@ import {
   statusSlices,
   totalTokens,
 } from '@/features/dashboard/overview'
-import { deliveryLines, toNumber } from '@/features/dashboard/series'
+import { clickLines, deliveryLines, toNumber } from '@/features/dashboard/series'
 import { useDateRange } from '@/features/dashboard/useDateRange'
 import { useResource } from '@/features/dashboard/useResource'
 
@@ -56,6 +56,16 @@ const stats = computed(() => {
       key: 'deliveryCost',
       label: t('dashboard.stat.deliveryCost'),
       value: n(toNumber(o.delivery_cost_usd), 'usd'),
+    },
+    {
+      key: 'ctr',
+      label: t('dashboard.stat.ctr'),
+      // Nothing sent in the range: a rate would be a made-up 0%.
+      value: o.clicks.sent > 0 ? n(o.clicks.ctr, 'percent') : t('dashboard.click.unknown'),
+      note: t('dashboard.stat.ctrSplit', {
+        unique: n(o.clicks.unique_clicks, 'int'),
+        total: n(o.clicks.total_clicks, 'int'),
+      }),
     },
     { key: 'llmCalls', label: t('dashboard.stat.llmCalls'), value: n(o.llm.calls, 'int') },
     {
@@ -97,9 +107,24 @@ const lines = computed(() => {
   }))
 })
 
+const clickChartLines = computed(() => {
+  const s = deliveries.data.value
+  if (!s) return []
+  return clickLines(s).map((line) => ({
+    ...line,
+    label: channelLabel(line.key),
+    color: channelColor(line.key),
+  }))
+})
+
 // "Tümü" and a range without a start draw the last 90 days, which the title says.
 const seriesTitle = computed(() =>
   range.value.from ? t('dashboard.overview.series') : t('dashboard.overview.seriesRecent'),
+)
+const clickSeriesTitle = computed(() =>
+  range.value.from
+    ? t('dashboard.overview.clickSeries')
+    : t('dashboard.overview.clickSeriesRecent'),
 )
 </script>
 
@@ -154,6 +179,15 @@ const seriesTitle = computed(() =>
         :buckets="deliveries.data.value.buckets"
         :bucket="deliveries.data.value.bucket"
         :series="lines"
+        kind="line"
+        format="int"
+      />
+      <LazyTimeSeriesChart
+        v-if="deliveries.data.value"
+        :title="clickSeriesTitle"
+        :buckets="deliveries.data.value.buckets"
+        :bucket="deliveries.data.value.bucket"
+        :series="clickChartLines"
         kind="line"
         format="int"
       />

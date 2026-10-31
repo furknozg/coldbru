@@ -115,7 +115,7 @@ func TestCheckSMS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			info, problems := CheckSMS(tt.text, tt.maxName)
+			info, problems := CheckSMS(tt.text, tt.maxName, SMSMaxChars)
 			if tt.wantRule == "" {
 				if len(problems) > 0 {
 					t.Fatalf("problems = %+v, want none", problems)
@@ -147,11 +147,11 @@ func TestCheckSMS(t *testing.T) {
 func TestCheckSMSExpandedLengthDecidesNotTemplateLength(t *testing.T) {
 	t.Parallel()
 	// 14 characters of template, but 154 with a 144-character name.
-	_, p := CheckSMS("{{first_name}}", 144)
+	_, p := CheckSMS("{{first_name}}", 144, SMSMaxChars)
 	if len(p) != 0 {
 		t.Fatalf("problems = %+v", p)
 	}
-	_, p = CheckSMS("{{first_name}}a", 160)
+	_, p = CheckSMS("{{first_name}}a", 160, SMSMaxChars)
 	if len(p) != 1 || p[0].Rule != RuleMaxLength {
 		t.Fatalf("problems = %+v, want one max_length", p)
 	}
@@ -159,11 +159,11 @@ func TestCheckSMSExpandedLengthDecidesNotTemplateLength(t *testing.T) {
 
 func TestCheckSMSMeasuresEncodingOfTheTemplate(t *testing.T) {
 	t.Parallel()
-	tr, _ := CheckSMS("Sepetin seni bekliyor, alışveriş yap {{first_name}}!", 8)
+	tr, _ := CheckSMS("Sepetin seni bekliyor, alışveriş yap {{first_name}}!", 8, SMSMaxChars)
 	if tr.Encoding != UCS2 {
 		t.Errorf("a name placeholder must not decide the encoding; %q is UCS-2 because of ı", "bekliyor")
 	}
-	en, _ := CheckSMS("Your cart waits, {{first_name}}!", 8)
+	en, _ := CheckSMS("Your cart waits, {{first_name}}!", 8, SMSMaxChars)
 	if en.Encoding != GSM7 || en.Segments != 1 {
 		t.Errorf("english text = %+v, want gsm7 in 1 segment", en)
 	}

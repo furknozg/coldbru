@@ -140,19 +140,24 @@ func buildDocument(req request) (document, error) {
 	}
 	plain := len(req.Repair) > 0 && string(req.Repair) != "null"
 	maxName := req.MaxFirstNameLength
+	// The SMS text budget comes with the request, like the real model's (D-109).
+	smsLimit := content.SMSMaxChars
+	if req.Limits != nil && req.Limits.SMSMaxChars > 0 {
+		smsLimit = req.Limits.SMSMaxChars
+	}
 
 	switch req.Channel {
 	case string(llm.ChannelSMS):
-		candidates := []string{content.FirstNameToken + ", " + text.Line, text.Line, truncate(text.Line, content.SMSMaxChars)}
+		candidates := []string{content.FirstNameToken + ", " + text.Line, text.Line, truncate(text.Line, smsLimit)}
 		if plain {
 			candidates = candidates[1:]
 		}
 		for _, cand := range candidates {
-			if _, problems := content.CheckSMS(cand, maxName); len(problems) == 0 {
+			if _, problems := content.CheckSMS(cand, maxName, smsLimit); len(problems) == 0 {
 				return document{SMS: &smsDoc{Text: cand}}, nil
 			}
 		}
-		return document{SMS: &smsDoc{Text: truncate(text.Line, content.SMSMaxChars)}}, nil
+		return document{SMS: &smsDoc{Text: truncate(text.Line, smsLimit)}}, nil
 	case string(llm.ChannelEmail):
 		subjects := []string{content.FirstNameToken + ", " + text.Head, text.Head}
 		if plain {

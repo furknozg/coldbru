@@ -1,0 +1,358 @@
+{
+    "components": {
+        "schemas": {
+            "api.CreateLinksRequest": {
+                "properties": {
+                    "links": {
+                        "items": {
+                            "$ref": "#/components/schemas/api.LinkRequest"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "links"
+                ],
+                "type": "object"
+            },
+            "api.CreateLinksResponse": {
+                "properties": {
+                    "links": {
+                        "items": {
+                            "$ref": "#/components/schemas/api.LinkResult"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "links"
+                ],
+                "type": "object"
+            },
+            "api.LinkRequest": {
+                "properties": {
+                    "campaign_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "channel": {
+                        "enum": [
+                            "sms",
+                            "email"
+                        ],
+                        "type": "string"
+                    },
+                    "delivery_id": {
+                        "description": "DeliveryID is Notification's delivery id and the idempotency key: asking again for the same\ndelivery returns the same code.",
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "language": {
+                        "enum": [
+                            "tr",
+                            "en"
+                        ],
+                        "type": "string"
+                    },
+                    "target_url": {
+                        "description": "TargetURL is where a click is sent: the campaign's call-to-action link with utm_campaign. An\nabsolute http or https URL without credentials.",
+                        "example": "https://shop.example.com/?utm_campaign=019a0e6e",
+                        "type": "string"
+                    },
+                    "timezone": {
+                        "example": "Europe/Istanbul",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "campaign_id",
+                    "channel",
+                    "delivery_id",
+                    "language",
+                    "target_url",
+                    "timezone"
+                ],
+                "type": "object"
+            },
+            "api.LinkResult": {
+                "properties": {
+                    "code": {
+                        "description": "Code is 10 base62 characters; the link is \u003cTRACKING_BASE_URL\u003e/r/\u003ccode\u003e.",
+                        "example": "k3JdQ9aB7x",
+                        "type": "string"
+                    },
+                    "delivery_id": {
+                        "format": "uuid",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "delivery_id"
+                ],
+                "type": "object"
+            },
+            "api.Problem": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the stable machine-readable name of the problem.",
+                        "example": "invalid_request",
+                        "type": "string"
+                    },
+                    "detail": {
+                        "description": "Detail explains this occurrence. It never contains internal details.",
+                        "type": "string"
+                    },
+                    "instance": {
+                        "description": "Instance is the path of the request.",
+                        "example": "/links",
+                        "type": "string"
+                    },
+                    "problems": {
+                        "description": "Problems lists the individual validation messages of an invalid request.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "status": {
+                        "description": "Status is the HTTP status code.",
+                        "example": 422,
+                        "type": "integer"
+                    },
+                    "title": {
+                        "description": "Title is a short, fixed summary of the problem type.",
+                        "example": "The request is invalid",
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Type identifies the problem type: urn:coldbru:redirect:problem:\u003ccode\u003e.",
+                        "example": "urn:coldbru:redirect:problem:invalid_request",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "status",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "health.CheckResult": {
+                "properties": {
+                    "detail": {
+                        "description": "Detail is what the check found out besides pass or fail, for example \"mode=mock\"; empty for\nchecks that report none.",
+                        "example": "mode=mock",
+                        "type": "string"
+                    },
+                    "error": {
+                        "description": "Error is the failure reason; empty when the check passed.",
+                        "example": "context deadline exceeded",
+                        "type": "string"
+                    },
+                    "status": {
+                        "description": "Status is \"ok\" or \"fail\".",
+                        "enum": [
+                            "ok",
+                            "fail"
+                        ],
+                        "example": "ok",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "health.Report": {
+                "properties": {
+                    "checks": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/health.CheckResult"
+                        },
+                        "description": "Checks maps dependency name to its result; omitted when no check is registered.",
+                        "type": "object"
+                    },
+                    "status": {
+                        "description": "Status is \"ok\" when every check passed, otherwise \"fail\".",
+                        "enum": [
+                            "ok",
+                            "fail"
+                        ],
+                        "example": "ok",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "info": {
+        "description": "REST API of the redirect service: POST /links creates the short link of each delivery of a recipient batch (compose-internal), GET /r/{code} records the click and redirects to the stored target. Errors of POST /links are RFC 9457 application/problem+json.",
+        "title": "Coldbru Redirect API",
+        "version": "0.1.0"
+    },
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
+    "paths": {
+        "/healthz": {
+            "get": {
+                "description": "Answers 200 while the process is running. Checks no dependency.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "summary": "Liveness probe",
+                "tags": [
+                    "platform"
+                ]
+            }
+        },
+        "/links": {
+            "post": {
+                "description": "Returns one 10 character code per delivery (D-106). The delivery id is the idempotency key: a delivery that has a link gets the same code again and nothing else changes, so Notification can retry a batch safely. Up to 1000 links per request. The link recipients click is `\u003cTRACKING_BASE_URL\u003e/r/\u003ccode\u003e`. Compose-internal: nginx does not route this endpoint.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.CreateLinksRequest",
+                                "summary": "body",
+                                "description": "The deliveries to link"
+                            }
+                        }
+                    },
+                    "description": "The deliveries to link",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.CreateLinksResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "the body is not valid JSON"
+                    },
+                    "422": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "a field is missing or invalid, or more than 1000 links"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.Problem"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "summary": "Create the short links of a recipient batch",
+                "tags": [
+                    "links"
+                ]
+            }
+        },
+        "/r/{code}": {
+            "get": {
+                "description": "Records the click and redirects (302) to the target stored with the link (D-106, D-107). The target comes from the link's record, never from the request, so the endpoint cannot be used as an open redirect. A code whose tag does not verify, or that no link has, is not counted and is redirected to the default campaign page (CAMPAIGN_CTA_URL). Every GET counts; bots and link previews are not filtered (D-108). No IP address or User-Agent is stored.",
+                "parameters": [
+                    {
+                        "description": "The 10 character code",
+                        "in": "path",
+                        "name": "code",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect to the stored target, or to the default page for a bad code",
+                        "headers": {
+                            "Location": {
+                                "description": "The target URL",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Follow a short link",
+                "tags": [
+                    "links"
+                ]
+            }
+        },
+        "/readyz": {
+            "get": {
+                "description": "Runs every dependency check (for example postgres, nats) and answers 200 when all pass, 503 otherwise.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.Report"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
+                    }
+                },
+                "summary": "Readiness probe",
+                "tags": [
+                    "platform"
+                ]
+            }
+        }
+    },
+    "openapi": "3.1.0",
+    "servers": [
+        {
+            "url": "/"
+        }
+    ]
+}

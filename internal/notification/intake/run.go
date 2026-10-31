@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/furknozg/coldbru/internal/notification/links"
 	"github.com/furknozg/coldbru/internal/platform/consumer"
 )
 
@@ -41,6 +42,8 @@ type Deps struct {
 	JS     jetstream.JetStream
 	Pool   *pgxpool.Pool
 	Logger *slog.Logger
+	// Links creates the short link of every delivery (D-106); required.
+	Links links.Creator
 	// Backoff is the redelivery delay; the zero value means consumer.DefaultBackoff. Tests shorten it.
 	Backoff consumer.Backoff
 }
@@ -63,11 +66,14 @@ func ConsumerConfigs() (ev, rc, sc jetstream.ConsumerConfig) {
 // ctx ends. Messages are processed with a context that ctx's cancellation does not reach, so a
 // handler in flight finishes its transaction when the service is told to stop.
 func Start(ctx context.Context, d Deps) (stop func(context.Context) error, err error) {
+	if d.Links == nil {
+		return nil, errors.New("intake: a links client is required")
+	}
 	evCfg, rcCfg, scCfg := ConsumerConfigs()
 	procCtx, cancelProc := context.WithCancel(context.WithoutCancel(ctx))
 
 	evHandler := &Events{Logger: d.Logger}
-	rcHandler := &Recipients{Logger: d.Logger}
+	rcHandler := &Recipients{Logger: d.Logger, Links: d.Links}
 	scHandler := &Schedules{Logger: d.Logger}
 	evProc := &consumer.Processor{Pool: d.Pool, Logger: d.Logger, Backoff: d.Backoff, Handler: evHandler.Handle}
 	rcProc := &consumer.RawProcessor{Pool: d.Pool, Logger: d.Logger, Backoff: d.Backoff, Handler: rcHandler.Handle}

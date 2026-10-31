@@ -25,10 +25,14 @@ type Limits struct {
 	CTALabelMax   int `json:"cta_label_max_chars"`
 }
 
-// DefaultLimits returns the limits of D-071.
-func DefaultLimits() Limits {
+// DefaultLimits returns the limits of D-071: the whole 160 characters for the SMS text.
+func DefaultLimits() Limits { return NewLimits(SMSMaxChars) }
+
+// NewLimits returns the limits with smsMaxChars as the length the SMS text may have. The model is
+// given the text budget that is left once the tracking link is counted (SMSBudget, D-109).
+func NewLimits(smsMaxChars int) Limits {
 	return Limits{
-		SMSMaxChars: SMSMaxChars, SubjectMax: SubjectMax, PreheaderMax: PreheaderMax, HeadlineMax: HeadlineMax,
+		SMSMaxChars: smsMaxChars, SubjectMax: SubjectMax, PreheaderMax: PreheaderMax, HeadlineMax: HeadlineMax,
 		ParagraphsMin: ParagraphsMin, ParagraphsMax: ParagraphsMax, ParagraphMax: ParagraphMax, CTALabelMax: CTALabelMax,
 	}
 }

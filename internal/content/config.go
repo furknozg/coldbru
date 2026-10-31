@@ -12,6 +12,9 @@ import (
 const (
 	// KeyCTAURL is the link of the call-to-action button of every email.
 	KeyCTAURL = "CAMPAIGN_CTA_URL"
+	// KeyTrackingBaseURL is the public base of the short links in SMS and email (D-106): the link is
+	// <base>/r/<code>. Proposal and Notification read it to size the SMS text budget (D-109).
+	KeyTrackingBaseURL = "TRACKING_BASE_URL"
 	// KeySMSSegmentPrice is the price of one SMS segment in USD.
 	KeySMSSegmentPrice = "SMS_SEGMENT_PRICE_USD"
 	// KeyEmailPrice is the price of one email in USD.
@@ -21,6 +24,7 @@ const (
 // Demo defaults of D-071. The prices are not those of a real provider.
 const (
 	DefaultCTAURL          = "https://shop.example.com"
+	DefaultTrackingBaseURL = "http://localhost:8080"
 	DefaultSMSSegmentPrice = "0.04"
 	DefaultEmailPrice      = "0.001"
 )
@@ -30,16 +34,22 @@ const (
 func Defaults() map[string]any {
 	return map[string]any{
 		KeyCTAURL:          DefaultCTAURL,
+		KeyTrackingBaseURL: DefaultTrackingBaseURL,
 		KeySMSSegmentPrice: DefaultSMSSegmentPrice,
 		KeyEmailPrice:      DefaultEmailPrice,
 	}
 }
 
-// Config is the campaign-wide setting of the content: where the email button points and what a
-// message costs.
+// Config is the campaign-wide setting of the content: where the email button points, where the
+// tracking links point to, how much room the SMS text has and what a message costs.
 type Config struct {
 	CTAURL string
-	Prices Prices
+	// TrackingBaseURL is TRACKING_BASE_URL without a trailing slash.
+	TrackingBaseURL string
+	// SMSBudget is the number of characters the model's SMS text may have: 160 minus the tracking
+	// link and the space before it (D-109).
+	SMSBudget int
+	Prices    Prices
 }
 
 // LoadConfig reads and validates the Config from v, a Viper built by config.New. An empty value
@@ -56,6 +66,15 @@ func LoadConfig(v *viper.Viper) (Config, error) {
 	if err := checkCTAURL(cta); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", KeyCTAURL, err)
 	}
+	tracking := strings.TrimRight(get(KeyTrackingBaseURL, DefaultTrackingBaseURL), "/")
+	if err := checkCTAURL(tracking); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", KeyTrackingBaseURL, err)
+	}
+	budget := SMSBudget(tracking)
+	if budget < MinSMSBudget {
+		return Config{}, fmt.Errorf("%s: %q leaves %d characters for the SMS text, at least %d are needed; use a shorter base URL",
+			KeyTrackingBaseURL, tracking, budget, MinSMSBudget)
+	}
 	sms, err := ParseMoney(get(KeySMSSegmentPrice, DefaultSMSSegmentPrice))
 	if err != nil {
 		return Config{}, fmt.Errorf("%s: %w", KeySMSSegmentPrice, err)
@@ -64,7 +83,7 @@ func LoadConfig(v *viper.Viper) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("%s: %w", KeyEmailPrice, err)
 	}
-	return Config{CTAURL: cta, Prices: Prices{SMSSegment: sms, Email: email}}, nil
+	return Config{CTAURL: cta, TrackingBaseURL: tracking, SMSBudget: budget, Prices: Prices{SMSSegment: sms, Email: email}}, nil
 }
 
 // checkCTAURL accepts an absolute http or https URL with a host and no credentials.

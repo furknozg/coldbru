@@ -37,11 +37,21 @@ type Count struct {
 	Count   int64  `json:"count"`
 }
 
+// LocaleCount is the number of deliveries sent in one channel to one (language, timezone) slot
+// (D-108). Proposal does not use it.
+type LocaleCount struct {
+	Channel  string `json:"channel"`
+	Language string `json:"language"`
+	Timezone string `json:"timezone"`
+	Sent     int64  `json:"sent"`
+}
+
 // CompletedData is the data of evt.notification.completed.v1.
 type CompletedData struct {
-	CampaignID       string    `json:"campaign_id"`
-	CompletedAt      time.Time `json:"completed_at"`
-	Counts           []Count   `json:"counts"`
-	SMSSegments      int64     `json:"sms_segments"`
-	EstimatedCostUSD string    `json:"estimated_cost_usd"`
+	CampaignID       string        `json:"campaign_id"`
+	CompletedAt      time.Time     `json:"completed_at"`
+	Counts           []Count       `json:"counts"`
+	SMSSegments      int64         `json:"sms_segments"`
+	EstimatedCostUSD string        `json:"estimated_cost_usd"`
+	SentByLocale     []LocaleCount `json:"sent_by_locale"`
 }

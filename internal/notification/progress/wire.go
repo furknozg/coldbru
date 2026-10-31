@@ -33,14 +33,28 @@ type Count struct {
 	Count   int64  `json:"count"`
 }
 
+// LocaleCount is the number of deliveries that were sent in one channel to the recipients of one
+// (language, timezone) send slot (D-108). Together they are the denominators of the click-through
+// rate; the entries add up to the sent count of the same channel in Counts.
+type LocaleCount struct {
+	Channel  string `json:"channel"`
+	Language string `json:"language"`
+	Timezone string `json:"timezone"`
+	Sent     int64  `json:"sent"`
+}
+
 // CompletedData is the data of evt.notification.completed.v1: the campaign finished, every
 // delivery is final (D-080). SMSSegments is the sum of the stored segment counts of the sent SMS
 // (an estimate, D-071), EstimatedCostUSD is those segments at the SMS segment price plus the sent
-// emails at the email price, a decimal string with four decimals like content.Money.
+// emails at the email price, a decimal string with four decimals like content.Money. SentByLocale
+// was added to version 1 later (D-108): an additive field, absent in events published before it,
+// one entry per (channel, language, timezone) with at least one sent delivery, ordered by channel,
+// language and timezone; empty (never null) when nothing was sent.
 type CompletedData struct {
-	CampaignID       string    `json:"campaign_id"`
-	CompletedAt      time.Time `json:"completed_at"`
-	Counts           []Count   `json:"counts"`
-	SMSSegments      int64     `json:"sms_segments"`
-	EstimatedCostUSD string    `json:"estimated_cost_usd"`
+	CampaignID       string        `json:"campaign_id"`
+	CompletedAt      time.Time     `json:"completed_at"`
+	Counts           []Count       `json:"counts"`
+	SMSSegments      int64         `json:"sms_segments"`
+	EstimatedCostUSD string        `json:"estimated_cost_usd"`
+	SentByLocale     []LocaleCount `json:"sent_by_locale"`
 }

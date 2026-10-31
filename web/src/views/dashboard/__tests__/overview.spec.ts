@@ -62,6 +62,38 @@ describe('Genel bakış', () => {
     expect(wrapper.get('[data-stat="cache"]').text()).toContain('okuma 300.000 · yazma 50.000')
   })
 
+  it('shows the CTR as a tile next to the others, with unique and total clicks', async () => {
+    const { wrapper } = await open()
+
+    expect(stat(wrapper, 'ctr')).toEqual({ label: 'Tıklama oranı (CTR)', value: '%12,5' })
+    expect(wrapper.get('[data-stat="ctr"]').text()).toContain('tekil 150 · toplam 210')
+    expect(wrapper.get('[data-stat="ctr"]').classes()).not.toContain('border')
+  })
+
+  it('shows a dash, not %0, when nothing was sent in the range', async () => {
+    vi.mocked(analytics.getOverview).mockResolvedValue(
+      overviewOf({
+        clicks: { sent: 0, unique_clicks: 0, total_clicks: 0, ctr: 0, by_channel: [] },
+      }),
+    )
+    const { wrapper } = await open()
+    expect(stat(wrapper, 'ctr').value).toBe('—')
+  })
+
+  it('draws the unique clicks of both channels as a second series over the same buckets', async () => {
+    const { wrapper } = await open()
+
+    const chart = wrapper
+      .findAll('figure')
+      .find((f) => f.find('figcaption').text().startsWith('Kanal başına tekil tıklama'))!
+    expect(chart.get('figcaption').text()).toBe('Kanal başına tekil tıklama · son 90 gün')
+    expect(chart.get('[data-testid="xy-container"]').attributes('data-rows')).toBe('3')
+    expect(chart.get('[data-testid="line"]').attributes('data-series')).toBe('2')
+    // 4 + 3 unique e-mail clicks and 2 SMS clicks; the total clicks are not drawn.
+    expect(chart.get('[role="img"]').attributes('aria-label')).toContain('E-posta: 7, SMS: 2')
+    expect(chart.findAll('li').map((li) => li.text())).toEqual(['E-posta', 'SMS'])
+  })
+
   it('draws no box around a figure and has the create card as its only card', async () => {
     const { wrapper } = await open()
     expect(wrapper.findAll('[data-slot="card"]')).toHaveLength(1)

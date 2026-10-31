@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { useCampaignAnalytics } from '@/features/analytics/useCampaignAnalytics'
 import { useCampaignList } from '@/features/campaigns/composables/campaignList'
+import CampaignClicks from '@/features/dashboard/components/CampaignClicks.vue'
 import CampaignSummary, {
   type SummarySection,
 } from '@/features/dashboard/components/CampaignSummary.vue'
@@ -37,8 +38,10 @@ const analytics = useCampaignAnalytics(
   () => campaign.value?.status,
 )
 
-/** Metric blocks that T-044 adds go here; the summary renders each under its title. */
-const sections: readonly SummarySection[] = []
+/** Metric blocks (D-108); the summary renders each under its title. */
+const sections = computed<readonly SummarySection[]>(() => [
+  { key: 'clicks', title: t('dashboard.click.title'), component: CampaignClicks },
+])
 </script>
 
 <template>

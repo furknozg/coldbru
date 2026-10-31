@@ -7,6 +7,7 @@ set -Eeuo pipefail
 : "${PROPOSAL_DB_PASSWORD:?PROPOSAL_DB_PASSWORD must be set}"
 : "${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD must be set}"
 : "${ANALYTICS_DB_PASSWORD:?ANALYTICS_DB_PASSWORD must be set}"
+: "${REDIRECT_DB_PASSWORD:?REDIRECT_DB_PASSWORD must be set}"
 SQL_DIR="/docker-entrypoint-initdb.d/sql"
 
 run_sql() {
@@ -21,3 +22,4 @@ run_sql customer_db   03_customer_seed.sql
 run_sql "$POSTGRES_DB" 04_service_db.sql -v svc=proposal     -v db_password="$PROPOSAL_DB_PASSWORD"
 run_sql "$POSTGRES_DB" 04_service_db.sql -v svc=notification -v db_password="$NOTIFICATION_DB_PASSWORD"
 run_sql "$POSTGRES_DB" 04_service_db.sql -v svc=analytics    -v db_password="$ANALYTICS_DB_PASSWORD"
+run_sql "$POSTGRES_DB" 04_service_db.sql -v svc=redirect     -v db_password="$REDIRECT_DB_PASSWORD"

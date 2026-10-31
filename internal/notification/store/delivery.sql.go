@@ -110,7 +110,7 @@ func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) 
 }
 
 const listPendingDeliveries = `-- name: ListPendingDeliveries :many
-SELECT id, campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact, status, attempts, lease_until, provider_message_id, last_error, sent_at, updated_at FROM delivery WHERE schedule_id = $1 AND status = 'pending' ORDER BY id LIMIT $2
+SELECT id, campaign_id, schedule_id, message_id, customer_id, channel, first_name, contact, status, attempts, lease_until, provider_message_id, last_error, sent_at, updated_at, link_code FROM delivery WHERE schedule_id = $1 AND status = 'pending' ORDER BY id LIMIT $2
 `
 
 type ListPendingDeliveriesParams struct {
@@ -144,6 +144,7 @@ func (q *Queries) ListPendingDeliveries(ctx context.Context, arg ListPendingDeli
 			&i.LastError,
 			&i.SentAt,
 			&i.UpdatedAt,
+			&i.LinkCode,
 		); err != nil {
 			return nil, err
 		}

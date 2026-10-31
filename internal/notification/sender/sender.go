@@ -119,6 +119,9 @@ type Deps struct {
 	Consent  Consent
 	// Registerer receives the metrics; nil registers them nowhere.
 	Registerer prometheus.Registerer
+	// TrackingBaseURL is TRACKING_BASE_URL (D-106): the tracking link of a delivery is
+	// <TrackingBaseURL>/r/<link_code>. Empty sends every message without a tracking link.
+	TrackingBaseURL string
 
 	// The fields below default to the production values; tests shorten them.
 
@@ -169,6 +172,8 @@ type worker struct {
 	workers  int
 	jobs     chan job
 	nudge    func()
+	// trackingBase is Deps.TrackingBaseURL.
+	trackingBase string
 }
 
 // job is a delivery cleared for sending and the message that carries it.
@@ -228,6 +233,7 @@ func Start(ctx context.Context, d Deps) (stop func(context.Context) error, err e
 			channel: ch, cons: cons, pool: d.Pool, q: store.New(d.Pool), log: logger.With("channel", ch),
 			provider: d.Provider, consent: d.Consent, gate: newGate(limit, burst), m: m,
 			backoff: backoff, lease: lease, workers: senders, jobs: make(chan job, BatchSize), nudge: d.Nudge,
+			trackingBase: d.TrackingBaseURL,
 		})
 		logger.Info("consumer started", "consumer", cfg.Durable, "stream", Stream, "filter", cfg.FilterSubject,
 			"max_ack_pending", cfg.MaxAckPending, "ack_wait", cfg.AckWait.String(), "max_deliver", cfg.MaxDeliver,
@@ -599,28 +605,57 @@ func (w *worker) retry(ctx context.Context, log *slog.Logger, j job, attempts in
 
 // prepare renders the message of a claimed delivery and returns the provider call that sends it.
 // An error means the stored content cannot be turned into a message.
+//
+// A delivery with a link code gets its tracking link (D-106, D-109): the email button points at it,
+// and the SMS is the rendered text, a space and the link. The SMS is measured (characters,
+// encoding, segments) on that final text, and the text is fitted to 160 less the link and the
+// space, so the whole message stays within 160 characters. A delivery without a code (written
+// before the links existed) is sent as before, without a link. An SMS whose approved text does not
+// leave room for the link, because it was approved under a larger budget, is sent without it and
+// the case is logged: the message is delivered, only its clicks cannot be counted.
 func (w *worker) prepare(log *slog.Logger, row store.ListSendDeliveriesRow, firstName, contact string) (func(context.Context) (provider.Result, error), error) {
 	if strings.TrimSpace(contact) == "" {
 		return nil, errors.New("delivery has no contact")
 	}
 	key := row.ID.String()
+	link := ""
+	if w.trackingBase != "" && row.LinkCode.Valid {
+		link = content.TrackingLink(w.trackingBase, row.LinkCode.String)
+	}
 	switch row.Channel {
 	case "sms":
 		var c content.SMSContent
 		if err := json.Unmarshal(row.Content, &c); err != nil || strings.TrimSpace(c.Text) == "" {
 			return nil, fmt.Errorf("sms content: %v", err)
 		}
-		body, fit := fitSMS(c.Text, firstName)
-		if n := utf8.RuneCountInString(body); n > content.SMSMaxChars {
-			return nil, fmt.Errorf("sms text has %d characters without the first name, the limit is %d", n, content.SMSMaxChars)
+		limit := content.SMSMaxChars
+		if link != "" {
+			limit -= utf8.RuneCountInString(link) + 1
+		}
+		body, fit := fitSMS(c.Text, firstName, limit)
+		if link != "" && utf8.RuneCountInString(body) > limit {
+			log.Warn("sms text leaves no room for the tracking link, sent without it",
+				"characters", utf8.RuneCountInString(body), "text_budget", limit)
+			link, limit = "", content.SMSMaxChars
+			body, fit = fitSMS(c.Text, firstName, limit)
+		}
+		if n := utf8.RuneCountInString(body); n > limit {
+			return nil, fmt.Errorf("sms text has %d characters without the first name, the limit is %d", n, limit)
 		}
 		if fit != nameFull {
 			log.Info("first name did not fit the sms", "fit", fit.String())
 		}
-		info := content.MeasureSMS(body)
-		log.Debug("sms rendered", "encoding", string(info.Encoding), "segments", info.Segments, "length", info.Length)
+		final := body
+		if link != "" {
+			final = content.SMSWithLink(body, link)
+		}
+		info := content.MeasureSMS(final)
+		if info.Length > content.SMSMaxChars {
+			return nil, fmt.Errorf("sms has %d characters with the tracking link, the limit is %d", info.Length, content.SMSMaxChars)
+		}
+		log.Debug("sms rendered", "encoding", string(info.Encoding), "segments", info.Segments, "length", info.Length, "tracked", link != "")
 		return func(ctx context.Context) (provider.Result, error) {
-			return w.provider.SendSMS(ctx, key, provider.SMS{To: contact, Text: body})
+			return w.provider.SendSMS(ctx, key, provider.SMS{To: contact, Text: final})
 		}, nil
 	case "email":
 		var c content.EmailContent
@@ -628,7 +663,7 @@ func (w *worker) prepare(log *slog.Logger, row store.ListSendDeliveriesRow, firs
 			return nil, fmt.Errorf("email content: %w", err)
 		}
 		r, err := content.RenderEmail(c.Email(), content.RenderOptions{
-			CTAURL: row.CtaUrl, CampaignID: row.CampaignID.String(), Language: row.Language,
+			CTAURL: row.CtaUrl, CampaignID: row.CampaignID.String(), Language: row.Language, TrackingURL: link,
 		}, firstName)
 		if err != nil {
 			return nil, err

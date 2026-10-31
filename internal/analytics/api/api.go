@@ -112,13 +112,13 @@ func (h *Handler) listCampaigns(w http.ResponseWriter, r *http.Request) {
 // campaignSummary godoc
 //
 //	@Summary		Summary of a campaign
-//	@Description	Delivery counts per channel and status, SMS segments, the delivery cost estimate and the LLM usage of the campaign (D-083). A campaign with LLM usage whose completed event has not arrived has `completed_at` null and no deliveries. Money is a decimal string in US dollars.
+//	@Description	Delivery counts per channel and status, SMS segments, the delivery cost estimate, the LLM usage and the click-through report of the campaign (D-083, D-108). A campaign with LLM usage or clicks whose completed event has not arrived has `completed_at` null and no deliveries. `clicks` counts the clicks on the campaign's short links as they happen; `clicks.sent` and so the click-through rate (unique clickers divided by sent deliveries) are 0 until the campaign has completed. Money is a decimal string in US dollars.
 //	@Tags			campaigns
 //	@Produce		json
 //	@Param			id	path		string	true	"Campaign id"	format(uuid)
 //	@Success		200	{object}	api.CampaignReport
 //	@Failure		400	{object}	api.Problem	"id is not a UUID"
-//	@Failure		404	{object}	api.Problem	"Analytics knows nothing of the campaign"
+//	@Failure		404	{object}	api.Problem	"Analytics knows nothing of the campaign (no summary, no LLM usage, no clicks)"
 //	@Failure		500	{object}	api.Problem
 //	@Router			/campaigns/{id}/summary [get]
 func (h *Handler) campaignSummary(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +199,7 @@ func (h *Handler) llmUsageSeries(w http.ResponseWriter, r *http.Request) {
 // overview godoc
 //
 //	@Summary		Overview of deliveries and LLM usage
-//	@Description	The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), and the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range. `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
+//	@Description	The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range, and the click-through report (`clicks`: sent deliveries, unique and total clicks, CTR per channel) of the same campaigns that completed in the range (D-108). `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
 //	@Tags			overview
 //	@Produce		json
 //	@Param			from	query		string	false	"Start of the range, inclusive (RFC 3339)"	format(date-time)
@@ -225,7 +225,7 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 // overviewSeries godoc
 //
 //	@Summary		Deliveries over time
-//	@Description	Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial.
+//	@Description	Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. `clicks` is the click series: one row per (bucket, channel) with at least one click, bucketed by the time of the click, not by campaign completion (D-108). The first bucket starts at the bucket containing `from`, so it may be partial.
 //	@Tags			overview
 //	@Produce		json
 //	@Param			from	query		string	true	"Start of the range, inclusive (RFC 3339)"	format(date-time)

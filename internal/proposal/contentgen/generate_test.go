@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/furknozg/coldbru/internal/content"
+	"github.com/furknozg/coldbru/internal/proposal/contentgen"
 	"github.com/furknozg/coldbru/internal/proposal/llm"
 	"github.com/furknozg/coldbru/internal/proposal/llm/llmtest"
 	"github.com/furknozg/coldbru/internal/proposal/prompts"
@@ -708,5 +709,117 @@ func TestGenerateReturnsTheSummary(t *testing.T) {
 	}
 	if u := userOf(t, s.StreamCalls()[0].UserJSON); u["clarifications"] != nil || u["questions_left"] != nil {
 		t.Errorf("user message = %v", u)
+	}
+}
+
+// With the tracking link, the model is told a smaller SMS limit and the validator enforces it
+// (D-109); the email limits do not change.
+func TestGenerateUsesTheSMSBudget(t *testing.T) {
+	t.Parallel()
+	budget := content.SMSBudget(content.DefaultTrackingBaseURL) // 125
+	generator := func(l llm.LLM) *contentgen.Generator {
+		return contentgen.New(l, demoPrices, contentgen.WithSMSBudget(budget))
+	}
+
+	t.Run("the limit in the user message", func(t *testing.T) {
+		t.Parallel()
+		s := llmtest.NewScripted().StreamJSON(smsDoc("Merhaba {{first_name}}!"))
+		if _, err := generator(s).Generate(t.Context(), request("tr", "sms", 10), nil); err != nil {
+			t.Fatal(err)
+		}
+		var limits content.Limits
+		b, _ := json.Marshal(userOf(t, s.StreamCalls()[0].UserJSON)["limits"])
+		decode(t, b, &limits)
+		if limits != content.NewLimits(budget) || limits.SMSMaxChars != 125 || limits.SubjectMax != 80 {
+			t.Errorf("limits = %+v, want an SMS limit of 125 and the email limits unchanged", limits)
+		}
+	})
+
+	t.Run("a text over the budget is repaired, one at the budget is accepted", func(t *testing.T) {
+		t.Parallel()
+		// 126 characters fit the old 160 limit but not the budget; the name (max 9) counts too.
+		over := smsDoc(rep("a", 126))
+		atBudget := smsDoc("{{first_name}} " + rep("a", budget-10))
+		s := llmtest.NewScripted().StreamJSON(over).StreamJSON(atBudget)
+		got, err := generator(s).Generate(t.Context(), request("tr", "sms", 10), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var c content.SMSContent
+		decode(t, got.Content, &c)
+		if c.RenderedLength != budget {
+			t.Errorf("rendered_length = %d, want %d", c.RenderedLength, budget)
+		}
+		calls := s.StreamCalls()
+		if len(calls) != 2 {
+			t.Fatalf("%d model calls, want 2: one repair", len(calls))
+		}
+		rp, _ := userOf(t, calls[1].UserJSON)["repair"].(map[string]any)
+		problems, _ := rp["problems"].([]any)
+		if len(problems) != 1 {
+			t.Fatalf("repair problems = %v", rp["problems"])
+		}
+		p, _ := problems[0].(map[string]any)
+		if p["rule"] != content.RuleMaxLength || p["limit"] != float64(budget) || p["got"] != float64(126) {
+			t.Errorf("problem = %v, want max_length 126 over a limit of %d", p, budget)
+		}
+	})
+
+	t.Run("an edit is held to the budget as well", func(t *testing.T) {
+		t.Parallel()
+		g := generator(llmtest.NewScripted())
+		over := json.RawMessage(`{"text":"` + rep("a", 130) + `"}`)
+		if _, err := g.Validate(request("tr", "sms", 10), over); err == nil {
+			t.Error("Validate accepted a 130 character text under a budget of 125")
+		}
+		fits := json.RawMessage(`{"text":"` + rep("a", 125) + `"}`)
+		if _, err := g.Validate(request("tr", "sms", 10), fits); err != nil {
+			t.Errorf("Validate rejected a 125 character text: %v", err)
+		}
+	})
+
+	t.Run("without the option nothing is reserved", func(t *testing.T) {
+		t.Parallel()
+		g := newGenerator(llmtest.NewScripted())
+		if _, err := g.Validate(request("tr", "sms", 10), json.RawMessage(`{"text":"`+rep("a", 160)+`"}`)); err != nil {
+			t.Errorf("a 160 character text without a budget option: %v", err)
+		}
+	})
+}
+
+// The stored segments and cost are those of the SMS with its tracking link (D-109): a UCS-2 text
+// of 40 characters is one segment alone and two with the 34 character link and its space.
+func TestGenerateMeasuresTheSMSWithTheTrackingLink(t *testing.T) {
+	t.Parallel()
+	base := content.DefaultTrackingBaseURL
+	text := "Şimdi sepete dön, " + rep("b", 22)
+	build := func(opts ...contentgen.Option) content.SMSContent {
+		t.Helper()
+		s := llmtest.NewScripted().StreamJSON(smsDoc(text))
+		opts = append([]contentgen.Option{contentgen.WithSMSBudget(content.SMSBudget(base))}, opts...)
+		got, err := contentgen.New(s, demoPrices, opts...).Generate(t.Context(), request("tr", "sms", 10), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var c content.SMSContent
+		decode(t, got.Content, &c)
+		return c
+	}
+	alone := build()
+	with := build(contentgen.WithSMSLink(content.PlaceholderLink(base)))
+	if alone.Segments != 1 || alone.EstimatedCostUSD != "0.4000" || with.Segments != 2 || with.EstimatedCostUSD != "0.8000" || with.RenderedLength != alone.RenderedLength {
+		t.Errorf("alone %+v, with the link %+v: want 1 then 2 segments, the cost doubling, the text length unchanged", alone, with)
+	}
+
+	// An edit is measured the same way.
+	g := contentgen.New(llmtest.NewScripted(), demoPrices, contentgen.WithSMSBudget(content.SMSBudget(base)), contentgen.WithSMSLink(content.PlaceholderLink(base)))
+	raw, err := g.Validate(request("tr", "sms", 10), json.RawMessage(`{"text":"`+text+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var edited content.SMSContent
+	decode(t, raw, &edited)
+	if edited.Segments != 2 {
+		t.Errorf("edited segments = %d, want 2", edited.Segments)
 	}
 }

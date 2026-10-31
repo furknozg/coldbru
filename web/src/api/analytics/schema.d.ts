@@ -75,7 +75,7 @@ export interface paths {
         };
         /**
          * Summary of a campaign
-         * @description Delivery counts per channel and status, SMS segments, the delivery cost estimate and the LLM usage of the campaign (D-083). A campaign with LLM usage whose completed event has not arrived has `completed_at` null and no deliveries. Money is a decimal string in US dollars.
+         * @description Delivery counts per channel and status, SMS segments, the delivery cost estimate, the LLM usage and the click-through report of the campaign (D-083, D-108). A campaign with LLM usage or clicks whose completed event has not arrived has `completed_at` null and no deliveries. `clicks` counts the clicks on the campaign's short links as they happen; `clicks.sent` and so the click-through rate (unique clickers divided by sent deliveries) are 0 until the campaign has completed. Money is a decimal string in US dollars.
          */
         get: {
             parameters: {
@@ -107,7 +107,7 @@ export interface paths {
                         "application/json": components["schemas"]["api.Problem"];
                     };
                 };
-                /** @description Analytics knows nothing of the campaign */
+                /** @description Analytics knows nothing of the campaign (no summary, no LLM usage, no clicks) */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -311,7 +311,7 @@ export interface paths {
         };
         /**
          * Overview of deliveries and LLM usage
-         * @description The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), and the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range. `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
+         * @description The dashboard's headline figures (D-097): campaigns completed, deliveries per channel and status, SMS segments and the delivery cost estimate over the campaigns whose `completed_at` is in the half-open range [from, to), the LLM calls, cost, tokens and the breakdown by purpose and model over the calls whose `created_at` is in the range, and the click-through report (`clicks`: sent deliveries, unique and total clicks, CTR per channel) of the same campaigns that completed in the range (D-108). `from` and `to` (RFC 3339) are optional; an omitted bound is open-ended and echoed as null. Money is a decimal string in US dollars.
          */
         get: {
             parameters: {
@@ -373,7 +373,7 @@ export interface paths {
         };
         /**
          * Deliveries over time
-         * @description Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. The first bucket starts at the bucket containing `from`, so it may be partial.
+         * @description Delivery counts per UTC time bucket, channel and status over the half-open range [from, to) of the campaigns' `completed_at` (D-097): a campaign counts in the bucket it completed in, its sending is not spread over time. `from` and `to` are required. Buckets are aligned like `date_trunc` in UTC: `hour` allows a range of at most 7 days, `day` at most 400 days. `buckets` lists every bucket start of the range, empty ones included; `points` has one row per (bucket, channel, status) that has deliveries, so a bucket without rows has none and the client zero-fills it. `clicks` is the click series: one row per (bucket, channel) with at least one click, bucketed by the time of the click, not by campaign completion (D-108). The first bucket starts at the bucket containing `from`, so it may be partial.
          */
         get: {
             parameters: {
@@ -480,6 +480,20 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        "api.CampaignClicks": {
+            /** @description ByChannel has one entry per channel with sends or clicks, ordered by channel. */
+            by_channel: components["schemas"]["api.ChannelClicks"][];
+            /**
+             * @description ByLocale has one entry per (channel, language, timezone) with sends or clicks, ordered by
+             *     channel, language and timezone.
+             */
+            by_locale: components["schemas"]["api.LocaleClicks"][];
+            /** @example 0.1281 */
+            ctr: number;
+            sent: number;
+            total_clicks: number;
+            unique_clicks: number;
+        };
         "api.CampaignList": {
             items: components["schemas"]["api.CampaignListItem"][];
             /**
@@ -514,6 +528,8 @@ export interface components {
         "api.CampaignReport": {
             /** Format: uuid */
             campaign_id: string;
+            /** @description Clicks is the click-through report (D-108). */
+            clicks: components["schemas"]["api.CampaignClicks"];
             /**
              * Format: date-time
              * @description CompletedAt is null until the campaign is completed.
@@ -526,6 +542,27 @@ export interface components {
             llm: components["schemas"]["api.LLMSummary"];
             /** @example 2400 */
             sms_segments: number;
+        };
+        "api.ChannelClicks": {
+            /** @enum {string} */
+            channel: "sms" | "email";
+            /** @example 0.1281 */
+            ctr: number;
+            sent: number;
+            total_clicks: number;
+            unique_clicks: number;
+        };
+        "api.ClickSeriesPoint": {
+            /** @enum {string} */
+            channel: "sms" | "email";
+            /**
+             * Format: date-time
+             * @description Start is the start of the bucket (UTC); one of the bucket starts of the response.
+             */
+            start: string;
+            total_clicks: number;
+            /** @description UniqueClicks counts the first clicks of a delivery, TotalClicks every click. */
+            unique_clicks: number;
         };
         "api.DeliveryCount": {
             /** @enum {string} */
@@ -576,6 +613,35 @@ export interface components {
             cost_usd: string;
             tokens: components["schemas"]["api.Tokens"];
         };
+        "api.LocaleClicks": {
+            /** @enum {string} */
+            channel: "sms" | "email";
+            /**
+             * @description CTR is UniqueClicks divided by Sent, four decimals; 0 when Sent is 0.
+             * @example 0.1281
+             */
+            ctr: number;
+            /** @enum {string} */
+            language: "tr" | "en";
+            /**
+             * @description Sent is the number of deliveries sent to the slot, from the completed event; 0 until the
+             *     campaign has completed.
+             * @example 320
+             */
+            sent: number;
+            /** @example Europe/Istanbul */
+            timezone: string;
+            /**
+             * @description TotalClicks is the number of clicks, repeated ones included. Bots and link previews are not filtered.
+             * @example 57
+             */
+            total_clicks: number;
+            /**
+             * @description UniqueClicks is the number of deliveries clicked at least once (D-108).
+             * @example 41
+             */
+            unique_clicks: number;
+        };
         "api.ModelUsage": {
             calls: number;
             /** @example 0.00420000 */
@@ -588,6 +654,8 @@ export interface components {
         "api.Overview": {
             /** @description CampaignsCompleted is the number of campaigns completed in the range. */
             campaigns_completed: number;
+            /** @description Clicks is the click-through report of the campaigns completed in the range (D-108). */
+            clicks: components["schemas"]["api.OverviewClicks"];
             /** @description Deliveries has one entry per (channel, status) with at least one delivery, ordered by channel and status. */
             deliveries: components["schemas"]["api.DeliveryCount"][];
             /** @example 96.000000 */
@@ -602,6 +670,15 @@ export interface components {
             sms_segments: number;
             /** Format: date-time */
             to: string;
+        };
+        "api.OverviewClicks": {
+            /** @description ByChannel has one entry per channel with sends or clicks, ordered by channel. */
+            by_channel: components["schemas"]["api.ChannelClicks"][];
+            /** @example 0.1281 */
+            ctr: number;
+            sent: number;
+            total_clicks: number;
+            unique_clicks: number;
         };
         "api.OverviewLLM": {
             /** @description ByModel has one entry per model with calls, ordered by model. */
@@ -621,6 +698,11 @@ export interface components {
             bucket: "hour" | "day";
             /** @description Buckets lists the start of every bucket of the range, ascending, empty ones included. */
             buckets: string[];
+            /**
+             * @description Clicks has one row per (bucket, channel) with at least one click, ordered by bucket and
+             *     channel, bucketed by the click time (D-108). A bucket without a row has no clicks.
+             */
+            clicks: components["schemas"]["api.ClickSeriesPoint"][];
             /** Format: date-time */
             from: string;
             /**
