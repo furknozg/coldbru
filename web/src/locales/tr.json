@@ -211,11 +211,21 @@
     "editTitle": "E-postayı düzenle",
     "paragraph": "{n}. paragraf",
     "addParagraph": "Paragraf ekle",
-    "removeParagraph": "{n}. paragrafı kaldır"
+    "removeParagraph": "{n}. paragrafı kaldır",
+    "editSmsTitle": "SMS'i düzenle",
+    "smsText": "Mesaj metni",
+    "approxLength": "Yaklaşık {n} karakter; kesin ölçüm sunucuda, en uzun adla ve bağlantıyla yapılır."
   },
   "schedule": {
     "sendAt": "Gönderim zamanı",
-    "immediately": "Hemen gönder"
+    "immediately": "Hemen gönder",
+    "edit": {
+      "title": "Zamanlamayı düzenle",
+      "date": "Gönderim tarihi",
+      "time": "Saat ({zone})",
+      "localEquivalent": "Senin saatinle: {time}",
+      "incomplete": "Bir gün ve HH:mm biçiminde bir saat seçin."
+    }
   },
   "cost": {
     "title": "Tahmini maliyet",
