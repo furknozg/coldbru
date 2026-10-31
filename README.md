@@ -146,7 +146,10 @@ Stream'ler: `EVENTS` (servisler arası olaylar), `RECIPIENTS` (500'lük alıcı 
 - Prompt değerlendirmesi yalnız elle yazılmış yanıtlarla; promptfoo ve gerçek modele karşı `make eval-live` yok (D-115).
 - Tıklamalarda bot veya önizleme ayıklaması yok; her `GET /r/<kod>` tıklama sayılır (D-108).
 - Kitle adımında DSL kuralı arayüzden düzenlenmez; yeniden üretim ek bağlam veya red gerekçesiyle yapılır (D-096).
-- `ai-sessions/`: Claude Code oturum export'ları bu klasöre eklenecek (T-041, henüz eklenmedi).
+
+## Claude oturum kayıtları
+
+Claude Code oturumlarının export'ları boyutları nedeniyle repoda değil, Google Drive'dadır: [coldbru ai-sessions](https://drive.google.com/drive/folders/1P0i7-O8D4vkYnxmTHxOQHHX5SRL07rER). Klasörde `/export` çıktısı, ham JSONL transkriptleri (alt ajanlar dahil; `raw/` ve 10 MB altına bölünmüş düz kopyaları `upload-jsonl/`), okunur Markdown export'ları ve içeriği anlatan bir README vardır. API anahtarı ve token kalıpları tarandı, bulunmadı; e-posta adresi ve ev dizinindeki kullanıcı adı maskelendi.
 
 ## Repo yapısı
 
