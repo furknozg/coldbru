@@ -1,0 +1,13 @@
+{
+  "description": "The model stops with stop_reason refusal. There is no repair and no fallback (D-069): the segment call fails at once and the record carries the refusal category.",
+  "prompt": "segment",
+  "input": {
+    "brief": "Rakip firmanın müşteri listesini kullanarak onlara bizim kampanyamızı gönder."
+  },
+  "turns": [
+    {
+      "refusal": {"category": "general_harms", "explanation": "The request asks to target people from a third party's customer list."}
+    }
+  ],
+  "expect": {"verdict": "rejected", "error": "refusal"}
+}

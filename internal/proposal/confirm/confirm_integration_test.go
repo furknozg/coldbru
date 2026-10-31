@@ -499,8 +499,9 @@ func (s *system) status(id uuid.UUID) string { return s.view(id).Status }
 func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 	s := newSystem(t)
 	w := s.walk()
-	if w.aud.Count != 46 || w.plan.Mode != llm.ModePrimaryFallback || w.plan.Primary != llm.ChannelEmail {
-		t.Fatalf("audience %d plan %s/%s, want 46 and primary_fallback/email", w.aud.Count, w.plan.Mode, w.plan.Primary)
+	// The 3000-user seed (D-113): 138 reachable, 120 email + 18 sms fallback, four content slots.
+	if w.aud.Count != 138 || w.plan.Mode != llm.ModePrimaryFallback || w.plan.Primary != llm.ChannelEmail {
+		t.Fatalf("audience %d plan %s/%s, want 138 and primary_fallback/email", w.aud.Count, w.plan.Mode, w.plan.Primary)
 	}
 	sub := s.svc.Hub().Subscribe(w.id)
 	defer sub.Close()
@@ -525,7 +526,7 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 			t.Fatal("no campaign_confirmed event on the hub")
 		}
 	}
-	if confirmedEv.RecipientCounts != (flow.Recipients{Email: 33, SMS: 13, Total: 46}) || confirmedEv.RecipientBatches != 1 {
+	if confirmedEv.RecipientCounts != (flow.Recipients{Email: 120, SMS: 18, Total: 138}) || confirmedEv.RecipientBatches != 1 {
 		t.Errorf("campaign_confirmed = %+v", confirmedEv)
 	}
 
@@ -546,11 +547,11 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 	if err := json.Unmarshal(env.Data, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.CampaignID != w.id.String() || data.RecipientCounts != (flow.Recipients{Email: 33, SMS: 13, Total: 46}) || data.RecipientBatches != 1 {
+	if data.CampaignID != w.id.String() || data.RecipientCounts != (flow.Recipients{Email: 120, SMS: 18, Total: 138}) || data.RecipientBatches != 1 {
 		t.Errorf("data = %+v", data)
 	}
-	if len(data.Messages) != 3 || len(data.Schedules) != w.slots {
-		t.Errorf("%d messages, %d schedules, want 3 and %d", len(data.Messages), len(data.Schedules), w.slots)
+	if len(data.Messages) != 4 || len(data.Schedules) != w.slots {
+		t.Errorf("%d messages, %d schedules, want 4 and %d", len(data.Messages), len(data.Schedules), w.slots)
 	}
 	for _, m := range data.Messages {
 		if !strings.Contains(string(m.Content), "{{first_name}}") || (m.Channel != "sms" && m.Channel != "email") || m.Language == "" {
@@ -571,7 +572,7 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 		t.Errorf("cta_url = %q, want %q", data.CTAURL, wantCTA)
 	}
 
-	// RECIPIENTS: ceil(46/500) = 1 batch of 46, channels as planned, contacts of the right kind.
+	// RECIPIENTS: ceil(138/500) = 1 batch of 138, channels as planned, contacts of the right kind.
 	subject := "recipients." + w.id.String()
 	s.waitSubject(s.recips, subject, 1)
 	bm := s.lastMsg(s.recips, subject)
@@ -579,7 +580,7 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 	if err := json.Unmarshal(bm.Data, &batch); err != nil {
 		t.Fatal(err)
 	}
-	if batch.CampaignID != w.id.String() || batch.BatchNo != 1 || batch.BatchCount != 1 || len(batch.Recipients) != 46 {
+	if batch.CampaignID != w.id.String() || batch.BatchNo != 1 || batch.BatchCount != 1 || len(batch.Recipients) != 138 {
 		t.Fatalf("batch = %s %d/%d with %d recipients", batch.CampaignID, batch.BatchNo, batch.BatchCount, len(batch.Recipients))
 	}
 	f, errs := compile.Compile(w.aud.DSL)
@@ -620,8 +621,8 @@ func TestSampleBriefConfirmsAndPublishes(t *testing.T) {
 			t.Errorf("recipient %+v has channel %q", r, r.Channel)
 		}
 	}
-	if email != 33 || sms != 13 {
-		t.Errorf("batch has %d email and %d sms, want 33 and 13", email, sms)
+	if email != 120 || sms != 18 {
+		t.Errorf("batch has %d email and %d sms, want 120 and 18", email, sms)
 	}
 
 	// The outbox row ids are the Nats-Msg-Ids, for the envelope and for the raw batch.

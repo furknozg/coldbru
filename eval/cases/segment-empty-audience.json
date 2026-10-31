@@ -1,0 +1,22 @@
+{
+  "description": "The first proposal compiles but selects nobody: the stub Customer answers 0 for it. llm.CustomerTools turns that into the EMPTY_AUDIENCE validation error (D-069); the loosened proposal counts 46 and is accepted. The count itself is stubbed, see README.md.",
+  "prompt": "segment",
+  "input": {
+    "brief": "Ankara'da açık sepeti olan müşterilere hatırlatma gönder.",
+    "audience_by_dsl": {"city === \"Ankara\" && hasOpenCart === true && loyaltyTier === \"Platinum\"": 0}
+  },
+  "turns": [
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "city === \"Ankara\" && hasOpenCart === true && loyaltyTier === \"Platinum\""}}
+      ]
+    },
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "city === \"Ankara\" && hasOpenCart === true"}},
+        {"name": "send_summary", "input": {"markdown": "**Kitle:** Ankara'da açık sepeti olan müşteriler. Platinum koşulu kimseyi seçmediği için kaldırıldı."}}
+      ]
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "EMPTY_AUDIENCE"}
+}

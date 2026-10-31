@@ -1,7 +1,9 @@
 # stub/ — ham veri ve zenginleştirilmiş stub seti
 
 `source/acw_user_data.csv` elimize verilen ham export (1000 satır, Faker/en_GB). **Hiç değiştirilmez.**
-Diğer tüm CSV'ler `generate_stub_data.py` tarafından bu dosyadan deterministik olarak üretilir:
+Diğer tüm CSV'ler `generate_stub_data.py` tarafından bu dosyadan deterministik olarak üretilir;
+kullanıcı sayısı `TOTAL_USERS = 3000`'dir (D-113): ilk 1000 kullanıcı ham satırlardan, sonraki 2000 kullanıcı
+ham satırların yeniden örneklenmesinden gelir (aşağıya bakın):
 
 ```bash
 python3 stub/generate_stub_data.py
@@ -13,15 +15,24 @@ Aynı girdi + `SEED=20261026` → bayt bayt aynı çıktı. Sadece standart küt
 
 | Dosya | Satır | Birincil anahtar | Yabancı anahtarlar | Ne anlatır |
 |---|---|---|---|---|
-| `acw_user_data.csv` | 1000 | `Customer ID` | — | Orijinal 23 kolon aynen + 32 segmentasyon kolonu |
+| `acw_user_data.csv` | 3000 | `Customer ID` | — | Orijinal 23 kolon aynen + 32 segmentasyon kolonu |
 | `acw_products.csv` | ~160 | `Product ID` | — | 9 kategori, GBP fiyat, stok, puan |
-| `acw_orders.csv` | ~3.9k | `Order ID` | `Customer ID` | Son 6 yılın siparişleri; durum, indirim kodu, ödeme yöntemi, platform |
-| `acw_order_items.csv` | ~9k | (`Order ID`,`Product ID`) | `Order ID`, `Product ID` | Sipariş kalemleri; toplamlar `acw_orders` ile birebir tutar |
-| `acw_events.csv` | ~44k | `Event ID` | `Customer ID`, `Session ID`, `Product ID`, `Order ID` | Son 90 günün davranış olayları (bkz. olay tipleri) |
-| `acw_cart_items.csv` | ~3.8k | `Cart Item ID` | `Customer ID`, `Product ID`, `Order ID` | Sepete eklenen her kalem: `open` / `abandoned` / `converted` / `removed` |
-| `acw_consents.csv` | ~2.2k | `Consent ID` | `Customer ID` | Kanal izni geçmişi (email/sms); son satır = güncel durum |
+| `acw_orders.csv` | ~11.9k | `Order ID` | `Customer ID` | Son 6 yılın siparişleri; durum, indirim kodu, ödeme yöntemi, platform |
+| `acw_order_items.csv` | ~27.9k | (`Order ID`,`Product ID`) | `Order ID`, `Product ID` | Sipariş kalemleri; toplamlar `acw_orders` ile birebir tutar |
+| `acw_events.csv` | ~138k | `Event ID` | `Customer ID`, `Session ID`, `Product ID`, `Order ID` | Son 90 günün davranış olayları (bkz. olay tipleri) |
+| `acw_cart_items.csv` | ~11.9k | `Cart Item ID` | `Customer ID`, `Product ID`, `Order ID` | Sepete eklenen her kalem: `open` / `abandoned` / `converted` / `removed` |
+| `acw_consents.csv` | ~6.7k | `Consent ID` | `Customer ID` | Kanal izni geçmişi (email/sms); son satır = güncel durum |
 | `acw_campaigns.csv` | 12 | `Campaign ID` | — | Geçmiş kampanyalar: brief, segment kuralı, kanal, gönderim özeti |
-| `acw_campaign_messages.csv` | ~3.1k | `Message ID` | `Campaign ID`, `Customer ID` | Kişi başı mesaj: teslim durumu, açılma/tıklama/abonelik iptali |
+| `acw_campaign_messages.csv` | ~9.2k | `Message ID` | `Campaign ID`, `Customer ID` | Kişi başı mesaj: teslim durumu, açılma/tıklama/abonelik iptali |
+
+## `acw_user_data.csv` — yeniden örneklenen kullanıcılar (D-113)
+
+`CUS-001001` … `CUS-003000` için üretici rastgele bir ham satır seçer ve ad dışı profil alanlarını
+(adres, yaş, işe uzaklık, işveren, bakmakla yükümlü, medeni durum, emeklilik, maaş, cinsiyet, araç) olduğu gibi
+kopyalar; `First Name` ve `Last Name` ham dosyadaki ad ve soyadlar arasından ayrı ayrı çekilir. Bu satırlarda
+`Credit Card *` ve `Bank IBAN` kolonları boştur; kart verisi hiçbir yeni kullanıcıya kopyalanmaz.
+Ülke, şehir, dil, sipariş, sepet, izin ve olaylar bütün kullanıcılar için aynı kodla ve aynı dağılımlarla üretilir.
+`Email` ve `Phone (E.164)` 3000 kullanıcı içinde benzersizdir.
 
 ## `acw_user_data.csv` — eklenen kolonlar
 
@@ -29,7 +40,7 @@ Aynı girdi + `SEED=20261026` → bayt bayt aynı çıktı. Sadece standart küt
 |---|---|
 | `Customer ID` | `CUS-000001` … (ilk kolon) |
 | `Email`, `Email Bounced` | Ad.soyad@domain, benzersiz; %3 bounce eden adres |
-| `Phone (E.164)` | `+905…` / `+447…`; %4 boş (SMS gönderilemez) |
+| `Phone (E.164)` | `+905…` / `+447…`, benzersiz; %4 boş (SMS gönderilemez) |
 | `Country Code`, `City`, `Language`, `Timezone` | TR %60 / GB %40; şehirler nüfus ağırlıklı (İstanbul TR'nin %35'i); dil tr/en |
 | `Date of Birth`, `Signup Date` | DOB `Age (Years)` ile tutarlı; kayıt son 6 yıl, yeni kayıt ağırlıklı |
 | `Account Status`, `Deleted At` | active %95, inactive %3, deleted %2 (silinen hesaba gönderim yapılmaz) |
@@ -42,7 +53,7 @@ Aynı girdi + `SEED=20261026` → bayt bayt aynı çıktı. Sadece standart küt
 | `Loyalty Tier`, `Loyalty Points` | Bronze <300, Silver <1200, Gold <3000, Platinum ≥3000 GBP |
 | `Campaigns Received (90d)`, `Emails Opened (90d)`, `Last Campaign Sent At` | `acw_campaign_messages.csv`'den türetilir |
 
-Orijinal kolonlardan `Credit Card *`, `Bank IBAN`, araç ve maaş alanları olduğu gibi durur; seed'e alınıp alınmayacakları DECISIONS.md'de karara bağlanır.
+Orijinal kolonlardan `Credit Card *`, `Bank IBAN`, araç ve maaş alanları ilk 1000 satırda olduğu gibi durur (yeniden örneklenen satırlarda kart ve IBAN boştur); kart/CVV/IBAN seed'e alınmaz (D-004).
 
 ## Olay tipleri (`acw_events.csv`)
 
@@ -60,8 +71,10 @@ Orijinal kolonlardan `Credit Card *`, `Bank IBAN`, araç ve maaş alanları oldu
 "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılar" — üretici her çalışmada bu sayıyı basar:
 
 ```
-İstanbul active users 195 -> carted 90 -> no purchase 49 -> sms-sendable 33 / email-sendable 33
+İstanbul active users 598 -> carted 263 -> no purchase 155 -> sms-sendable 103 / email-sendable 120
 ```
+
+(1000 kullanıcılı eski seed: `195 -> 90 -> 49 -> 33 / 33`.)
 
 ## Bilinen tuhaflıklar
 

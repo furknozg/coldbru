@@ -111,8 +111,8 @@ func TestSampleBriefScheduleSlotsAreIstanbulOnly(t *testing.T) {
 	for _, l := range in[0].Locales {
 		total += l.Recipients
 	}
-	if total != 46 {
-		t.Errorf("recipients of the schedule input add up to %d, want the plan's 46 messages", total)
+	if total != 138 {
+		t.Errorf("recipients of the schedule input add up to %d, want the plan's 138 messages", total)
 	}
 
 	// Events carry the timezone on the schedule slots.

@@ -1,6 +1,7 @@
-# Runs `make test` (Go unit + integration tests with testcontainers, and the web unit tests) on every
-# push and pull request (D-105). The ubuntu-latest runner ships Docker, which testcontainers needs
-# (D-025). No secrets: the tests use scripted LLM doubles and never read ANTHROPIC_API_KEY.
+# Runs `make test` (Go unit + integration tests with testcontainers, and the web unit tests) and then
+# `make eval` (the prompt evaluation of D-115) on every push and pull request (D-105). The
+# ubuntu-latest runner ships Docker, which testcontainers needs (D-025). No secrets: the tests and
+# the eval use scripted LLM doubles and never read ANTHROPIC_API_KEY.
 name: test
 
 on:
@@ -40,3 +41,7 @@ jobs:
       - run: pnpm -C web install --frozen-lockfile
 
       - run: make test
+
+      # Prompt evaluation (D-115): recorded model answers through the real validators, no key, its
+      # own step so the per-case report stays readable apart from the test output.
+      - run: make eval

@@ -1,0 +1,21 @@
+{
+  "description": "The first proposal compares the integer field totalOrders with a string. The catalog type check rejects it as TYPE_MISMATCH; the repaired proposal is accepted.",
+  "prompt": "segment",
+  "input": {
+    "brief": "En az 5 sipariş vermiş sadık müşterilere teşekkür kampanyası gönder."
+  },
+  "turns": [
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "totalOrders >= \"5\""}}
+      ]
+    },
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "totalOrders >= 5"}},
+        {"name": "send_summary", "input": {"markdown": "**Kitle:** toplam en az 5 sipariş vermiş müşteriler."}}
+      ]
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "TYPE_MISMATCH"}
+}

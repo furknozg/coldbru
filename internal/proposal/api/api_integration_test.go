@@ -367,8 +367,9 @@ func TestSampleBriefOverRESTAndSSE(t *testing.T) {
 	if err := json.Unmarshal(audienceVariant.Content, &aud); err != nil {
 		t.Fatal(err)
 	}
-	if aud.Count != 46 || aud.Coverage != (flow.Coverage{Both: 20, EmailOnly: 13, SMSOnly: 13, Unreachable: 3}) {
-		t.Errorf("audience = %d %+v, want 46 with coverage 20/13/13/3", aud.Count, aud.Coverage)
+	// The 3000-user seed (D-113): 138 reachable, coverage 85/35/18/17.
+	if aud.Count != 138 || aud.Coverage != (flow.Coverage{Both: 85, EmailOnly: 35, SMSOnly: 18, Unreachable: 17}) {
+		t.Errorf("audience = %d %+v, want 138 with coverage 85/35/18/17", aud.Count, aud.Coverage)
 	}
 	if !strings.Contains(aud.DSL, `city === "İstanbul"`) {
 		t.Errorf("dsl = %q", aud.DSL)
@@ -384,7 +385,7 @@ func TestSampleBriefOverRESTAndSSE(t *testing.T) {
 	if err := json.Unmarshal(plan[0].Content, &pc); err != nil {
 		t.Fatal(err)
 	}
-	if pc.Mode != llm.ModePrimaryFallback || pc.Primary != llm.ChannelEmail || pc.Recipients.Email != 33 || pc.Recipients.SMS != 13 ||
+	if pc.Mode != llm.ModePrimaryFallback || pc.Primary != llm.ChannelEmail || pc.Recipients.Email != 120 || pc.Recipients.SMS != 18 ||
 		!strings.Contains(pc.Rationale, "mock yanıt") {
 		t.Errorf("plan = %+v", pc)
 	}

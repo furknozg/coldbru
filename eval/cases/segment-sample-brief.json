@@ -1,0 +1,16 @@
+{
+  "description": "The sample brief with the filter the mock LLM also proposes. propose_segment and send_summary arrive in the same turn; the filter compiles, the stub Customer counts 46, the summary passes llm.CheckSummary.",
+  "prompt": "segment",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun."
+  },
+  "turns": [
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "city === \"İstanbul\" && cartItems.some(c => c.addedAt >= ago(\"30d\")) && orders.none(o => o.orderDate >= ago(\"30d\"))"}},
+        {"name": "send_summary", "input": {"markdown": "**Kitle:** son 30 günde sepetine ürün ekleyip bu sürede sipariş vermeyen İstanbul'daki müşteriler. Şehir filtresi İstanbul'a sabitlendi; sepet ve sipariş koşulları ago(\"30d\") ile ölçüldü."}}
+      ]
+    }
+  ],
+  "expect": {"verdict": "accepted"}
+}

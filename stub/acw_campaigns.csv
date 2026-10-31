@@ -1,13 +1,13 @@
 Campaign ID,Campaign Name,Brief,Channels,Segment Rule,Template,Sent At,Campaign Status,Audience Size,Email Sent,Email Delivered,Email Opened,Email Clicked,SMS Sent,SMS Delivered,SMS Clicked
-CMP-001,Spring Refresh,Home & Living'de yeni sezon ürünlerini tüm aktif kullanıcılara duyur.,email,status = active,seasonal_launch,2026-05-04T10:00:00Z,completed,422,329,303,119,9,0,0,0
-CMP-002,Welcome Series - May,Son 30 günde kayıt olanlara %10 hoş geldin indirimi gönder.,"email,sms",signup_date >= now-30d,welcome_discount,2026-05-19T10:00:00Z,completed,94,69,64,19,1,58,52,5
-CMP-003,Cart Reminder - June,Sepetinde ürün bırakanlara 24 saat içinde hatırlatma gönder.,sms,has_open_cart = true,cart_reminder,2026-06-08T11:00:00Z,completed,146,0,0,0,0,91,85,6
-CMP-004,Summer Sale Kick-off,Tüm kullanıcılara %30 yaz indirimi. Samimi ve kısa olsun.,"email,sms",status = active,summer_sale,2026-06-28T18:00:00Z,completed,590,455,417,135,3,374,355,37
-CMP-005,Summer Sale Last Call,Yaz indiriminden yararlanmayan kullanıcılara son çağrı.,email,status = active AND orders_since(campaign) = 0,summer_last_call,2026-07-06T09:00:00Z,completed,426,327,289,114,12,0,0,0
-CMP-006,Back to School,Çocuklu kullanıcılara okul dönüşü ürünleri.,email,dependants >= 1,back_to_school,2026-07-23T09:00:00Z,completed,260,207,182,76,5,0,0,0
-CMP-007,Istanbul Flash Deal,İstanbul'daki kullanıcılara 48 saatlik flash indirim.,sms,city = İstanbul,flash_deal_city,2026-08-07T11:00:00Z,completed,40,0,0,0,0,30,29,2
-CMP-008,Loyalty Gold Perks,Gold ve Platinum üyelere özel erken erişim.,email,"loyalty_tier IN (Gold, Platinum)",loyalty_perks,2026-08-22T18:00:00Z,completed,136,102,89,30,1,0,0,0
-CMP-009,Cart Reminder - September,Son 7 günde sepete ekleyip almayanlara %15 hatırlatma.,"email,sms",last_cart_add >= now-7d AND no purchase,cart_reminder,2026-09-11T15:00:00Z,completed,149,125,116,36,1,101,97,12
-CMP-010,Autumn Fashion Drop,Moda kategorisini seven kullanıcılara yeni koleksiyon.,email,favourite_category = Fashion,fashion_drop,2026-09-26T11:00:00Z,completed,334,253,226,86,4,0,0,0
-CMP-011,Win-back 60d,60 gündür alışveriş yapmayan eski müşterilere geri dönüş teklifi.,"email,sms",last_order_date <= now-60d AND total_orders >= 1,win_back,2026-10-08T14:00:00Z,completed,271,211,187,69,5,171,165,12
-CMP-012,Republic Day Weekend,29 Ekim haftasonu için tüm TR kullanıcılarına %20 indirim.,sms,country = TR,republic_day,2026-10-23T14:00:00Z,completed,331,0,0,0,0,215,204,17
+CMP-001,Spring Refresh,Home & Living'de yeni sezon ürünlerini tüm aktif kullanıcılara duyur.,email,status = active,seasonal_launch,2026-05-04T14:00:00Z,completed,1280,964,864,299,31,0,0,0
+CMP-002,Welcome Series - May,Son 30 günde kayıt olanlara %10 hoş geldin indirimi gönder.,"email,sms",signup_date >= now-30d,welcome_discount,2026-05-19T15:00:00Z,completed,286,216,201,70,5,182,172,19
+CMP-003,Cart Reminder - June,Sepetinde ürün bırakanlara 24 saat içinde hatırlatma gönder.,sms,has_open_cart = true,cart_reminder,2026-06-08T09:00:00Z,completed,443,0,0,0,0,283,274,34
+CMP-004,Summer Sale Kick-off,Tüm kullanıcılara %30 yaz indirimi. Samimi ve kısa olsun.,"email,sms",status = active,summer_sale,2026-06-28T10:00:00Z,completed,1773,1335,1204,428,32,1137,1077,111
+CMP-005,Summer Sale Last Call,Yaz indiriminden yararlanmayan kullanıcılara son çağrı.,email,status = active AND orders_since(campaign) = 0,summer_last_call,2026-07-06T09:00:00Z,completed,1277,973,874,314,23,0,0,0
+CMP-006,Back to School,Çocuklu kullanıcılara okul dönüşü ürünleri.,email,dependants >= 1,back_to_school,2026-07-23T10:00:00Z,completed,768,575,518,175,13,0,0,0
+CMP-007,Istanbul Flash Deal,İstanbul'daki kullanıcılara 48 saatlik flash indirim.,sms,city = İstanbul,flash_deal_city,2026-08-07T15:00:00Z,completed,120,0,0,0,0,77,72,7
+CMP-008,Loyalty Gold Perks,Gold ve Platinum üyelere özel erken erişim.,email,"loyalty_tier IN (Gold, Platinum)",loyalty_perks,2026-08-22T09:00:00Z,completed,405,312,279,106,11,0,0,0
+CMP-009,Cart Reminder - September,Son 7 günde sepete ekleyip almayanlara %15 hatırlatma.,"email,sms",last_cart_add >= now-7d AND no purchase,cart_reminder,2026-09-11T14:00:00Z,completed,443,330,302,103,7,298,286,31
+CMP-010,Autumn Fashion Drop,Moda kategorisini seven kullanıcılara yeni koleksiyon.,email,favourite_category = Fashion,fashion_drop,2026-09-26T15:00:00Z,completed,992,742,661,229,13,0,0,0
+CMP-011,Win-back 60d,60 gündür alışveriş yapmayan eski müşterilere geri dönüş teklifi.,"email,sms",last_order_date <= now-60d AND total_orders >= 1,win_back,2026-10-08T15:00:00Z,completed,806,592,529,184,11,518,503,50
+CMP-012,Republic Day Weekend,29 Ekim haftasonu için tüm TR kullanıcılarına %20 indirim.,sms,country = TR,republic_day,2026-10-23T11:00:00Z,completed,995,0,0,0,0,666,634,60

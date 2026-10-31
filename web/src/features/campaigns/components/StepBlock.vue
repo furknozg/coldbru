@@ -21,13 +21,15 @@ import VariantCarousel from './VariantCarousel.vue'
 
 /**
  * One step in the chat (D-091). One accordion holds the step's events and actions. It starts
- * folded whatever the step's state (D-112); once the reader unfolds or folds it, that choice holds
- * until the step's status changes. The variants are the only cards: the drafts of the open
- * step with their actions, and, once the step is approved, only the approved ones. Rejected and
- * replaced variants are listed in the accordion. The text step's cards sit in one carousel per
- * channel and the schedule step's in one (D-095), each with a count of the slots still waiting for
- * an approval while the step is open. The block fades in once, when it is added to the chat
- * (D-112); later updates of the step do not replay it.
+ * folded whatever the step's state (D-112), except when the step's latest generation failed: then
+ * it opens by itself so the reason and the way to try again are on screen (D-117). Once the reader
+ * unfolds or folds it, that choice holds until the step's status or its failure state changes; a
+ * new failure after a regenerate opens it again. The variants are the only cards: the drafts of
+ * the open step with their actions, and, once the step is approved, only the approved ones.
+ * Rejected and replaced variants are listed in the accordion. The text step's cards sit in one
+ * carousel per channel and the schedule step's in one (D-095), each with a count of the slots
+ * still waiting for an approval while the step is open. The block fades in once, when it is added
+ * to the chat (D-112); later updates of the step do not replay it.
  */
 const props = defineProps<{
   step: StepView
@@ -43,15 +45,15 @@ const labels = useLabels()
 const drafting = computed(() => props.campaignStatus === 'drafting')
 const isOpen = computed(() => props.step.status === 'open')
 
-/** What the reader chose; until then the accordion is folded (D-112). */
+/** The step's latest generation failed and nothing is running in its place (D-117). */
+const failed = computed(() => props.step.failed && !props.step.generating)
+
+/** What the reader chose; until then the accordion is folded, unless the step failed (D-112, D-117). */
 const chosen = shallowRef<boolean | null>(null)
-const expanded = computed(() => chosen.value ?? false)
-watch(
-  () => props.step.status,
-  () => {
-    chosen.value = null
-  },
-)
+const expanded = computed(() => chosen.value ?? failed.value)
+watch([() => props.step.status, failed], () => {
+  chosen.value = null
+})
 
 const cardsShown = computed(() => isOpen.value || props.step.status === 'approved')
 const cards = computed(() =>

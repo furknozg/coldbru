@@ -1,0 +1,19 @@
+{
+  "description": "tool_choice is auto, so the model may answer in prose instead of calling propose_segment. That turn counts as a failed attempt (D-027); the loop nudges the model and the next turn's proposal is accepted.",
+  "prompt": "segment",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun."
+  },
+  "turns": [
+    {
+      "text": "Filtre şu olmalı: city === \"İstanbul\" && lastCartAddDate >= ago(\"30d\")"
+    },
+    {
+      "tool_calls": [
+        {"name": "propose_segment", "input": {"dsl": "city === \"İstanbul\" && lastCartAddDate >= ago(\"30d\") && orders.none(o => o.orderDate >= ago(\"30d\"))"}},
+        {"name": "send_summary", "input": {"markdown": "**Kitle:** son 30 günde sepetine ürün ekleyen ve bu sürede sipariş vermeyen İstanbul'daki müşteriler."}}
+      ]
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "no_tool_call"}
+}

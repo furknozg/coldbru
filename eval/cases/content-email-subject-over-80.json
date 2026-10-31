@@ -1,0 +1,46 @@
+{
+  "description": "An email whose subject is longer than 80 characters once {{first_name}} is expanded. content.CheckEmail reports max_length on email.subject; the repaired email is accepted.",
+  "prompt": "content",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "language": "tr",
+    "channel": "email",
+    "recipients": 30,
+    "max_first_name_length": 9
+  },
+  "turns": [
+    {
+      "json": {
+        "sms": null,
+        "email": {
+          "subject": "{{first_name}}, sepetindeki ürünler seni bekliyor: sadece bu hafta sonuna kadar geçerli %30 indirim fırsatını kaçırma",
+          "preheader": "Son 30 günde sepetine eklediklerin hâlâ orada.",
+          "headline": "Sepetin seni bekliyor, {{first_name}}",
+          "paragraphs": [
+            "Son 30 günde sepetine eklediğin ürünleri henüz satın almadın. Onlar hâlâ seni bekliyor.",
+            "Bu hafta sepetindeki her şeyde %30 indirim var. Alışverişini dilediğin zaman tamamla."
+          ],
+          "cta_label": "Sepetime dön"
+        },
+        "summary": "Samimi bir hatırlatma; indirim %30."
+      }
+    },
+    {
+      "json": {
+        "sms": null,
+        "email": {
+          "subject": "Sepetin seni bekliyor, {{first_name}}: %30 indirim",
+          "preheader": "Son 30 günde sepetine eklediklerin hâlâ orada.",
+          "headline": "Sepetin seni bekliyor, {{first_name}}",
+          "paragraphs": [
+            "Son 30 günde sepetine eklediğin ürünleri henüz satın almadın. Onlar hâlâ seni bekliyor.",
+            "Bu hafta sepetindeki her şeyde %30 indirim var. Alışverişini dilediğin zaman tamamla."
+          ],
+          "cta_label": "Sepetime dön"
+        },
+        "summary": "Konu kısaltıldı; samimi hatırlatma, indirim %30."
+      }
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "max_length", "field": "email.subject"}
+}

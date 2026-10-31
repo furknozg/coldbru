@@ -78,13 +78,13 @@ erDiagram
 
 | Tablo | Kaynak CSV | Birincil anahtar | Satır | Rol |
 |---|---|---|---|---|
-| `dim_customer` | `acw_user_data.csv` | `customer_id` | 1000 | Müşteri başına tek geniş satır; özet ve davranış kolonları dahil |
+| `dim_customer` | `acw_user_data.csv` | `customer_id` | 3000 | Müşteri başına tek geniş satır; özet ve davranış kolonları dahil |
 | `dim_product` | `acw_products.csv` | `product_id` | 159 | Ürün kataloğu |
-| `fact_order` | `acw_orders.csv` | `order_id` | 3.9k | Sipariş başlığı |
-| `fact_order_item` | `acw_order_items.csv` | (`order_id`, `line_no`) | 9.2k | Sipariş satırı; aynı ürün bir siparişte iki kez geçebildiği için `line_no` anahtarda |
-| `fact_cart_item` | `acw_cart_items.csv` | `cart_item_id` | 3.8k | Sepet kalemi ve sonucu |
-| `fact_event` | `acw_events.csv` | `event_id` | 44k | Son 90 günün davranış olayları |
-| `fact_consent` | `acw_consents.csv` | `consent_id` | 2.2k | Kanal izni olay günlüğü |
+| `fact_order` | `acw_orders.csv` | `order_id` | 11.9k | Sipariş başlığı |
+| `fact_order_item` | `acw_order_items.csv` | (`order_id`, `line_no`) | 27.9k | Sipariş satırı; aynı ürün bir siparişte iki kez geçebildiği için `line_no` anahtarda |
+| `fact_cart_item` | `acw_cart_items.csv` | `cart_item_id` | 11.9k | Sepet kalemi ve sonucu |
+| `fact_event` | `acw_events.csv` | `event_id` | 138k | Son 90 günün davranış olayları |
+| `fact_consent` | `acw_consents.csv` | `consent_id` | 6.7k | Kanal izni olay günlüğü |
 
 ### Segmentasyon için iki yol
 
@@ -187,6 +187,6 @@ docker compose exec postgres psql -U customer_svc -d customer_db
 ## 7. Açık konular
 
 - Diğer servis veritabanları, servisler arası erişim ve migration aracı karara bağlandı (D-011, D-019, D-020); kalan ayrıntılar DECISIONS.md'nin açık konularında.
-- 1000 kullanıcının "birkaç bin"e çıkarılması.
+- ~~1000 kullanıcının "birkaç bin"e çıkarılması.~~ 3000 kullanıcıya çıkarıldı (D-113).
 - Türkçe büyük/küçük harf duyarsız şehir eşleşmesi (`İstanbul` / `istanbul`): veritabanı varsayılan `en_US.utf8` collation'ı ile oluşturulur, segment doğrulaması şimdilik tam eşleşme varsayar.
   - 2026-10-27 araştırması: Alpine/musl imajında `ILIKE` İ için eşleşiyor, noktasız ı için eşleşmiyor ve bu imaja bağlı. Öneri collation'a dayanmamak; ayrıntı [research/04-data-platform.md](research/04-data-platform.md#4-türkçe-büyükküçük-harf-duyarsız-şehir-eşleşmesi).

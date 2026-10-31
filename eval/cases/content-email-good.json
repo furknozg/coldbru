@@ -1,0 +1,30 @@
+{
+  "description": "An English email whose blocks are all within the limits of D-071 (subject 80, preheader 100, headline 80, 1 to 4 paragraphs of 600, label 30). It is stored with the rendered lengths and the cost.",
+  "prompt": "content",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "language": "en",
+    "channel": "email",
+    "recipients": 16,
+    "max_first_name_length": 7
+  },
+  "turns": [
+    {
+      "json": {
+        "sms": null,
+        "email": {
+          "subject": "{{first_name}}, your basket is waiting: 30% off",
+          "preheader": "The items you added this month are still here, and this week they cost less.",
+          "headline": "Still thinking it over, {{first_name}}?",
+          "paragraphs": [
+            "You added a few things to your basket in the last 30 days and did not check out. No pressure, but they are still there.",
+            "This week you get 30% off everything in it. Finish your order whenever suits you."
+          ],
+          "cta_label": "Back to my basket"
+        },
+        "summary": "Warm, short reminder; the offer stays at the brief's 30%."
+      }
+    }
+  ],
+  "expect": {"verdict": "accepted"}
+}

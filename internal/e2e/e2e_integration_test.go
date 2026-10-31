@@ -66,7 +66,8 @@ import (
 	rstore "github.com/furknozg/coldbru/internal/redirect/store"
 )
 
-// The sample brief of the case and its audience (D-010, D-062): 46 reachable, coverage 20/13/13/3.
+// The sample brief of the case and its audience (D-010, D-062, D-113 seed of 3000): 138 reachable,
+// coverage 85/35/18/17.
 const (
 	sampleBrief = "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun."
 	sampleDSL   = `city === "İstanbul" && cartItems.some(c => c.addedAt >= ago("30d")) && orders.none(o => o.orderDate >= ago("30d"))`
@@ -511,16 +512,16 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(audStep.Variants[0].Content, &aud); err != nil {
 		t.Fatal(err)
 	}
-	if aud.Count != 46 || aud.Coverage != (flow.Coverage{Both: 20, EmailOnly: 13, SMSOnly: 13, Unreachable: 3}) {
-		t.Fatalf("audience = %d with %+v, want 46 with 20/13/13/3", aud.Count, aud.Coverage)
+	if aud.Count != 138 || aud.Coverage != (flow.Coverage{Both: 85, EmailOnly: 35, SMSOnly: 18, Unreachable: 17}) {
+		t.Fatalf("audience = %d with %+v, want 138 with 85/35/18/17", aud.Count, aud.Coverage)
 	}
 	planStep := approveStep(camp.ID, flow.KindChannelPlan)
 	var plan flow.PlanContent
 	if err := json.Unmarshal(planStep.Variants[0].Content, &plan); err != nil {
 		t.Fatal(err)
 	}
-	if plan.Mode != llm.ModePrimaryFallback || plan.Primary != llm.ChannelEmail || plan.Recipients != (flow.Recipients{Email: 33, SMS: 13, Total: 46}) {
-		t.Fatalf("plan = %s/%s with %+v, want primary_fallback/email with 33 email and 13 sms", plan.Mode, plan.Primary, plan.Recipients)
+	if plan.Mode != llm.ModePrimaryFallback || plan.Primary != llm.ChannelEmail || plan.Recipients != (flow.Recipients{Email: 120, SMS: 18, Total: 138}) {
+		t.Fatalf("plan = %s/%s with %+v, want primary_fallback/email with 120 email and 18 sms", plan.Mode, plan.Primary, plan.Recipients)
 	}
 	approveStep(camp.ID, flow.KindContent)
 	approveStep(camp.ID, flow.KindSchedule) // the last approval confirms the campaign
@@ -566,8 +567,8 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(deliveries) != 46 || byChannel["email"] != 33 || byChannel["sms"] != 13 || len(customers) != 46 {
-		t.Fatalf("%d deliveries (%v) to %d customers, want 33 email + 13 sms to 46 customers", len(deliveries), byChannel, len(customers))
+	if len(deliveries) != 138 || byChannel["email"] != 120 || byChannel["sms"] != 18 || len(customers) != 138 {
+		t.Fatalf("%d deliveries (%v) to %d customers, want 120 email + 18 sms to 138 customers", len(deliveries), byChannel, len(customers))
 	}
 
 	// The provider's inbox got exactly one accepted message per delivery, on the delivery's channel.
@@ -590,8 +591,8 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 			t.Errorf("the inbox got %d messages for delivery %s, want exactly 1", got[id], id)
 		}
 	}
-	if n := len(in.all()); n != 46 {
-		t.Errorf("the inbox holds %d messages, want 46", n)
+	if n := len(in.all()); n != 138 {
+		t.Errorf("the inbox holds %d messages, want 138", n)
 	}
 
 	// --- 3. Analytics: the completed event arrived and its totals are Notification's.
@@ -614,11 +615,11 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 	if report.CampaignID != camp.ID {
 		t.Errorf("report is for %s, want %s", report.CampaignID, camp.ID)
 	}
-	wantCounts := []aapi.DeliveryCount{{Channel: "email", Status: "sent", Count: 33}, {Channel: "sms", Status: "sent", Count: 13}}
+	wantCounts := []aapi.DeliveryCount{{Channel: "email", Status: "sent", Count: 120}, {Channel: "sms", Status: "sent", Count: 18}}
 	if fmt.Sprint(report.Deliveries) != fmt.Sprint(wantCounts) {
 		t.Errorf("Analytics deliveries = %+v, want %+v", report.Deliveries, wantCounts)
 	}
-	if wantSegments < 13 || report.SMSSegments != wantSegments {
+	if wantSegments < 18 || report.SMSSegments != wantSegments {
 		t.Errorf("Analytics sms_segments = %d, want %d (at least one per sms)", report.SMSSegments, wantSegments)
 	}
 
@@ -649,15 +650,15 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		}
 	}
 	linkRows.Close()
-	if len(codeOf) != 46 {
-		t.Fatalf("%d deliveries have a link code, want all 46", len(codeOf))
+	if len(codeOf) != 138 {
+		t.Fatalf("%d deliveries have a link code, want all 138", len(codeOf))
 	}
 	var storedLinks, linksOfDeliveries int
 	if err := redirectPool.QueryRow(ctx, `SELECT count(*), count(DISTINCT delivery_id) FROM link WHERE campaign_id = $1`, camp.ID).Scan(&storedLinks, &linksOfDeliveries); err != nil {
 		t.Fatal(err)
 	}
-	if storedLinks != 46 || linksOfDeliveries != 46 {
-		t.Errorf("the redirect service holds %d links for %d deliveries, want 46 and 46", storedLinks, linksOfDeliveries)
+	if storedLinks != 138 || linksOfDeliveries != 138 {
+		t.Errorf("the redirect service holds %d links for %d deliveries, want 138 and 138", storedLinks, linksOfDeliveries)
 	}
 	for _, m := range in.all() {
 		link := content.TrackingLink(trackingBase, codeOf[m.Key])
@@ -706,12 +707,12 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&report) == nil && report.Clicks.TotalClicks == 4
 	})
 	c := report.Clicks
-	if c.Sent != 46 || c.UniqueClicks != 3 || c.TotalClicks != 4 || c.CTR != 0.0652 {
-		t.Errorf("campaign clicks = sent %d, unique %d, total %d, ctr %v; want 46, 3, 4, 0.0652 (3 of 46)", c.Sent, c.UniqueClicks, c.TotalClicks, c.CTR)
+	if c.Sent != 138 || c.UniqueClicks != 3 || c.TotalClicks != 4 || c.CTR != 0.0217 {
+		t.Errorf("campaign clicks = sent %d, unique %d, total %d, ctr %v; want 138, 3, 4, 0.0217 (3 of 138)", c.Sent, c.UniqueClicks, c.TotalClicks, c.CTR)
 	}
 	wantChannels := map[string]aapi.ChannelClicks{
-		"email": {Channel: "email", Sent: 33, UniqueClicks: 2, TotalClicks: 3, CTR: 0.0606},
-		"sms":   {Channel: "sms", Sent: 13, UniqueClicks: 1, TotalClicks: 1, CTR: 0.0769},
+		"email": {Channel: "email", Sent: 120, UniqueClicks: 2, TotalClicks: 3, CTR: 0.0167},
+		"sms":   {Channel: "sms", Sent: 18, UniqueClicks: 1, TotalClicks: 1, CTR: 0.0556},
 	}
 	for _, ch := range c.ByChannel {
 		if ch != wantChannels[ch.Channel] {
@@ -723,8 +724,8 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		localeSent += l.Sent
 		localeUnique += l.UniqueClicks
 	}
-	if len(c.ByChannel) != 2 || localeSent != 46 || localeUnique != 3 {
-		t.Errorf("by channel %d entries, by locale sent %d and unique %d; want 2, 46 and 3", len(c.ByChannel), localeSent, localeUnique)
+	if len(c.ByChannel) != 2 || localeSent != 138 || localeUnique != 3 {
+		t.Errorf("by channel %d entries, by locale sent %d and unique %d; want 2, 138 and 3", len(c.ByChannel), localeSent, localeUnique)
 	}
 
 	var overview aapi.Overview
@@ -733,7 +734,7 @@ func TestSampleBriefDeliversEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if err := json.NewDecoder(resp.Body).Decode(&overview); err != nil || overview.Clicks.Sent != 46 || overview.Clicks.UniqueClicks != 3 || overview.Clicks.CTR != 0.0652 {
-		t.Errorf("overview clicks = %+v (%v), want 3 of 46", overview.Clicks, err)
+	if err := json.NewDecoder(resp.Body).Decode(&overview); err != nil || overview.Clicks.Sent != 138 || overview.Clicks.UniqueClicks != 3 || overview.Clicks.CTR != 0.0217 {
+		t.Errorf("overview clicks = %+v (%v), want 3 of 138", overview.Clicks, err)
 	}
 }

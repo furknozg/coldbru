@@ -105,10 +105,10 @@ func TestSampleBriefRepairedAgainstTheRealCustomerService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProposeSegment: %v", err)
 	}
-	if res.DSL != corrected || res.Preview.Count != 46 || res.ProposeAttempts != 2 || res.Turn != 2 {
-		t.Errorf("result = dsl %q count %d attempts %d turn %d, want the corrected DSL with count 46 on attempt 2", res.DSL, res.Preview.Count, res.ProposeAttempts, res.Turn)
+	if res.DSL != corrected || res.Preview.Count != 138 || res.ProposeAttempts != 2 || res.Turn != 2 {
+		t.Errorf("result = dsl %q count %d attempts %d turn %d, want the corrected DSL with count 138 on attempt 2", res.DSL, res.Preview.Count, res.ProposeAttempts, res.Turn)
 	}
-	if want := (customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3}); res.Preview.Coverage != want {
+	if want := (customer.Coverage{Both: 85, EmailOnly: 35, SmsOnly: 18, Unreachable: 17}); res.Preview.Coverage != want { // 3000-user seed (D-113)
 		t.Errorf("coverage = %+v, want %+v", res.Preview.Coverage, want)
 	}
 

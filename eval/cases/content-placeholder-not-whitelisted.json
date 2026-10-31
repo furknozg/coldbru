@@ -1,0 +1,28 @@
+{
+  "description": "An SMS that uses {{city}}. Only {{first_name}} is allowed (D-071): content.CheckSMS reports placeholder on sms.text with the offending variable; the repaired text is accepted.",
+  "prompt": "content",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "language": "tr",
+    "channel": "sms",
+    "recipients": 33,
+    "max_first_name_length": 9
+  },
+  "turns": [
+    {
+      "json": {
+        "sms": {"text": "Merhaba {{first_name}}, {{city}} mağazamızda sepetindeki ürünlere %30 indirim seni bekliyor!"},
+        "email": null,
+        "summary": "Şehir adıyla kişiselleştirilmiş samimi hatırlatma."
+      }
+    },
+    {
+      "json": {
+        "sms": {"text": "Merhaba {{first_name}}, sepetindeki ürünlere %30 indirim seni bekliyor!"},
+        "email": null,
+        "summary": "Yalnız adla kişiselleştirilmiş samimi hatırlatma."
+      }
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "placeholder", "field": "sms.text"}
+}

@@ -99,9 +99,9 @@ func TestSampleBriefPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
-	want := customer.Coverage{Both: 20, EmailOnly: 13, SmsOnly: 13, Unreachable: 3}
-	if p.Count != 46 || p.Coverage != want {
-		t.Errorf("count = %d, coverage = %+v; want 46 and %+v (D-062)", p.Count, p.Coverage, want)
+	want := customer.Coverage{Both: 85, EmailOnly: 35, SmsOnly: 18, Unreachable: 17} // 3000-user seed (D-113)
+	if p.Count != 138 || p.Coverage != want {
+		t.Errorf("count = %d, coverage = %+v; want 138 and %+v (D-062)", p.Count, p.Coverage, want)
 	}
 	var sum int
 	for _, l := range p.ByLanguage {
@@ -161,8 +161,8 @@ func TestSampleBriefRecipientsOverAllPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllRecipients: %v", err)
 	}
-	if len(all) != 46 {
-		t.Fatalf("recipients = %d, want 46", len(all))
+	if len(all) != 138 {
+		t.Fatalf("recipients = %d, want 138", len(all))
 	}
 	ids := make(map[string]bool, len(all))
 	for _, r := range all {

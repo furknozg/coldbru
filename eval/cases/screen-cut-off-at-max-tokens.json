@@ -1,0 +1,14 @@
+{
+  "description": "The screen answer stops at max_tokens in the middle of the JSON. The pre-screen is fail-closed (D-069): a verdict that cannot be read is an error, never an allow.",
+  "prompt": "screen",
+  "input": {
+    "brief": "Gold üyelere yeni koleksiyona erken erişim daveti gönder."
+  },
+  "turns": [
+    {
+      "text": "{\"verdict\":\"allow\",\"reason\":\"Sıradan bir pazarlama is",
+      "stop_reason": "max_tokens"
+    }
+  ],
+  "expect": {"verdict": "rejected", "error": "max_tokens"}
+}

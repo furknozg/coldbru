@@ -4,21 +4,22 @@ Smart Campaign Composer'ın servisleri, veri modelleri, durum makineleri ve olay
 
 > **Durum (2026-10-27):** Tasarım belgesi, henüz kod veya migration yok (D-029).
 > - **Kesin:** karar numarası verilen her şey. Örnekler: tablo sınırları, durum değerleri, unique kısıt, stream'ler, zarf.
-> - **Taslak:** "taslak" işaretli kolon listeleri, `content` şemaları, olay `data` alanları ve kısıt önerileri. Bunlar migration yazılırken kullanıcıyla kesinleşir (CLAUDE.md, Kodlama kuralları §7).
+> - **Taslak:** "taslak" işaretli kolon listeleri, `content` şemaları ve kısıt önerileri. Bunlar migration yazılırken kullanıcıyla kesinleşir (CLAUDE.md, Kodlama kuralları §7). Olay kataloğu (§6) koddan alınmıştır ve taslak değildir.
 
 ## 1. Servisler ve sahiplik
 
 | Servis | Veritabanı / rol | Sahip olduğu kavramlar | Yayınlar | Tüketir |
 |---|---|---|---|---|
 | Customer | `customer_db` / `customer_svc` | Müşteri, ürün, sipariş, sepet, olay, izin (D-004) | — | — |
-| Proposal | `proposal_db` / `proposal_svc` | Kampanya, teklif adımı, varyant, ek bağlam, LLM çağrısı (D-022) | `proposal.confirmed`, `proposal.cancelled`, `proposal.token_completed`; alıcı batch'leri | `notification.*` (kampanya durumu, D-033) |
-| Notification | `notification_db` / `notification_svc` | Gönderim kampanyası, dil zamanlaması, mesaj, teslimat (D-023) | `notification.started`, `notification.completed` | `proposal.*`, alıcı batch'leri, zamanlama tetikleri, `send.*` |
-| Analytics | `analytics_db` / `analytics_svc` | Kampanya özeti, LLM kullanımı ve maliyeti (D-036) | — | `notification.completed`, `proposal.token_completed` |
+| Proposal | `proposal_db` / `proposal_svc` | Kampanya, teklif adımı, varyant, ek bağlam, LLM çağrısı (D-022) | `proposal.confirmed`, `proposal.cancelled`, `proposal.token_completed`; alıcı batch'leri | `notification.started`, `notification.completed` (kampanya durumu, D-033, D-080) |
+| Notification | `notification_db` / `notification_svc` | Gönderim kampanyası, (dil, saat dilimi) zamanlaması, mesaj, teslimat (D-023, D-077) | `notification.started`, `notification.completed` | `proposal.confirmed`, `proposal.cancelled`, alıcı batch'leri, zamanlama tetikleri, `send.*` |
+| Analytics | `analytics_db` / `analytics_svc` | Kampanya özeti, LLM kullanımı ve maliyeti, tıklama (D-036, D-108) | — | `notification.completed`, `proposal.token_completed`, `redirect.clicked` |
+| Redirect | `redirect_db` / `redirect_svc` | İmzalı kısa link, tıklama (D-106, D-107) | `redirect.clicked` | — (`POST /links` Notification'dan, `GET /r/{kod}` nginx'ten) |
 | Mock provider | DB yok | Idempotency yanıt önbelleği (bellekte, taslak) | — | — |
 
 Customer'ın GraphQL sözleşmesi `internal/customer/graph/schema.graphqls`'tedir (D-058): `audiencePreview`, `audienceRecipients` (keyset sayfalama, `first` ≤ 1000), `consentStatus` ve `updateConsent`; `POST /graphql`, introspection kapalı. `audiencePreview` ve `audienceRecipients` çalışır (T-015): filtre beyaz listeli bir derleyiciyle parametreli SQL'e çevrilir, her sorguya ulaşılabilirlik koşulu eklenir, şehir kanonik sözlükle eşlenir (D-062). `consentStatus` (en fazla 1000 id; bilinmeyen id uygun değil) ve `updateConsent` (yalnız değişiklikte `fact_consent` + `dim_customer` aynı transaction'da, kapalı `source` listesi) çalışır (T-017, D-064). Her istek `Authorization: Bearer <token>` taşır; token yoksa 401, kapsam yoksa `FORBIDDEN` (D-063). Kapsamlar: Proposal `audience:read`, Notification `consent:read`, admin token `consent:write` + `consent:read`; izin geri çekme bir geliştirici komutuyla yapılır, arayüzden değil.
 
-Senkron çağrılar yalnız Customer'ın GraphQL'ine gider: Proposal kitle sayımı ve alıcı listesi için (D-007), Notification gönderim öncesi izin kontrolü için (D-011). Erişim her durumda bu uç noktada zorlanır: her servis kendi token'ı ve kapsamıyla çağırır, alan beyaz listesi sunucudadır ve nginx Customer'ı dışarı açmaz (D-042, D-043). Canlı durum, Notification'dan SSE ile gelir (D-036). Diğer her şey NATS'tir (D-006).
+Senkron çağrılar Customer'ın GraphQL'ine gider: Proposal kitle sayımı ve alıcı listesi için (D-007), Notification gönderim öncesi izin kontrolü için (D-011). Bir de Notification intake'i teslimat satırlarını yazarken batch başına Redirect'in `POST /links` ucunu çağırır (D-106); gönderim anında Redirect'e ağ çağrısı yoktur. Erişim her durumda bu uç noktada zorlanır: her servis kendi token'ı ve kapsamıyla çağırır, alan beyaz listesi sunucudadır ve nginx Customer'ı dışarı açmaz (D-042, D-043). Canlı durum, Notification'dan SSE ile gelir (D-036). Diğer her şey NATS'tir (D-006).
 
 ```mermaid
 flowchart LR
@@ -34,6 +35,9 @@ flowchart LR
     Q --> A
     Q --> P
     N -- "Idempotency-Key" --> M["Mock provider"]
+    G -- "GET /r/{kod}" --> R["Redirect"]
+    N -- "POST /links" --> R
+    R -- "outbox → NATS" --> Q
 ```
 
 ### Konteynerler (D-021, D-056)
@@ -46,9 +50,10 @@ Her servis `Dockerfile`'dan `SERVICE` build arg'ıyla derlenen distroless (nonro
 | proposal | `proposal_db` + platform migration'ları, NATS | 8081 | postgres, nats |
 | notification | `notification_db` + platform migration'ları, NATS | 8082 | postgres, nats |
 | analytics | `analytics_db` + platform migration'ları, NATS | 8083 | postgres, nats |
+| redirect | `redirect_db` + platform migration'ları, NATS | 8085 | postgres, nats |
 | mockprovider | yok | 8084 | — |
 
-`API_DOCS_ENABLED` açıkken (compose'da varsayılan) proposal, notification, analytics ve mockprovider `GET /docs` (Scalar) ve `GET /openapi.json` (swag v2 ile üretilip binary'ye gömülen OpenAPI 3.1 spec'i) sunar; kapalıyken bu yollar yoktur. Spec'ler `make generate` ile `cmd/<servis>/apidocs/swagger.json` olarak üretilir ve commit edilir; şimdilik yalnız `/healthz` ve `/readyz`'i belgeler (D-057).
+`API_DOCS_ENABLED` açıkken (compose'da varsayılan) proposal, notification, analytics, redirect ve mockprovider `GET /docs` (Scalar) ve `GET /openapi.json` (swag v2 ile üretilip binary'ye gömülen OpenAPI 3.1 spec'i) sunar; kapalıyken bu yollar yoktur. Spec'ler `make generate` ile `cmd/<servis>/apidocs/swagger.json` olarak üretilir ve commit edilir; şimdilik yalnız `/healthz` ve `/readyz`'i belgeler (D-057).
 
 Konteyner içinde hepsi `:8080` dinler; compose healthcheck'i `/app -healthcheck` ile `/readyz`'i yoklar. Servisler `postgres` sağlıklı olana ve `nats-init` bitene kadar bekler. İş mantığı, route'lar ve worker'lar servis görevlerinde `app.Options.Setup` kancasıyla eklenir.
 
@@ -310,7 +315,7 @@ Canlı dashboard bu tablonun `campaign_id, channel, status` kırılımındaki an
 
 ## 5. analytics_db
 
-Diyagram ilk taslaktır; kesin şema D-083'tür: `campaign_summary(campaign_id, completed_at, sms_segments, delivery_cost_usd)`, `campaign_delivery_count(campaign_id, channel, status, count)` ve `llm_usage(llm_call_id, campaign_id, purpose, model, prompt_name, prompt_version, token sayıları, outcome, latency_ms, cost_usd)`; tablolar arasında FK yoktur, kampanyanın LLM maliyeti raporda `SUM(llm_usage.cost_usd)` ile hesaplanır. Tüm maliyetler USD'dir. Rapor uçları: `GET /campaigns`, `GET /campaigns/{id}/summary`, `GET /llm-usage?group=prompt_version`. Tıklama takibi (CTR) T-044'tedir (D-082).
+Diyagram ilk taslaktır; kesin şema D-083'tür: `campaign_summary(campaign_id, completed_at, sms_segments, delivery_cost_usd)`, `campaign_delivery_count(campaign_id, channel, status, count)` ve `llm_usage(llm_call_id, campaign_id, purpose, model, prompt_name, prompt_version, token sayıları, outcome, latency_ms, cost_usd)`; tablolar arasında FK yoktur, kampanyanın LLM maliyeti raporda `SUM(llm_usage.cost_usd)` ile hesaplanır. Tüm maliyetler USD'dir. Rapor uçları: `GET /campaigns`, `GET /campaigns/{id}/summary`, `GET /llm-usage?group=prompt_version`. Tıklama takibi (CTR) `evt.redirect.clicked.v1` ve `sent_by_locale` üzerinden Analytics'tedir (D-106–D-108; D-082'nin yerini aldı).
 
 ```mermaid
 erDiagram
@@ -352,7 +357,7 @@ Analytics bir olayı birden çok kez alabilir. Bu yüzden `processed_event` dedu
 |---|---|---|---|
 | `EVENTS` | limits, 7 gün | `evt.>` | Servisler arası olaylar; servis başına durable tüketici |
 | `RECIPIENTS` | work-queue | `recipients.>`; kampanya başına alt konu `recipients.<campaign_id>` (D-074) | Alıcı batch'leri; Notification DB'ye yazıp ack verince silinir |
-| `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.>` ve `fire.>`; (dil, saat dilimi) başına bir zamanlama (D-076); konu biçimi T-028'de kesinleşir | (Dil, saat dilimi) başına tek zamanlama (D-076); tetiklenince hedef konuya ileti düşer |
+| `SCHEDULES` | limits, süresiz, `AllowMsgSchedules` | `sched.<schedule_id>` ve `fire.<schedule_id>`; (dil, saat dilimi) başına bir zamanlama (D-076) | (Dil, saat dilimi) başına tek zamanlama (D-076); `sched.*` iletisi `Nats-Schedule` header'larıyla yayınlanır ve vadesi gelince sunucu onu `fire.<schedule_id>`'ye düşürür; gönderim zamanı olmayan zamanlama doğrudan `fire.*`'a yazılır. Yük `{schedule_id, campaign_id}` |
 | `SEND` | work-queue | `send.sms`, `send.email` | Teslimat başına ileti, `{delivery_id}` |
 
 Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, ileti sınırı 1 MB. Tanımlar `infra/nats/streams/*.json` dosyalarındadır; compose'daki tek seferlik `nats-init` konteyneri her `up`'ta bunları oluşturur veya günceller. Servisler stream oluşturmaz (D-049).
@@ -377,15 +382,18 @@ Stream'lerin hepsi dosya depolamalı, tek replikalı; dedup penceresi 2 dakika, 
 - `correlation_id` kampanya id'sidir.
 - Sürüm içinde yalnız alan eklenir; kırıcı değişiklik `.v2` konusuna gider.
 
-### Olay kataloğu (taslak)
+### Olay kataloğu
 
-| Konu | Üretici → tüketici | `data` (taslak) |
+Koddan alınmıştır: üretici tipleri `internal/proposal/flow/wire.go`, `internal/notification/progress/wire.go` ve `internal/redirect/api/wire.go`; tüketiciler aynı şekilleri kendi paketlerinde alan alan yansıtır (`internal/notification/intake/wire.go`, `internal/proposal/progress/wire.go`, `internal/analytics/intake/wire.go`) ve sözleşme testleri iki taraf ayrışınca düşer. Tüketici bilmediği alanı yok sayar (D-060). Zarf `producer` alanı sırasıyla `proposal`, `notification`, `redirect`; `correlation_id` kampanya id'sidir. Durable tüketiciler ve süzgeçleri: Notification `evt.proposal.>`, Proposal `proposal-notification-events` / `evt.notification.>`, Analytics `analytics-events` / `evt.>` (işlemediği olayı ack'leyip yok sayar).
+
+| Konu | Üretici → tüketici | `data` |
 |---|---|---|
-| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, timezone, send_at}]` (`null` = hemen, D-076), `messages[{language, channel, content}]`, `cta_url`, `recipient_batches`, `recipient_counts{email, sms, total}` (D-074) |
-| `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason`; yalnız `scheduled` veya `sending` kampanyanın iptalinde (D-074) |
-| `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call_id`, `campaign_id`, `step_id`, `purpose`, `model`, `prompt_name`, `prompt_version`, `tokens{input, output, cache_read, cache_creation}`, `outcome`, `latency_ms`, `created_at`; her `llm_call` satırıyla aynı transaction'da (D-083) |
-| `evt.notification.started.v1` | Notification → Proposal, Analytics | `campaign_id`, `schedule_id`, `language`, `timezone`, `started_at`; her zamanlama tetiklenişinde (D-080) |
-| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, `completed_at`, `counts[{channel, status, count}]`, `sms_segments`, `estimated_cost_usd`; kampanya başına bir kez (D-080) |
+| `evt.proposal.confirmed.v1` | Proposal → Notification | `campaign_id`, `schedules[{language, timezone, send_at}]` (`send_at: null` = olay işlenince hemen, D-076), `messages[{language, channel, content}]` (`content` varyant içeriğinin saklandığı hali: SMS için `{"text", ...}`, e-posta için bloklar, D-071), `cta_url` (`utm_campaign` eklenmiş e-posta düğme linki), `recipient_batches` (`recipients.<campaign_id>` üzerindeki batch sayısı), `recipient_counts{email, sms, total}`. Notification `recipient_counts`'u okumaz. Alıcı batch'leriyle tek outbox transaction'ında yazılır (D-074) |
+| `evt.proposal.cancelled.v1` | Proposal → Notification | `campaign_id`, `reason` (boşsa `cancelled by the marketer`); yalnız `scheduled` veya `sending` kampanyanın iptalinde, durum değişikliğiyle aynı transaction'da; `drafting` kampanyanın iptali olay üretmez (D-074) |
+| `evt.proposal.token_completed.v1` | Proposal → Analytics | `llm_call_id`, `campaign_id`, `step_id` (adımsız çağrıda, örn. ön elemede, `null`), `purpose`, `model`, `prompt_name`, `prompt_version`, `tokens{input, output, cache_read, cache_creation}`, `outcome`, `latency_ms`, `created_at`; her `llm_call` satırıyla aynı transaction'da, Analytics `llm_call_id` başına bir `llm_usage` satırı tutar (D-083) |
+| `evt.notification.started.v1` | Notification → Proposal | `campaign_id`, `schedule_id`, `language`, `timezone`, `started_at`; her (dil, saat dilimi) zamanlaması tetiklendiğinde, zamanlamayı tetikleyen transaction'da (D-080). Proposal `scheduled` kampanyayı `sending` yapar; Analytics yok sayar |
+| `evt.notification.completed.v1` | Notification → Proposal, Analytics | `campaign_id`, `completed_at`, `counts[{channel, status, count}]`, `sms_segments` (gönderilen SMS'lerin saklı segment toplamı, D-071), `estimated_cost_usd` (dört ondalıklı metin), `sent_by_locale[{channel, language, timezone, sent}]` (D-108 ile v1 içinde eklendi; önceki olaylarda yok, hiç gönderim yoksa boş dizi; kanal, dil, saat dilimine göre sıralı; aynı kanalın `sent` toplamına eşittir); kampanya başına bir kez, her teslimat kesinleşince (D-080). Proposal kampanyayı `completed` yapar, Analytics özet ve CTR paydalarını yazar |
+| `evt.redirect.clicked.v1` | Redirect → Analytics | `click_id` (tıklama satırının UUIDv7'si), `delivery_id`, `campaign_id`, `channel`, `language`, `timezone`, `clicked_at`, `first` (teslimatın ilk tıklaması; `first` olayları sayınca tekil tıklayan çıkar); her tıklamada, `click` satırıyla aynı transaction'da (D-107); bilinmeyen veya imzası tutmayan kod olay üretmez (D-106) |
 
 Alıcı batch'i (`RECIPIENTS`, konu `recipients.<campaign_id>`): `{campaign_id, batch_no, batch_count, recipients[{customer_id, first_name, language, timezone, channel, contact}]}`, en fazla 500 alıcı; olay ve batch'ler tek outbox transaction'ında yazılır (`outbox.WriteMessage`, D-074).
 
@@ -403,6 +411,7 @@ sequenceDiagram
     participant N as Notification
     participant M as Mock provider
     participant A as Analytics
+    participant R as Redirect
 
     U->>P: brief
     P->>P: Haiku ön eleme (D-026)
@@ -414,7 +423,7 @@ sequenceDiagram
     P->>Q: evt.proposal.confirmed.v1 + RECIPIENTS batch'leri
     Q->>N: send_campaign, message, delivery satırları
     N->>Q: dil başına zamanlama (SCHEDULES)
-    Q-->>N: fire.<campaign>.<dil>
+    Q-->>N: fire.<schedule_id>
     N->>C: batch izin kontrolü (D-011)
     N->>Q: send.sms / send.email
     Q->>N: worker: limiter 100/s, Idempotency-Key
@@ -423,6 +432,9 @@ sequenceDiagram
     N->>Q: evt.notification.completed.v1
     Q->>P: campaign → completed
     Q->>A: kampanya özeti
+    U->>R: GET /r/{kod} (D-106)
+    R->>Q: evt.redirect.clicked.v1
+    Q->>A: tıklama ve CTR
 ```
 
 ## 8. Açık noktalar
@@ -431,5 +443,4 @@ DECISIONS.md'nin "Açık konular" listesine ek olarak bu belgede taslak kalanlar
 
 - `notification_db` ve `analytics_db` tablolarının kolon listeleri ve kısıtları (migration yazılırken).
 - `proposal_variant.content` şemaları; HTML email gövde biçimi.
-- Olay `data` alanları ve `RECIPIENTS` / `SCHEDULES` konu adları.
 - Mock provider'ın idempotency önbelleğinin bellekte mi tutulacağı.

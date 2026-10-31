@@ -1,0 +1,28 @@
+{
+  "description": "An SMS that is longer than the 125-character budget once {{first_name}} is expanded. content.CheckSMS reports max_length on sms.text; contentgen asks for a repair with the problem list and the shorter text is accepted.",
+  "prompt": "content",
+  "input": {
+    "brief": "Son 30 günde sepetine ürün ekleyip alışveriş yapmayan İstanbul'daki kullanıcılara %30 indirim hatırlatması gönder. Samimi ama kısa olsun.",
+    "language": "tr",
+    "channel": "sms",
+    "recipients": 33,
+    "max_first_name_length": 9
+  },
+  "turns": [
+    {
+      "json": {
+        "sms": {"text": "Merhaba {{first_name}}, son 30 günde sepetine eklediğin ürünler hâlâ seni bekliyor! Sadece bu hafta sonuna kadar geçerli %30 indirim fırsatını kaçırma, hemen alışverişini tamamla."},
+        "email": null,
+        "summary": "Samimi bir hatırlatma, %30 indirim ve aciliyet vurgusu."
+      }
+    },
+    {
+      "json": {
+        "sms": {"text": "Merhaba {{first_name}}, sepetindeki ürünler seni bekliyor: %30 indirim fırsatını kaçırma!"},
+        "email": null,
+        "summary": "Kısaltılmış samimi hatırlatma; indirim %30."
+      }
+    }
+  ],
+  "expect": {"verdict": "repair_requested", "error": "max_length", "field": "sms.text"}
+}
