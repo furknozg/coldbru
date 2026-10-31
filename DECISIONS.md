@@ -105,6 +105,10 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
 | D-099 | Uygulamada tek kenar çubuğu: Genel bakış, Kampanyalar, Analitikler (Kampanya analitiği, LLM analitiği, Canlı gönderim) | Takip ve altyapı | Kabul edildi; içerik alanı seçicisi yerini aldı → D-100 |
 | D-100 | Analitik kampanya seçicileri kenar çubuğunda iç içe akordiyon | Takip ve altyapı | Kabul edildi |
 | D-101 | Sohbette kullanıcının gönderdiği mesajlar sağa hizalı | Takip ve altyapı | Kabul edildi |
+| D-102 | Örnek brief için tek süreçte servisler arası uçtan uca Go testi | Test ve kapsam | Kabul edildi |
+| D-103 | Sender, MOCK_SEED'li gerçek mockprovider handler'ına karşı test edilir | Test ve kapsam | Kabul edildi |
+| D-104 | Tarayıcıda uçtan uca test (Playwright) kapsam dışı | Test ve kapsam | Kabul edildi |
+| D-105 | make test'i koşan GitHub Actions pipeline'ı | Test ve kapsam | Kabul edildi |
 
 ---
 
@@ -1828,6 +1832,56 @@ Bu dosya Smart Campaign Composer'daki önemli teknik ve ürün kararlarını, ge
   - Hepsinin sola hizalı kalması (D-091 uygulaması) — reddedildi: kullanıcı mesajı ajanınkinden yalnız renkle ayrılıyordu ve başlık ile metin farklı hizalanmıştı.
 - **Sonuçlar / bedel:** Sohbetin iki hizası olur; dar ekranda sağa hizalı uzun metin daha zor okunabilir.
 - **Doğrulama:** `CampaignPage.steps.spec.ts` (kullanıcı mesajının satırı, başlığı ve metni sağa hizalı, ajan mesajı değil). Canlı: brief mesajında `align-items: flex-end` ve metinde `text-align: right` ölçüldü.
+
+## D-102: Örnek brief için tek süreçte servisler arası uçtan uca Go testi
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** T-038 incelemesinde 34 entegrasyon test dosyası her servis sınırını ayrı kanıtlıyordu: Proposal onayı seed'li Customer ile 46 kişi ve planı (`TestSampleBriefConfirmsAndPublishes`), Notification elle kurulmuş olaylarla "bir kez" ve 429 davranışını (`TestSend_*`, sahte 30 SMS / 20 e-posta). Örnek brief hiçbir testte Proposal → NATS → Notification → mock provider → Analytics zincirinin tamamından geçmiyordu; servisler arası olay sözleşmesindeki bir kayma iki tarafın testinden de geçebilirdi.
+- **Karar:** `make test` içinde koşan tek bir `integration` etiketli Go testi: testcontainers ile Postgres 18 ve NATS, tüm servislerin handler/worker'ları aynı süreçte, LLM için senaryolu sahte. Örnek brief'ten başlar, onaylar ve teslimatların bitmesini bekler; kitle 46, e-posta 33 / SMS 13, her alıcıya kanal başına tek `sent` ve Analytics'te aynı sayılar doğrulanır. Ayrıntılar uygulama notunda.
+- **Alternatifler:**
+  - Compose yığını üzerinde smoke testi (`make e2e`) — reddedildi: `make test` dışında kalır, yavaştır ve çalışan yığına bağlıdır (D-025'in reddettiği yol).
+  - Ekleme, yalnız belgele — reddedildi: servisler arası sözleşme kayması yalnız elle fark edilirdi.
+- **Sonuçlar / bedel:** En yavaş test olur ve tüm servisleri kuran büyük bir harness gerekir; servis kurulumları değişince harness da güncellenir. Gerçek imajlar ve compose sırası bu testle sınanmaz.
+- **Doğrulama:** 2026-10-31'de (T-038): `internal/e2e` paketindeki `TestSampleBriefDeliversEndToEnd` örnek brief'i onaylayıp teslimatın bitmesini bekler: kitle 46 (20/13/13/3), plan `primary_fallback`/e-posta ile 33 / 13 / 46, 46 farklı müşteriye 33 e-posta + 13 SMS teslimat, her (müşteri, kanal) tek `sent` ve provider mesaj kimliğiyle, mock inbox'ta teslimat başına tek iletim (toplam 46), Analytics'te e-posta 33 / SMS 13 `sent`, `completed_at` dolu ve `sms_segments` Notification satırlarından hesaplananla aynı. Test gövdesi ~5 sn, paket konteynerlerle ~15 sn. Analytics beklentisi bilerek 32'ye çevrildiğinde test düştü (geri alındı). `make test` geçti: 51 Go paketi, web 28 dosya / 314 test.
+- **Uygulama notu (T-038):** Tek seed'li Postgres'te customer_db ve servis başına ayrı veritabanı; tek NATS konteyneri `infra/nats/streams`'teki gerçek akış tanımlarıyla. Aynı süreçte gerçek Customer GraphQL handler'ı (token middleware'iyle), Proposal `flow`/`contentgen`/`confirm`/progress tüketicisi ve outbox relay, Notification intake/sender/completion ve outbox relay, Analytics intake ve API. LLM `llmtest.Scripted`; metin slotları eşzamanlı üretildiği için sarmalayıcı cevabı istekteki slota (dil/kanal) göre seçer. Mock provider düşük hata oranlarıyla: hata 0,03, 429 0,02, zaman aşımı 0, gecikme 0–10 ms, `MOCK_SEED` 20261031. Üretim kodu değişmedi. Analytics'in LLM çağrı toplamları bu testte kapsanmaz (LLM kayıtları Analytics'e beslenmiyor).
+
+## D-103: Sender, MOCK_SEED'li gerçek mockprovider handler'ına karşı test edilir
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** Sender'ın retry ve 429 testleri `httptest` üzerindeki sahte bir provider'a karşı koşuyordu; gerçek mockprovider handler'ı (rastgele 5xx, 429, zaman aşımı; `MOCK_ERROR_RATE`, `MOCK_RATE_429`, `MOCK_TIMEOUT_RATE`) sender ile hiç birlikte çalıştırılmıyordu. Client ile handler arasındaki uyum yalnız sözleşme testlerine kalıyordu.
+- **Karar:** Gerçek mockprovider handler'ı `httptest` sunucusunda, `MOCK_SEED` ile deterministik ve varsayılandan yüksek hata/429 oranlarıyla açılır; sender bir kampanyayı buna karşı gönderir ve her teslimatın tek kez `sent` olduğu, provider'ın aynı `Idempotency-Key` için birden fazla mesaj kabul etmediği doğrulanır. Oranlar uygulama notunda.
+- **Alternatifler:**
+  - Yalnız D-102'nin uçtan uca testi içinde — reddedildi: orada hata oranları düşük tutulursa retry yolu zayıf sınanır.
+  - Mevcut sahte yeter — reddedildi: gerçek handler ile client arasındaki uyum test edilmezdi.
+- **Sonuçlar / bedel:** Mock provider'ın oranları veya rastgelelik sırası değişirse testin beklediği deneme sayıları güncellenmeli; test sayımlara değil "bir kez sent" değişmezine dayanmalı.
+- **Doğrulama:** 2026-10-31'de (T-038): `TestSend_AgainstRealMockProviderSendsEachDeliveryOnce` 25 SMS + 25 e-posta teslimatı gerçek handler'a gönderir; 50'si de tek `sent`, provider her teslimat kimliği için tam bir mesaj iletir ve başka anahtar görmez; retry yolunun çalıştığı (2xx dışı cevap, tekrar istenen anahtar, `attempts > 1`, en az bir 429) doğrulanır. Art arda 20 koşu geçti; her koşuda durumlar `202:50 429:3 502:3 503:1` ve 2–3 zaman aşımı (499), 8–10 tekrar edilen anahtar. Tek başına ~2 sn.
+- **Uygulama notu (T-038):** Oranlar hata 0,10, 429 0,04, zaman aşımı 0,02 (varsayılanlar 0,05 / 0,02 / 0,01); zaman aşımı cevabı 1,5 sn tutar, client zaman aşımı 750 ms olduğundan tekrar deneme saklanan cevabı geri almalıdır. Mock'un kendi hız limiti 1000/s'ye çıkarıldı ki ek 429 üretmesin. 0,2 / 0,2 kullanılmadı: `sender.MaxDeliver` = 5 denemede teslimat `failed` olur; %40 hata oranında 50 teslimatlık bir koşunun tasarım gereği düşme olasılığı ~%40 olurdu, 0,16 toplamda teslimat başına ~1e-4. `MOCK_SEED` = 50, 5xx, 429 ve zaman aşımının hepsini üreten bir seed taramasıyla seçildi; mock'un rastgele sırası değişirse hata mesajı başka seed seçilmesini söyler.
+
+## D-104: Tarayıcıda uçtan uca test (Playwright) kapsam dışı
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** Frontend'de 28 vitest dosyası / 314 bileşen ve görünüm testi var; tarayıcıda brief → onay → canlı akışı otomatik süren bir test yok. Bu akış her görevde yerleşik tarayıcıda elle doğrulandı.
+- **Karar:** Playwright veya benzeri tarayıcı E2E testi eklenmez; README'nin kapsam dışı bölümünde belirtilir. Arka uç zinciri D-102 ile kanıtlanır.
+- **Alternatifler:**
+  - Tek Playwright smoke testi — reddedildi: tarayıcı indirmesi ve çalışan yığın gerektirir, `make test` dışında kalır.
+- **Sonuçlar / bedel:** SSE akışı, router ve gerçek API ile ekran etkileşimi tarayıcıda yalnız elle doğrulanmış olur.
+- **Doğrulama:** README'de kapsam dışı olarak belirtilecek (T-040).
+
+## D-105: make test'i koşan GitHub Actions pipeline'ı
+
+- **Durum:** Kabul edildi · 2026-10-31
+- **Alan:** Test ve kapsam
+- **Bağlam:** Brief CI pipeline'ını bonus olarak sayıyor. `make test` Docker ister (testcontainers, D-025) ve web testleri için pnpm gerekir.
+- **Karar:** `.github/workflows/` altında push ve pull request'te `make test`'i koşan bir GitHub Actions iş akışı (Docker'lı `ubuntu-latest` runner, Go ve Node/pnpm kurulumu). T-038 kapsamında eklenir.
+- **Alternatifler:**
+  - Ayrı görev — reddedildi: kullanıcı bu görevde istedi.
+  - Yapılmasın — reddedildi: bonus açık kalırdı.
+- **Sonuçlar / bedel:** Runner'da testcontainers imaj çekimi süreyi uzatır. Repoda henüz remote yok; iş akışı push edilene kadar GitHub'da koşturulamaz.
+- **Doğrulama:** Kısmen, 2026-10-31'de (T-038): `.github/workflows/test.yml` YAML olarak ayrıştırıldı; GitHub runner'da koşturulmadı (repoda remote yok), `setup-go`'nun Go 1.27.0'ı kabul ettiği doğrulanmadı.
+- **Uygulama notu (T-038):** push ve pull_request tetikleyicileri, `permissions: contents: read`, ref başına concurrency grubu, 45 dk zaman aşımı. `actions/checkout@v4`, `actions/setup-go@v5` (`go.mod`), `pnpm/action-setup@v4` (pnpm 12.8.1, `web/Dockerfile`'daki `PNPM_VERSION` ile aynı; `web/package.json`'da `packageManager` yok), `actions/setup-node@v4` (Node 24, pnpm cache), sonra `pnpm -C web install --frozen-lockfile` ve `make test`. Gizli bilgi kullanılmaz.
 
 ---
 
